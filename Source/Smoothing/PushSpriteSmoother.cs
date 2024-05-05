@@ -29,7 +29,7 @@ public class PushSpriteSmoother : MotionSmoother
         position += obj switch
         {
             GraphicsComponent graphicsComponent => GetOffset(graphicsComponent) + GetOffset(graphicsComponent.Entity),
-            Component { Entity: not null } component => GetOffset(component.Entity),
+            Component component => GetOffset(component.Entity),
             _ => GetOffset(obj)
         };
 

@@ -180,10 +180,10 @@ public abstract class MotionSmoother
 
     protected Vector2 GetOffset(object obj)
     {
+        if (obj == null) return Vector2.Zero;
+        
         if (_objectStates.TryGetValue(obj, out var state))
-        {
             return state!.SmoothedPosition - state.OriginalPosition;
-        }
 
         return Vector2.Zero;
     }
