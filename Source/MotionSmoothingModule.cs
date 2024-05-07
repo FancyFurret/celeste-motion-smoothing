@@ -2,6 +2,7 @@
 using System.Reflection;
 using Celeste.Mod.MotionSmoothing.Smoothing;
 using Celeste.Mod.MotionSmoothing.Utilities;
+using Celeste.Pico8;
 using Monocle;
 
 namespace Celeste.Mod.MotionSmoothing;
@@ -64,7 +65,8 @@ public class MotionSmoothingModule : EverestModule
             if (
                 Engine.Scene is Level ||
                 Engine.Scene is LevelLoader ||
-                Engine.Scene is LevelExit)
+                Engine.Scene is LevelExit ||
+                Engine.Scene is Emulator)
             {
                 // If we're in a level, keep the update rate at 60fps
                 DecoupledGameTick.SetTargetFramerate(60, Settings.FrameRate.ToFps());
