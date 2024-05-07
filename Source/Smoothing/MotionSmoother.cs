@@ -117,6 +117,7 @@ public abstract class MotionSmoother
         var elapsedTicks = _timer.ElapsedTicks - _lastTicks;
         var elapsedSeconds = (double)elapsedTicks / Stopwatch.Frequency;
         var t = (float)(elapsedSeconds / Engine.Instance.TargetElapsedTime.TotalSeconds);
+        var player = Engine.Scene.Tracker.GetEntity<Player>();
 
         foreach (var state in States())
         {
@@ -150,7 +151,8 @@ public abstract class MotionSmoother
                 Y = MathHelper.Lerp(state.PositionHistory[1].Y, state.PositionHistory[0].Y, t)
             };
 
-            if (state is EntitySmoothingState { Entity: Player player })
+            if (state is EntitySmoothingState entity && player != null &&
+                (entity.Entity == player || entity.Entity == player.Holding?.Entity))
             {
                 switch (MotionSmoothingModule.Settings.PlayerSmoothing)
                 {
@@ -159,13 +161,16 @@ public abstract class MotionSmoother
                         continue;
                     case MotionSmoothingSettings.PlayerSmoothingMode.Extrapolate:
                         // Disable during screen transitions or pause
-                        if (Engine.Scene is Level { Transitioning: true } or { Paused: true })
+                        if (Engine.Scene is Level { Transitioning: true } or { Paused: true } || Engine.FreezeTimer > 0)
                         {
                             state.SmoothedPosition = state.Position;
                             continue;
                         }
 
-                        state.SmoothedPosition = state.PositionHistory[0] + player.Speed * (float)elapsedSeconds;
+                        state.SmoothedPosition = state.PositionHistory[0] +
+                                                 player.Speed * Engine.TimeRate * Engine.TimeRateB *
+                                                 (float)elapsedSeconds;
+
                         continue;
                     case MotionSmoothingSettings.PlayerSmoothingMode.None:
                     default:
@@ -181,7 +186,7 @@ public abstract class MotionSmoother
     protected Vector2 GetOffset(object obj)
     {
         if (obj == null) return Vector2.Zero;
-        
+
         if (_objectStates.TryGetValue(obj, out var state))
             return state!.SmoothedPosition - state.OriginalPosition;
 
