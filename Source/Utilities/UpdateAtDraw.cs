@@ -12,7 +12,6 @@ public class UpdateAtDraw
 
     private HashSet<Type> RendererTypesToUpdate { get; } = new()
     {
-        typeof(ScreenWipe),
         typeof(HiresSnow),
         typeof(ParticleRenderer),
         typeof(MountainRenderer),
@@ -27,7 +26,7 @@ public class UpdateAtDraw
     private readonly List<Renderer> _renderersToUpdate = new();
     private readonly List<Entity> _entitiesToUpdate = new();
     private readonly List<Backdrop> _backdropsToUpdate = new();
-
+    
     private readonly List<Hook> _hooks = new();
 
     private bool _recording;
@@ -57,13 +56,14 @@ public class UpdateAtDraw
 
         On.Monocle.Engine.Update -= EngineUpdateHook;
         On.Monocle.Engine.Draw -= EngineDrawHook;
-
-        ClearUpdateLists();
     }
 
     private static void EngineUpdateHook(On.Monocle.Engine.orig_Update orig, Engine self, GameTime gameTime)
     {
-        Instance.ClearUpdateLists();
+        Instance._renderersToUpdate.Clear();
+        Instance._entitiesToUpdate.Clear();
+        Instance._backdropsToUpdate.Clear();
+        
         Instance._recording = true;
         orig(self, gameTime);
         Instance._recording = false;
@@ -99,13 +99,6 @@ public class UpdateAtDraw
             orig(self, scene);
     }
 
-    private void ClearUpdateLists()
-    {
-        _renderersToUpdate.Clear();
-        _entitiesToUpdate.Clear();
-        _backdropsToUpdate.Clear();
-    }
-
     private void Update(Scene scene)
     {
         foreach (var renderer in _renderersToUpdate)
@@ -116,19 +109,5 @@ public class UpdateAtDraw
 
         foreach (var backdrop in _backdropsToUpdate)
             backdrop.Update(scene);
-
-        // This fixes an issue with ScreenWipe. Since it's running at the full framerate, it calls OnComplete
-        // too early. This causes an issue when transitioning scenes, and causes the screen to flash for a frame.
-        // This fixes it by transitioning the scene right away if needed instead of waiting for the Engine to do it.
-        if (Engine.Scene != Engine.NextScene)
-            TransitionScreen(scene);
-    }
-
-    private void TransitionScreen(Scene scene)
-    {
-        scene?.End();
-        Engine.Instance.scene = Engine.NextScene; // Specifically *not* using the .Scene property here.
-        Engine.Instance.OnSceneTransition(scene, Engine.NextScene);
-        Engine.Scene?.Begin();
     }
 }

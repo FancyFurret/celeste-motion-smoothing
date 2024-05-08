@@ -1,4 +1,5 @@
-﻿using System.Collections.Generic;
+﻿using System;
+using System.Collections.Generic;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using Monocle;
@@ -30,6 +31,7 @@ public class MotionSmoothingHandler
         On.Monocle.Entity.ctor_Vector2 += EntityCtorHook;
         On.Monocle.Component.ctor += ComponentCtorHook;
         On.Monocle.Camera.ctor_int_int += CameraCtorHook;
+        On.Celeste.ScreenWipe.ctor += ScreenWipeCtorHook;
     }
 
     public void Unload()
@@ -37,6 +39,7 @@ public class MotionSmoothingHandler
         On.Monocle.Entity.ctor_Vector2 -= EntityCtorHook;
         On.Monocle.Component.ctor -= ComponentCtorHook;
         On.Monocle.Camera.ctor_int_int -= CameraCtorHook;
+        On.Celeste.ScreenWipe.ctor -= ScreenWipeCtorHook;
     }
 
     public void Hook()
@@ -97,7 +100,12 @@ public class MotionSmoothingHandler
         orig(self, width, height);
         Instance._positionSmoother.SmoothCamera(self);
     }
-
+    
+    private static void ScreenWipeCtorHook(On.Celeste.ScreenWipe.orig_ctor orig, ScreenWipe self, Scene scene, bool wipeIn, Action onComplete = null)
+    {
+        orig(self, scene, wipeIn, onComplete);
+        Instance._positionSmoother.SmoothScreenWipe(self);
+    }
 
     private static void EngineUpdateHook(On.Monocle.Engine.orig_Update orig, Engine self, GameTime gameTime)
     {

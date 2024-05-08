@@ -79,6 +79,26 @@ public class CameraSmoothingState : SmoothingState
     }
 }
 
+public class ScreenWipeSmoothingState : SmoothingState
+{
+    public ScreenWipe ScreenWipe { get; }
+
+    public override object Object => ScreenWipe;
+
+    public override Vector2 Position
+    {
+        get => new(ScreenWipe.Percent, 0f);
+        set => ScreenWipe.Percent = value.X;
+    }
+
+    public override bool IsVisible => true;
+
+    public ScreenWipeSmoothingState(ScreenWipe screenWipe)
+    {
+        ScreenWipe = screenWipe;
+    }
+}
+
 public abstract class MotionSmoother
 {
     private const float MaxLerpDistance = 50f;
@@ -117,7 +137,7 @@ public abstract class MotionSmoother
         var elapsedTicks = _timer.ElapsedTicks - _lastTicks;
         var elapsedSeconds = (double)elapsedTicks / Stopwatch.Frequency;
         var t = (float)(elapsedSeconds / Engine.Instance.TargetElapsedTime.TotalSeconds);
-        var player = Engine.Scene.Tracker.GetEntity<Player>();
+        var player = Engine.Scene?.Tracker.GetEntity<Player>();
 
         foreach (var state in States())
         {
