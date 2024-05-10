@@ -46,15 +46,15 @@ public class MotionSmoothingSettings : EverestModuleSettings
     public enum PlayerSmoothingMode
     {
         None,
-        Interpolate,
-        Extrapolate
+        Extrapolate,
+        Interpolate
     }
 
     [SettingSubText(
         "None: No player smoothing, movement should feel the same as vanilla\n" +
-        "Interpolate: Smooths the player position, at the cost of some delay (1-2 frames)\n" +
-        "Extrapolate: Smoother than none, but not perfect. Should feel similar to vanilla")]
-    public PlayerSmoothingMode PlayerSmoothing { get; set; } = PlayerSmoothingMode.Interpolate;
+        "Extrapolate: Smoother than none, but not perfect. Should feel similar to vanilla\n" +
+        "Interpolate: Smooths the player position, at the cost of some delay (1-2 frames)")]
+    public PlayerSmoothingMode PlayerSmoothing { get; set; } = PlayerSmoothingMode.Extrapolate;
 }
 
 public static class FrameRateModeExtensions

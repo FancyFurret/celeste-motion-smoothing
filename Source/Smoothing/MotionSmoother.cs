@@ -136,22 +136,19 @@ public abstract class MotionSmoother
     {
         var elapsedTicks = _timer.ElapsedTicks - _lastTicks;
         var elapsedSeconds = (double)elapsedTicks / Stopwatch.Frequency;
-        var t = (float)(elapsedSeconds / Engine.Instance.TargetElapsedTime.TotalSeconds);
         var player = Engine.Scene?.Tracker.GetEntity<Player>();
 
         foreach (var state in States())
         {
+            state.SmoothedPosition = state.Position;
+
             // If the position is moving to zero, just snap to the current position
             if (state.PositionHistory[0] == Vector2.Zero)
-            {
-                state.SmoothedPosition = state.Position;
                 continue;
-            }
 
             // If the entity was invisible but is now visible, snap to the current position
             if (state.WasInvisible && state.IsVisible)
             {
-                state.SmoothedPosition = state.Position;
                 state.WasInvisible = false;
                 continue;
             }
@@ -159,17 +156,7 @@ public abstract class MotionSmoother
             // If the distance is too large, just snap to the current position
             if (Vector2.DistanceSquared(state.PositionHistory[0], state.PositionHistory[1]) >
                 MaxLerpDistance * MaxLerpDistance)
-            {
-                state.SmoothedPosition = state.Position;
                 continue;
-            }
-
-            // Interpolate
-            var interpolatedPosition = new Vector2
-            {
-                X = MathHelper.Lerp(state.PositionHistory[1].X, state.PositionHistory[0].X, t),
-                Y = MathHelper.Lerp(state.PositionHistory[1].Y, state.PositionHistory[0].Y, t)
-            };
 
             if (state is EntitySmoothingState entity && player != null &&
                 (entity.Entity == player || entity.Entity == player.Holding?.Entity))
@@ -177,30 +164,52 @@ public abstract class MotionSmoother
                 switch (MotionSmoothingModule.Settings.PlayerSmoothing)
                 {
                     case MotionSmoothingSettings.PlayerSmoothingMode.Interpolate:
-                        state.SmoothedPosition = interpolatedPosition;
+                        state.SmoothedPosition = Interpolate(state.PositionHistory, elapsedSeconds);
                         continue;
                     case MotionSmoothingSettings.PlayerSmoothingMode.Extrapolate:
                         // Disable during screen transitions or pause
                         if (Engine.Scene is Level { Transitioning: true } or { Paused: true } || Engine.FreezeTimer > 0)
-                        {
-                            state.SmoothedPosition = state.Position;
                             continue;
-                        }
 
-                        state.SmoothedPosition = state.PositionHistory[0] +
-                                                 player.Speed * Engine.TimeRate * Engine.TimeRateB *
-                                                 (float)elapsedSeconds;
-
+                        state.SmoothedPosition = Extrapolate(state.PositionHistory, player.Speed, elapsedSeconds);
                         continue;
                     case MotionSmoothingSettings.PlayerSmoothingMode.None:
                     default:
-                        state.SmoothedPosition = state.Position;
                         continue;
                 }
             }
 
-            state.SmoothedPosition = interpolatedPosition;
+            if (state is CameraSmoothingState && MotionSmoothingModule.Settings.PlayerSmoothing ==
+                MotionSmoothingSettings.PlayerSmoothingMode.Extrapolate)
+            {
+                state.SmoothedPosition = Extrapolate(state.PositionHistory, elapsedSeconds);
+                continue;
+            }
+
+            state.SmoothedPosition = Interpolate(state.PositionHistory, elapsedSeconds);
         }
+    }
+
+    private Vector2 Interpolate(Vector2[] positionHistory, double elapsedSeconds)
+    {
+        var t = (float)(elapsedSeconds / Engine.Instance.TargetElapsedTime.TotalSeconds);
+        return new Vector2
+        {
+            X = MathHelper.Lerp(positionHistory[1].X, positionHistory[0].X, t),
+            Y = MathHelper.Lerp(positionHistory[1].Y, positionHistory[0].Y, t)
+        };
+    }
+
+    private Vector2 Extrapolate(Vector2[] positionHistory, double elapsedSeconds)
+    {
+        var speed = (positionHistory[0] - positionHistory[1]) /
+                    (float)Engine.Instance.TargetElapsedTime.TotalSeconds;
+        return positionHistory[0] + speed * Engine.TimeRate * Engine.TimeRateB * (float)elapsedSeconds;
+    }
+
+    private Vector2 Extrapolate(Vector2[] positionHistory, Vector2 speed, double elapsedSeconds)
+    {
+        return positionHistory[0] + speed * Engine.TimeRate * Engine.TimeRateB * (float)elapsedSeconds;
     }
 
     protected Vector2 GetOffset(object obj)
