@@ -47,7 +47,7 @@ public class MotionSmoothingModule : EverestModule
     public override void Unload()
     {
         MotionSmoothing.Unload();
-        Disable();
+        Unhook();
     }
 
     public void ToggleMod()
@@ -83,7 +83,7 @@ public class MotionSmoothingModule : EverestModule
         }
         else
         {
-            Disable();
+            Unhook();
         }
     }
 
@@ -100,7 +100,7 @@ public class MotionSmoothingModule : EverestModule
         Hooked = true;
     }
 
-    private void Disable()
+    private void Unhook()
     {
         if (!Hooked) return;
 

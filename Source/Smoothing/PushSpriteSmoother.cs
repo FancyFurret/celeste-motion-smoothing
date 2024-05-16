@@ -8,7 +8,14 @@ public class PushSpriteSmoother : MotionSmoother
 {
     private readonly Stack<object> _currentObjects = new();
 
-    public void SmoothEntity(Entity entity) => SmoothObject(new EntitySmoothingState(entity));
+    public void SmoothEntity(Entity entity)
+    {
+        if (entity is ZipMover.ZipMoverPathRenderer zipMover)
+            SmoothObject(new ZipMoverSmoothingState(zipMover));
+        else
+            SmoothObject(new EntitySmoothingState(entity));
+    }
+
     public void SmoothComponent(GraphicsComponent component) => SmoothObject(new ComponentSmoothingState(component));
 
     public void PreObjectRender(object obj)

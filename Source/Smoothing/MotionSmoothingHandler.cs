@@ -2,7 +2,9 @@
 using System.Collections.Generic;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
+using Mono.Cecil.Cil;
 using Monocle;
+using MonoMod.Cil;
 using MonoMod.RuntimeDetour;
 
 namespace Celeste.Mod.MotionSmoothing.Smoothing;
@@ -51,15 +53,69 @@ public class MotionSmoothingHandler
         // HookSubtypes.HookAllMethods(typeof(Entity), "Render", EntityRender));
         // HookSubtypes.HookAllMethods(typeof(GraphicsComponent), "Render", ComponentRender);
 
+        // These catch renders that might happen outside a ComponentList
         HookComponentRender<Component>();
         HookComponentRender<Sprite>();
         HookComponentRender<Image>();
         HookComponentRender<DustGraphic>(); // Components (that aren't GraphicsComponents) can be smoothed by looking at their Entity's position
-        HookEntityRender<Entity>();
-        HookEntityRender<TextMenu>();
 
         On.Monocle.Engine.Update += EngineUpdateHook;
         On.Monocle.Engine.Draw += EngineDrawHook;
+
+        IL.Monocle.ComponentList.Render += ComponentListRenderHook;
+        IL.Monocle.EntityList.Render += EntityListRenderHook;
+        IL.Monocle.EntityList.RenderOnly += EntityListRenderHook;
+        IL.Monocle.EntityList.RenderOnlyFullMatch += EntityListRenderHook;
+        IL.Monocle.EntityList.RenderExcept += EntityListRenderHook;
+    }
+
+    public void Unhook()
+    {
+        foreach (var hook in _hooks) hook.Dispose();
+        _hooks.Clear();
+
+        On.Monocle.Engine.Update -= EngineUpdateHook;
+        On.Monocle.Engine.Draw -= EngineDrawHook;
+        
+        IL.Monocle.ComponentList.Render -= ComponentListRenderHook;
+        IL.Monocle.EntityList.Render -= EntityListRenderHook;
+        IL.Monocle.EntityList.RenderOnly -= EntityListRenderHook;
+        IL.Monocle.EntityList.RenderOnlyFullMatch -= EntityListRenderHook;
+        IL.Monocle.EntityList.RenderExcept -= EntityListRenderHook;
+    }
+
+    private static void ComponentListRenderHook(ILContext il)
+    {
+        var c = new ILCursor(il);
+        while (c.TryGotoNext(MoveType.Before, i => i.MatchCallvirt<Component>("Render")))
+        {
+            c.Emit(OpCodes.Ldloc_1);
+            c.EmitDelegate(PreObjectRender);
+            c.Index++;
+            c.EmitDelegate(PostObjectRender);
+        }
+    }
+    
+    private static void EntityListRenderHook(ILContext il)
+    {
+        var c = new ILCursor(il);
+        while (c.TryGotoNext(MoveType.Before, i => i.MatchCallvirt<Entity>("Render")))
+        {
+            c.Emit(OpCodes.Ldloc_1);
+            c.EmitDelegate(PreObjectRender);
+            c.Index++;
+            c.EmitDelegate(PostObjectRender);
+        }
+    }
+    
+    private static void PreObjectRender(object obj)
+    {
+        Instance._pushSpriteSmoother.PreObjectRender(obj);
+    }
+    
+    private static void PostObjectRender()
+    {
+        Instance._pushSpriteSmoother.PostObjectRender();
     }
 
     private void HookComponentRender<T>() where T : Component
@@ -70,15 +126,6 @@ public class MotionSmoothingHandler
     private void HookEntityRender<T>() where T : Entity
     {
         _hooks.Add(new Hook(typeof(T).GetMethod("Render")!, EntityRender));
-    }
-
-    public void Unhook()
-    {
-        foreach (var hook in _hooks) hook.Dispose();
-        _hooks.Clear();
-
-        On.Monocle.Engine.Update -= EngineUpdateHook;
-        On.Monocle.Engine.Draw -= EngineDrawHook;
     }
 
     private static void EntityCtorHook(On.Monocle.Entity.orig_ctor_Vector2 orig, Entity self, Vector2 position)
@@ -100,8 +147,9 @@ public class MotionSmoothingHandler
         orig(self, width, height);
         Instance._positionSmoother.SmoothCamera(self);
     }
-    
-    private static void ScreenWipeCtorHook(On.Celeste.ScreenWipe.orig_ctor orig, ScreenWipe self, Scene scene, bool wipeIn, Action onComplete = null)
+
+    private static void ScreenWipeCtorHook(On.Celeste.ScreenWipe.orig_ctor orig, ScreenWipe self, Scene scene,
+        bool wipeIn, Action onComplete = null)
     {
         orig(self, scene, wipeIn, onComplete);
         Instance._positionSmoother.SmoothScreenWipe(self);

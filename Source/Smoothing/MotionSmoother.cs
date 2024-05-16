@@ -39,6 +39,26 @@ public class EntitySmoothingState : SmoothingState
     }
 }
 
+public class ZipMoverSmoothingState : SmoothingState
+{
+    public ZipMover.ZipMoverPathRenderer ZipMover { get; }
+
+    public override object Object => ZipMover;
+
+    public override Vector2 Position
+    {
+        get => ZipMover.ZipMover.Position;
+        set => ZipMover.ZipMover.Position = value;
+    }
+
+    public override bool IsVisible => true;
+
+    public ZipMoverSmoothingState(ZipMover.ZipMoverPathRenderer zipMover)
+    {
+        ZipMover = zipMover;
+    }
+}
+
 public class ComponentSmoothingState : SmoothingState
 {
     public GraphicsComponent Component { get; }
@@ -179,12 +199,12 @@ public abstract class MotionSmoother
                 }
             }
 
-            if (state is CameraSmoothingState && MotionSmoothingModule.Settings.PlayerSmoothing ==
-                MotionSmoothingSettings.PlayerSmoothingMode.Extrapolate)
-            {
-                state.SmoothedPosition = Extrapolate(state.PositionHistory, elapsedSeconds);
-                continue;
-            }
+            // if (state is CameraSmoothingState && MotionSmoothingModule.Settings.PlayerSmoothing ==
+            //     MotionSmoothingSettings.PlayerSmoothingMode.Extrapolate)
+            // {
+            //     state.SmoothedPosition = Extrapolate(state.PositionHistory, elapsedSeconds);
+            //     continue;
+            // }
 
             state.SmoothedPosition = Interpolate(state.PositionHistory, elapsedSeconds);
         }

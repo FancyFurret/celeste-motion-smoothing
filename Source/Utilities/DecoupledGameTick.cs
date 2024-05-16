@@ -22,7 +22,7 @@ public class DecoupledGameTick
 
     private int _drawsPerUpdate = 1;
     private int _drawsUntilUpdate;
-    
+
     private int _suppressForFrames;
 
     private TimeSpan _accumulatedElapsedTime = TimeSpan.Zero;
@@ -51,8 +51,8 @@ public class DecoupledGameTick
 
         _drawsPerUpdate = drawFramerate / updateFramerate;
         _drawsUntilUpdate = _drawsPerUpdate;
-        TargetDrawElapsedTime = TimeSpan.FromSeconds(1.0 / drawFramerate);
-        _game.TargetElapsedTime = TimeSpan.FromSeconds(1.0 / updateFramerate);
+        TargetDrawElapsedTime = new TimeSpan((long)Math.Round(10_000_000.0 / drawFramerate));
+        _game.TargetElapsedTime = new TimeSpan((long)Math.Round(10_000_000.0 / updateFramerate));
     }
 
     private void Tick()
@@ -81,7 +81,7 @@ public class DecoupledGameTick
 
         // Set elapsed time to the target UPDATE time, since that is what Update expects
         GameTime.ElapsedGameTime = TargetUpdateElapsedTime;
-        
+
         // Lower accumulated time
         var updates = 0;
         while (_accumulatedElapsedTime >= TargetDrawElapsedTime)
@@ -121,7 +121,6 @@ public class DecoupledGameTick
         {
             _suppressForFrames = _drawsPerUpdate;
             _game.suppressDraw = false;
-            
         }
         else if (_suppressForFrames > 0)
         {
@@ -137,10 +136,11 @@ public class DecoupledGameTick
             Engine.DeltaTime = Engine.RawDeltaTime * Engine.TimeRate * Engine.TimeRateB *
                                GetTimeRateComponentMultiplier(Engine.Instance.scene);
 
-            if (!_game.BeginDraw())
-                return;
-            _game.Draw(GameTime);
-            _game.EndDraw();
+            if (_game.BeginDraw())
+            {
+                _game.Draw(GameTime);
+                _game.EndDraw();
+            }
 
             Engine.DeltaTime = oldDt;
             Engine.RawDeltaTime = oldRawDt;
