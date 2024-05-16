@@ -14,109 +14,47 @@ public abstract class SmoothingState
     public Vector2 OriginalPosition => PositionHistory[0];
     public bool WasInvisible { get; set; }
 
-    public abstract object Object { get; }
-    public abstract Vector2 Position { get; set; }
-    public abstract bool IsVisible { get; }
+    public abstract Vector2 GetPosition(object obj);
+    public abstract void SetPosition(object obj, Vector2 position);
+    public abstract bool GetVisible(object obj);
 }
 
 public class EntitySmoothingState : SmoothingState
 {
-    public Entity Entity { get; }
-
-    public override object Object => Entity;
-
-    public override Vector2 Position
-    {
-        get => Entity.Position;
-        set => Entity.Position = value;
-    }
-
-    public override bool IsVisible => Entity.Visible;
-
-    public EntitySmoothingState(Entity entity)
-    {
-        Entity = entity;
-    }
+    public override Vector2 GetPosition(object obj) => ((Entity)obj).Position;
+    public override void SetPosition(object obj, Vector2 position) => ((Entity)obj).Position = position;
+    public override bool GetVisible(object obj) => ((Entity)obj).Visible;
 }
 
 public class ZipMoverSmoothingState : SmoothingState
 {
-    public ZipMover.ZipMoverPathRenderer ZipMover { get; }
+    public override Vector2 GetPosition(object obj) => ((ZipMover.ZipMoverPathRenderer)obj).ZipMover.Position;
 
-    public override object Object => ZipMover;
+    public override void SetPosition(object obj, Vector2 position) =>
+        ((ZipMover.ZipMoverPathRenderer)obj).ZipMover.Position = position;
 
-    public override Vector2 Position
-    {
-        get => ZipMover.ZipMover.Position;
-        set => ZipMover.ZipMover.Position = value;
-    }
-
-    public override bool IsVisible => true;
-
-    public ZipMoverSmoothingState(ZipMover.ZipMoverPathRenderer zipMover)
-    {
-        ZipMover = zipMover;
-    }
+    public override bool GetVisible(object obj) => true;
 }
 
 public class ComponentSmoothingState : SmoothingState
 {
-    public GraphicsComponent Component { get; }
-
-    public override object Object => Component;
-
-    public override Vector2 Position
-    {
-        get => Component.Position;
-        set => Component.Position = value;
-    }
-
-    public override bool IsVisible => Component.Visible;
-
-    public ComponentSmoothingState(GraphicsComponent component)
-    {
-        Component = component;
-    }
+    public override Vector2 GetPosition(object obj) => ((GraphicsComponent)obj).Position;
+    public override void SetPosition(object obj, Vector2 position) => ((GraphicsComponent)obj).Position = position;
+    public override bool GetVisible(object obj) => ((GraphicsComponent)obj).Visible;
 }
 
 public class CameraSmoothingState : SmoothingState
 {
-    public Camera Camera { get; }
-
-    public override object Object => Camera;
-
-    public override Vector2 Position
-    {
-        get => Camera.Position;
-        set => Camera.Position = value;
-    }
-
-    public override bool IsVisible => true;
-
-    public CameraSmoothingState(Camera camera)
-    {
-        Camera = camera;
-    }
+    public override Vector2 GetPosition(object obj) => ((Camera)obj).Position;
+    public override void SetPosition(object obj, Vector2 position) => ((Camera)obj).Position = position;
+    public override bool GetVisible(object obj) => true;
 }
 
 public class ScreenWipeSmoothingState : SmoothingState
 {
-    public ScreenWipe ScreenWipe { get; }
-
-    public override object Object => ScreenWipe;
-
-    public override Vector2 Position
-    {
-        get => new(ScreenWipe.Percent, 0f);
-        set => ScreenWipe.Percent = value.X;
-    }
-
-    public override bool IsVisible => true;
-
-    public ScreenWipeSmoothingState(ScreenWipe screenWipe)
-    {
-        ScreenWipe = screenWipe;
-    }
+    public override Vector2 GetPosition(object obj) => new(((ScreenWipe)obj).Percent, 0f);
+    public override void SetPosition(object obj, Vector2 position) => ((ScreenWipe)obj).Percent = position.X;
+    public override bool GetVisible(object obj) => true;
 }
 
 public abstract class MotionSmoother
@@ -128,26 +66,26 @@ public abstract class MotionSmoother
     private readonly Stopwatch _timer = Stopwatch.StartNew();
     private long _lastTicks;
 
-    protected IEnumerable<SmoothingState> States()
+    protected IEnumerable<KeyValuePair<object, SmoothingState>> States()
     {
-        return _objectStates.Select(state => state.Value);
+        return _objectStates;
     }
 
-    protected void SmoothObject(SmoothingState state)
+    protected void SmoothObject(object obj, SmoothingState state)
     {
-        _objectStates.Add(state.Object, state);
+        _objectStates.Add(obj, state);
     }
 
     public void UpdatePositions()
     {
         _lastTicks = _timer.ElapsedTicks;
 
-        foreach (var state in States())
+        foreach (var (obj, state) in States())
         {
             state.PositionHistory[1] = state.PositionHistory[0];
-            state.PositionHistory[0] = state.Position;
+            state.PositionHistory[0] = state.GetPosition(obj);
 
-            if (!state.IsVisible)
+            if (!state.GetVisible(obj))
                 state.WasInvisible = true;
         }
     }
@@ -158,7 +96,7 @@ public abstract class MotionSmoother
         var elapsedSeconds = (double)elapsedTicks / Stopwatch.Frequency;
         var player = Engine.Scene?.Tracker.GetEntity<Player>();
 
-        foreach (var state in States())
+        foreach (var (obj, state) in States())
         {
             state.SmoothedPosition = state.Position;
 
@@ -167,7 +105,7 @@ public abstract class MotionSmoother
                 continue;
 
             // If the entity was invisible but is now visible, snap to the current position
-            if (state.WasInvisible && state.IsVisible)
+            if (state.WasInvisible && state.GetVisible(obj))
             {
                 state.WasInvisible = false;
                 continue;
@@ -178,8 +116,8 @@ public abstract class MotionSmoother
                 MaxLerpDistance * MaxLerpDistance)
                 continue;
 
-            if (state is EntitySmoothingState entity && player != null &&
-                (entity.Entity == player || entity.Entity == player.Holding?.Entity))
+            if (state is EntitySmoothingState && player != null &&
+                (obj == player || obj == player.Holding?.Entity))
             {
                 switch (MotionSmoothingModule.Settings.PlayerSmoothing)
                 {

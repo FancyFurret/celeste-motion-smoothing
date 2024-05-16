@@ -32,7 +32,8 @@ public class MotionSmoothingHandler
     {
         On.Monocle.Entity.ctor_Vector2 += EntityCtorHook;
         On.Monocle.Component.ctor += ComponentCtorHook;
-        On.Monocle.Camera.ctor_int_int += CameraCtorHook;
+        On.Monocle.Camera.ctor += CameraCtorHook;
+        On.Monocle.Camera.ctor_int_int += CameraCtorIntIntHook;
         On.Celeste.ScreenWipe.ctor += ScreenWipeCtorHook;
     }
 
@@ -40,7 +41,8 @@ public class MotionSmoothingHandler
     {
         On.Monocle.Entity.ctor_Vector2 -= EntityCtorHook;
         On.Monocle.Component.ctor -= ComponentCtorHook;
-        On.Monocle.Camera.ctor_int_int -= CameraCtorHook;
+        On.Monocle.Camera.ctor -= CameraCtorHook;
+        On.Monocle.Camera.ctor_int_int -= CameraCtorIntIntHook;
         On.Celeste.ScreenWipe.ctor -= ScreenWipeCtorHook;
     }
 
@@ -141,8 +143,14 @@ public class MotionSmoothingHandler
         if (self is GraphicsComponent graphicsComponent)
             Instance._pushSpriteSmoother.SmoothComponent(graphicsComponent);
     }
+    
+    private static void CameraCtorHook(On.Monocle.Camera.orig_ctor orig, Camera self)
+    {
+        orig(self);
+        Instance._positionSmoother.SmoothCamera(self);
+    }
 
-    private static void CameraCtorHook(On.Monocle.Camera.orig_ctor_int_int orig, Camera self, int width, int height)
+    private static void CameraCtorIntIntHook(On.Monocle.Camera.orig_ctor_int_int orig, Camera self, int width, int height)
     {
         orig(self, width, height);
         Instance._positionSmoother.SmoothCamera(self);

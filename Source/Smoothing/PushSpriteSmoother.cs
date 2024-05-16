@@ -11,12 +11,12 @@ public class PushSpriteSmoother : MotionSmoother
     public void SmoothEntity(Entity entity)
     {
         if (entity is ZipMover.ZipMoverPathRenderer zipMover)
-            SmoothObject(new ZipMoverSmoothingState(zipMover));
+            SmoothObject(zipMover, new ZipMoverSmoothingState());
         else
-            SmoothObject(new EntitySmoothingState(entity));
+            SmoothObject(entity, new EntitySmoothingState());
     }
 
-    public void SmoothComponent(GraphicsComponent component) => SmoothObject(new ComponentSmoothingState(component));
+    public void SmoothComponent(GraphicsComponent component) => SmoothObject(component, new ComponentSmoothingState());
 
     public void PreObjectRender(object obj)
     {
