@@ -1,13 +1,8 @@
-﻿using Monocle;
+﻿namespace Celeste.Mod.MotionSmoothing.Smoothing;
 
-namespace Celeste.Mod.MotionSmoothing.Smoothing;
-
-public class PositionSmoother : MotionSmoother
+public class PositionSmoother : MotionSmoother<PositionSmoother>
 {
-    public void SmoothCamera(Camera camera) => SmoothObject(camera, new CameraSmoothingState());
-    public void SmoothScreenWipe(ScreenWipe wipe) => SmoothObject(wipe, new ScreenWipeSmoothingState());
-
-    public void SetPositions()
+    private void SetPositions()
     {
         foreach (var (obj, state) in States())
         {
@@ -19,9 +14,21 @@ public class PositionSmoother : MotionSmoother
         }
     }
 
-    public void ResetPositions()
+    private void ResetPositions()
     {
         foreach (var (obj, state) in States())
             state.SetPosition(obj, state.OriginalPosition);
+    }
+
+    protected override void PreRender()
+    {
+        base.PreRender();
+        SetPositions();
+    }
+
+    protected override void PostRender()
+    {
+        ResetPositions();
+        base.PostRender();
     }
 }

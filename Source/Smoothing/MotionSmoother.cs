@@ -1,9 +1,10 @@
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.Linq;
 using System.Runtime.CompilerServices;
+using Celeste.Mod.MotionSmoothing.Interop;
 using Microsoft.Xna.Framework;
 using Monocle;
+using MonoMod.RuntimeDetour;
 
 namespace Celeste.Mod.MotionSmoothing.Smoothing;
 
@@ -57,26 +58,64 @@ public class ScreenWipeSmoothingState : SmoothingState
     public override bool GetVisible(object obj) => true;
 }
 
-public abstract class MotionSmoother
+public abstract class MotionSmoother<T> where T : MotionSmoother<T>
 {
     private const float MaxLerpDistance = 50f;
 
-    private readonly ConditionalWeakTable<object, SmoothingState> _objectStates = new();
+    public bool Enabled { get; set; } = true;
 
+    protected static T Instance { get; private set; }
+    protected List<Hook> Hooks { get; } = new();
+
+    private readonly ConditionalWeakTable<object, SmoothingState> _objectStates = new();
     private readonly Stopwatch _timer = Stopwatch.StartNew();
     private long _lastTicks;
+
+    protected MotionSmoother()
+    {
+        Instance = (T)this;
+    }
+
+    public virtual void Hook()
+    {
+        On.Monocle.Engine.Update += EngineUpdateHook;
+        On.Monocle.Engine.Draw += EngineDrawHook;
+    }
+
+    public virtual void Unhook()
+    {
+        foreach (var hook in Hooks)
+            hook.Dispose();
+        Hooks.Clear();
+
+        On.Monocle.Engine.Update -= EngineUpdateHook;
+        On.Monocle.Engine.Draw -= EngineDrawHook;
+    }
 
     protected IEnumerable<KeyValuePair<object, SmoothingState>> States()
     {
         return _objectStates;
     }
 
-    protected void SmoothObject(object obj, SmoothingState state)
+    public void SmoothObject(object obj)
     {
+        if (_objectStates.TryGetValue(obj, out _))
+            return;
+
+        SmoothingState state = obj switch
+        {
+            ZipMover.ZipMoverPathRenderer => new ZipMoverSmoothingState(),
+            Camera => new CameraSmoothingState(),
+            ScreenWipe => new ScreenWipeSmoothingState(),
+            Entity => new EntitySmoothingState(),
+            GraphicsComponent => new ComponentSmoothingState(),
+            _ => throw new System.NotSupportedException($"Unsupported object type: {obj.GetType()}")
+        };
+
         _objectStates.Add(obj, state);
     }
 
-    public void UpdatePositions()
+    private void UpdatePositions()
     {
         _lastTicks = _timer.ElapsedTicks;
 
@@ -90,7 +129,7 @@ public abstract class MotionSmoother
         }
     }
 
-    public void CalculateSmoothedPositions()
+    private void CalculateSmoothedPositions()
     {
         var elapsedTicks = _timer.ElapsedTicks - _lastTicks;
         var elapsedSeconds = (double)elapsedTicks / Stopwatch.Frequency;
@@ -98,7 +137,7 @@ public abstract class MotionSmoother
 
         foreach (var (obj, state) in States())
         {
-            state.SmoothedPosition = state.Position;
+            state.SmoothedPosition = state.GetPosition(obj);
 
             // If the position is moving to zero, just snap to the current position
             if (state.PositionHistory[0] == Vector2.Zero)
@@ -129,7 +168,11 @@ public abstract class MotionSmoother
                         if (Engine.Scene is Level { Transitioning: true } or { Paused: true } || Engine.FreezeTimer > 0)
                             continue;
 
-                        state.SmoothedPosition = Extrapolate(state.PositionHistory, player.Speed, elapsedSeconds);
+                        var speed = player.Speed;
+                        if (GravityHelperImports.IsPlayerInverted?.Invoke() == true)
+                            speed.Y *= -1;
+
+                        state.SmoothedPosition = Extrapolate(state.PositionHistory, speed, elapsedSeconds);
                         continue;
                     case MotionSmoothingSettings.PlayerSmoothingMode.None:
                     default:
@@ -137,6 +180,7 @@ public abstract class MotionSmoother
                 }
             }
 
+            // Doesn't seem to help much
             // if (state is CameraSmoothingState && MotionSmoothingModule.Settings.PlayerSmoothing ==
             //     MotionSmoothingSettings.PlayerSmoothingMode.Extrapolate)
             // {
@@ -178,5 +222,30 @@ public abstract class MotionSmoother
             return state!.SmoothedPosition - state.OriginalPosition;
 
         return Vector2.Zero;
+    }
+
+    private static void EngineUpdateHook(On.Monocle.Engine.orig_Update orig, Engine self, GameTime gameTime)
+    {
+        orig(self, gameTime);
+        if (Instance.Enabled)
+            Instance.UpdatePositions();
+    }
+
+    private static void EngineDrawHook(On.Monocle.Engine.orig_Draw orig, Engine self, GameTime gameTime)
+    {
+        if (Instance.Enabled)
+            Instance.PreRender();
+        orig(self, gameTime);
+        if (Instance.Enabled)
+            Instance.PostRender();
+    }
+
+    protected virtual void PreRender()
+    {
+        Instance.CalculateSmoothedPositions();
+    }
+
+    protected virtual void PostRender()
+    {
     }
 }

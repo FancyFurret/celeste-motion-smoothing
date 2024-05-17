@@ -1,9 +1,11 @@
 ﻿using System;
 using System.Reflection;
+using Celeste.Mod.MotionSmoothing.Interop;
 using Celeste.Mod.MotionSmoothing.Smoothing;
 using Celeste.Mod.MotionSmoothing.Utilities;
 using Celeste.Pico8;
 using Monocle;
+using MonoMod.ModInterop;
 
 namespace Celeste.Mod.MotionSmoothing;
 
@@ -29,13 +31,16 @@ public class MotionSmoothingModule : EverestModule
 #endif
     }
 
-    public bool Hooked { get; private set; }
-    public DecoupledGameTick DecoupledGameTick { get; private set; }
-    public MotionSmoothingHandler MotionSmoothing { get; private set; }
-    public UpdateAtDraw UpdateAtDraw { get; private set; }
+    private bool Hooked { get; set; }
+    private DecoupledGameTick DecoupledGameTick { get; set; }
+    private MotionSmoothingHandler MotionSmoothing { get; set; }
+    private UpdateAtDraw UpdateAtDraw { get; set; }
 
     public override void Load()
     {
+        typeof(GravityHelperImports).ModInterop();
+        typeof(SpeedrunToolImports).ModInterop();
+        
         DecoupledGameTick = new DecoupledGameTick();
         MotionSmoothing = new MotionSmoothingHandler();
         UpdateAtDraw = new UpdateAtDraw();
