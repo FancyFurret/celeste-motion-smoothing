@@ -52,7 +52,7 @@ public class MotionSmoothingSettings : EverestModuleSettings
 
     [SettingSubText(
         "None: No player smoothing, movement should feel the same as vanilla\n" +
-        "Extrapolate: Smoother than none, but not perfect. Should feel similar to vanilla\n" +
+        "[Recommended] Extrapolate: Predicts player position, should feel similar to vanilla\n" +
         "Interpolate: Smooths the player position, at the cost of some delay (1-2 frames)")]
     public PlayerSmoothingMode PlayerSmoothing { get; set; } = PlayerSmoothingMode.Extrapolate;
 }

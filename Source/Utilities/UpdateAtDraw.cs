@@ -15,6 +15,7 @@ public class UpdateAtDraw
         typeof(HiresSnow),
         typeof(ParticleRenderer),
         typeof(MountainRenderer),
+        typeof(BackdropRenderer),
     };
 
     private HashSet<Type> EntityTypesToUpdate { get; } = new()
@@ -25,8 +26,7 @@ public class UpdateAtDraw
 
     private readonly List<Renderer> _renderersToUpdate = new();
     private readonly List<Entity> _entitiesToUpdate = new();
-    private readonly List<Backdrop> _backdropsToUpdate = new();
-    
+
     private readonly List<Hook> _hooks = new();
 
     private bool _recording;
@@ -62,8 +62,7 @@ public class UpdateAtDraw
     {
         Instance._renderersToUpdate.Clear();
         Instance._entitiesToUpdate.Clear();
-        Instance._backdropsToUpdate.Clear();
-        
+
         Instance._recording = true;
         orig(self, gameTime);
         Instance._recording = false;
@@ -91,23 +90,15 @@ public class UpdateAtDraw
             orig(self);
     }
 
-    private static void BackdropUpdateHook(On.Celeste.Backdrop.orig_Update orig, Backdrop self, Scene scene)
-    {
-        if (Instance._recording)
-            Instance._backdropsToUpdate.Add(self);
-        else
-            orig(self, scene);
-    }
-
     private void Update(Scene scene)
     {
         foreach (var renderer in _renderersToUpdate)
+        {
+            if (renderer is BackdropRenderer && scene is not Level) continue;
             renderer.Update(scene);
+        }
 
         foreach (var entity in _entitiesToUpdate)
             entity.Update();
-
-        foreach (var backdrop in _backdropsToUpdate)
-            backdrop.Update(scene);
     }
 }
