@@ -167,6 +167,10 @@ public abstract class MotionSmoother<T> where T : MotionSmoother<T>
                         // Disable during screen transitions or pause
                         if (Engine.Scene is Level { Transitioning: true } or { Paused: true } || Engine.FreezeTimer > 0)
                             continue;
+                        
+                        // Disable if the player isn't actually moving (SpeedrunTool save state loading/saving, etc)
+                        if (state.PositionHistory[0] == state.PositionHistory[1])
+                            continue;
 
                         var speed = player.Speed;
                         if (GravityHelperImports.IsPlayerInverted?.Invoke() == true)
