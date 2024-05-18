@@ -40,7 +40,7 @@ public class MotionSmoothingModule : EverestModule
     {
         typeof(GravityHelperImports).ModInterop();
         typeof(SpeedrunToolImports).ModInterop();
-        
+
         DecoupledGameTick = new DecoupledGameTick();
         MotionSmoothing = new MotionSmoothingHandler();
         UpdateAtDraw = new UpdateAtDraw();
@@ -80,8 +80,17 @@ public class MotionSmoothingModule : EverestModule
             else
             {
                 // If we're not in a level, just use the target framerate
-                DecoupledGameTick.SetTargetFramerate(Settings.FrameRate.ToFps(), Settings.FrameRate.ToFps());
-                MotionSmoothing.Enabled = false;
+                if (Settings.TasMode)
+                {
+                    // For now, just draw at 60 as well. Motion smoothing in the Overworld looks awful at the moment.
+                    DecoupledGameTick.SetTargetFramerate(60, 60);
+                    MotionSmoothing.Enabled = false;
+                }
+                else
+                {
+                    DecoupledGameTick.SetTargetFramerate(Settings.FrameRate.ToFps(), Settings.FrameRate.ToFps());
+                    MotionSmoothing.Enabled = false;
+                }
             }
 
             Hook();

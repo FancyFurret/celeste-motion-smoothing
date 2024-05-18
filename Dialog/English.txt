@@ -3,3 +3,4 @@ modoptions_motionsmoothing_framerate_Mode180=180
 modoptions_motionsmoothing_framerate_Mode240=240
 modoptions_motionsmoothing_framerate_Mode300=300
 modoptions_motionsmoothing_framerate_Mode360=360
+modoptions_motionsmoothing_tasmode=TAS Mode

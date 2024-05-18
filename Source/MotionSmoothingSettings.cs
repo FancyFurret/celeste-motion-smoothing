@@ -51,10 +51,32 @@ public class MotionSmoothingSettings : EverestModuleSettings
     }
 
     [SettingSubText(
-        "None: No player smoothing, movement should feel the same as vanilla\n" +
-        "Extrapolate: [Recommended] Predicts player position, should feel similar to vanilla\n" +
-        "Interpolate: Smooths the player position, at the cost of some delay (1-2 frames)")]
+        "None: No player smoothing\n" +
+        "        * Movement should feel the same as vanilla\n" +
+        "Extrapolate: [Recommended] Predicts the player position\n" +
+        "        * Should feel very similar to vanilla\n" +
+        "Interpolate: Smooths the player position\n" +
+        "        * The smoothest option, at the cost of 1-2 frames of delay")]
     public PlayerSmoothingMode PlayerSmoothing { get; set; } = PlayerSmoothingMode.Extrapolate;
+
+
+    private bool _tasMode = false;
+
+    [SettingSubText(
+        "*** This mode does not affect gameplay in levels! ***\n" +
+        "By default, the Overworld will be updated at the full\n" +
+        "framerate since accuracy there is not as important.\n" +
+        "This mode will keep the Overworld update at 60fps as\n" +
+        "well, so that TASes will function properly.")]
+    public bool TasMode
+    {
+        get => _tasMode;
+        set
+        {
+            _tasMode = value;
+            MotionSmoothingModule.Instance.ApplySmoothing();
+        }
+    }
 }
 
 public static class FrameRateModeExtensions
