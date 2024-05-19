@@ -37,6 +37,13 @@ public class ZipMoverSmoothingState : SmoothingState
     public override bool GetVisible(object obj) => true;
 }
 
+public class EyeballsSmoothingState : SmoothingState
+{
+    public override Vector2 GetPosition(object obj) => ((DustGraphic.Eyeballs)obj).Dust.RenderPosition;
+    public override void SetPosition(object obj, Vector2 position) => throw new System.NotSupportedException();
+    public override bool GetVisible(object obj) => true;
+}
+
 public class ComponentSmoothingState : SmoothingState
 {
     public override Vector2 GetPosition(object obj) => ((GraphicsComponent)obj).Position;
@@ -56,6 +63,13 @@ public class ScreenWipeSmoothingState : SmoothingState
     public override Vector2 GetPosition(object obj) => new(((ScreenWipe)obj).Percent, 0f);
     public override void SetPosition(object obj, Vector2 position) => ((ScreenWipe)obj).Percent = position.X;
     public override bool GetVisible(object obj) => true;
+}
+
+public class FinalBossBeamSmoothingState : SmoothingState
+{
+    public override Vector2 GetPosition(object obj) => new(((FinalBossBeam)obj).angle, 0f);
+    public override void SetPosition(object obj, Vector2 position) => ((FinalBossBeam)obj).angle = position.X;
+    public override bool GetVisible(object obj) => ((FinalBossBeam)obj).Visible;
 }
 
 public abstract class MotionSmoother<T> where T : MotionSmoother<T>
@@ -105,6 +119,8 @@ public abstract class MotionSmoother<T> where T : MotionSmoother<T>
         SmoothingState state = obj switch
         {
             ZipMover.ZipMoverPathRenderer => new ZipMoverSmoothingState(),
+            FinalBossBeam => new FinalBossBeamSmoothingState(),
+            DustGraphic.Eyeballs => new EyeballsSmoothingState(),
             Camera => new CameraSmoothingState(),
             ScreenWipe => new ScreenWipeSmoothingState(),
             Entity => new EntitySmoothingState(),

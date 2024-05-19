@@ -23,8 +23,6 @@ public class PushSpriteSmoother : MotionSmoother<PushSpriteSmoother>
         HookComponentRender<Component>();
         HookComponentRender<Sprite>();
         HookComponentRender<Image>();
-
-        // TODO: Does this even work?? We aren't adding these to the smoother i think
         HookComponentRender<DustGraphic>(); // Components (that aren't GraphicsComponents) can be smoothed by looking at their Entity's position
 
         IL.Monocle.ComponentList.Render += ComponentListRenderHook;

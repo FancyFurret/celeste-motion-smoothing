@@ -32,8 +32,6 @@ public class MotionSmoothingHandler
     public void Load()
     {
         On.Monocle.Entity.ctor_Vector2 += EntityCtorHook;
-        On.Monocle.Component.ctor += ComponentCtorHook;
-        On.Monocle.Camera.ctor += CameraCtorHook;
         On.Monocle.Camera.ctor_int_int += CameraCtorIntIntHook;
         On.Celeste.ScreenWipe.ctor += ScreenWipeCtorHook;
 
@@ -44,7 +42,6 @@ public class MotionSmoothingHandler
     public void Unload()
     {
         On.Monocle.Entity.ctor_Vector2 -= EntityCtorHook;
-        On.Monocle.Component.ctor -= ComponentCtorHook;
         On.Monocle.Camera.ctor -= CameraCtorHook;
         On.Monocle.Camera.ctor_int_int -= CameraCtorIntIntHook;
         On.Celeste.ScreenWipe.ctor -= ScreenWipeCtorHook;
@@ -68,21 +65,14 @@ public class MotionSmoothingHandler
         Instance.SmoothEntity(self);
     }
 
-    private static void ComponentCtorHook(On.Monocle.Component.orig_ctor orig, Component self, bool active,
-        bool visible)
-    {
-        orig(self, active, visible);
-        if (self is GraphicsComponent graphicsComponent)
-            Instance.SmoothComponent(graphicsComponent);
-    }
-    
     private static void CameraCtorHook(On.Monocle.Camera.orig_ctor orig, Camera self)
     {
         orig(self);
         Instance.SmoothCamera(self);
     }
 
-    private static void CameraCtorIntIntHook(On.Monocle.Camera.orig_ctor_int_int orig, Camera self, int width, int height)
+    private static void CameraCtorIntIntHook(On.Monocle.Camera.orig_ctor_int_int orig, Camera self, int width,
+        int height)
     {
         orig(self, width, height);
         Instance.SmoothCamera(self);
@@ -99,16 +89,8 @@ public class MotionSmoothingHandler
     {
         if (Engine.Scene is not Level level) return;
 
-        // This will miss components that are created by entities but not added to their component lists, but
-        // it should be good enough when loading a SpeedrunTool state
-
         foreach (var entity in level.Entities)
-        {
             SmoothEntity(entity);
-            foreach (var component in entity.Components)
-                if (component is GraphicsComponent graphicsComponent)
-                    SmoothComponent(graphicsComponent);
-        }
 
         SmoothCamera(level.Camera);
     }
@@ -125,11 +107,9 @@ public class MotionSmoothingHandler
 
     private void SmoothEntity(Entity entity)
     {
-        _pushSpriteSmoother.SmoothObject(entity);
-    }
-
-    private void SmoothComponent(GraphicsComponent component)
-    {
-        _pushSpriteSmoother.SmoothObject(component);
+        if (entity is FinalBossBeam)
+            _positionSmoother.SmoothObject(entity);
+        else
+            _pushSpriteSmoother.SmoothObject(entity);
     }
 }
