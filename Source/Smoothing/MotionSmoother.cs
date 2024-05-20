@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using Celeste.Mod.MotionSmoothing.Interop;
+using Celeste.Mod.MotionSmoothing.Utilities;
 using Microsoft.Xna.Framework;
 using Monocle;
 using MonoMod.RuntimeDetour;
@@ -80,6 +81,8 @@ public abstract class MotionSmoother<T> where T : MotionSmoother<T>
 
     protected static T Instance { get; private set; }
     protected List<Hook> Hooks { get; } = new();
+
+    private static float SecondsPerUpdate => (float)DecoupledGameTick.Instance.TargetUpdateElapsedTime.TotalSeconds;
 
     private readonly ConditionalWeakTable<object, SmoothingState> _objectStates = new();
     private readonly Stopwatch _timer = Stopwatch.StartNew();
@@ -183,7 +186,7 @@ public abstract class MotionSmoother<T> where T : MotionSmoother<T>
                         // Disable during screen transitions or pause
                         if (Engine.Scene is Level { Transitioning: true } or { Paused: true } || Engine.FreezeTimer > 0)
                             continue;
-                        
+
                         // Disable if the player isn't actually moving (SpeedrunTool save state loading/saving, etc)
                         if (state.PositionHistory[0] == state.PositionHistory[1])
                             continue;
@@ -214,7 +217,7 @@ public abstract class MotionSmoother<T> where T : MotionSmoother<T>
 
     private Vector2 Interpolate(Vector2[] positionHistory, double elapsedSeconds)
     {
-        var t = (float)(elapsedSeconds / Engine.Instance.TargetElapsedTime.TotalSeconds);
+        var t = (float)(elapsedSeconds / SecondsPerUpdate);
         return new Vector2
         {
             X = MathHelper.Lerp(positionHistory[1].X, positionHistory[0].X, t),
@@ -224,8 +227,7 @@ public abstract class MotionSmoother<T> where T : MotionSmoother<T>
 
     private Vector2 Extrapolate(Vector2[] positionHistory, double elapsedSeconds)
     {
-        var speed = (positionHistory[0] - positionHistory[1]) /
-                    (float)Engine.Instance.TargetElapsedTime.TotalSeconds;
+        var speed = (positionHistory[0] - positionHistory[1]) / SecondsPerUpdate;
         return positionHistory[0] + speed * Engine.TimeRate * Engine.TimeRateB * (float)elapsedSeconds;
     }
 

@@ -97,6 +97,8 @@ public class MotionSmoothingModule : EverestModule
         }
         else
         {
+            MotionSmoothing.Enabled = false;
+            DecoupledGameTick.SetTargetFramerate(60, 60);
             Unhook();
         }
     }
@@ -107,9 +109,9 @@ public class MotionSmoothingModule : EverestModule
 
         On.Monocle.Scene.Begin += SceneBeginHook;
 
-        DecoupledGameTick.Hook();
         MotionSmoothing.Hook();
         UpdateAtDraw.Hook();
+        DecoupledGameTick.Hook();
 
         Hooked = true;
     }
@@ -120,9 +122,9 @@ public class MotionSmoothingModule : EverestModule
 
         On.Monocle.Scene.Begin -= SceneBeginHook;
 
-        DecoupledGameTick.Unhook();
         MotionSmoothing.Unhook();
         UpdateAtDraw.Unhook();
+        DecoupledGameTick.Unhook();
 
         Hooked = false;
     }
