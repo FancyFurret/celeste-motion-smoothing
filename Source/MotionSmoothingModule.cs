@@ -38,6 +38,8 @@ public class MotionSmoothingModule : EverestModule
 
     public override void Load()
     {
+        // TODO: Eventually... non pixel locked camera
+
         typeof(GravityHelperImports).ModInterop();
         typeof(SpeedrunToolImports).ModInterop();
 

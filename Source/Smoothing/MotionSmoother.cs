@@ -19,6 +19,7 @@ public abstract class SmoothingState
     public abstract Vector2 GetPosition(object obj);
     public abstract void SetPosition(object obj, Vector2 position);
     public abstract bool GetVisible(object obj);
+    public virtual bool IsAngle => false;
 }
 
 public class EntitySmoothingState : SmoothingState
@@ -71,6 +72,7 @@ public class FinalBossBeamSmoothingState : SmoothingState
     public override Vector2 GetPosition(object obj) => new(((FinalBossBeam)obj).angle, 0f);
     public override void SetPosition(object obj, Vector2 position) => ((FinalBossBeam)obj).angle = position.X;
     public override bool GetVisible(object obj) => ((FinalBossBeam)obj).Visible;
+    public override bool IsAngle => true;
 }
 
 public abstract class MotionSmoother<T> where T : MotionSmoother<T>
@@ -134,6 +136,11 @@ public abstract class MotionSmoother<T> where T : MotionSmoother<T>
         _objectStates.Add(obj, state);
     }
 
+    public void UnsmoothObject(object obj)
+    {
+        _objectStates.Remove(obj);
+    }
+
     private void UpdatePositions()
     {
         _lastTicks = _timer.ElapsedTicks;
@@ -159,7 +166,7 @@ public abstract class MotionSmoother<T> where T : MotionSmoother<T>
             state.SmoothedPosition = state.GetPosition(obj);
 
             // If the position is moving to zero, just snap to the current position
-            if (state.PositionHistory[0] == Vector2.Zero)
+            if (state.PositionHistory[0] == Vector2.Zero || state.PositionHistory[1] == Vector2.Zero)
                 continue;
 
             // If the entity was invisible but is now visible, snap to the current position
@@ -211,7 +218,9 @@ public abstract class MotionSmoother<T> where T : MotionSmoother<T>
             //     continue;
             // }
 
-            state.SmoothedPosition = Interpolate(state.PositionHistory, elapsedSeconds);
+            state.SmoothedPosition = state.IsAngle
+                ? InterpolateAngle(state.PositionHistory, elapsedSeconds)
+                : Interpolate(state.PositionHistory, elapsedSeconds);
         }
     }
 
@@ -222,6 +231,16 @@ public abstract class MotionSmoother<T> where T : MotionSmoother<T>
         {
             X = MathHelper.Lerp(positionHistory[1].X, positionHistory[0].X, t),
             Y = MathHelper.Lerp(positionHistory[1].Y, positionHistory[0].Y, t)
+        };
+    }
+
+    private Vector2 InterpolateAngle(Vector2[] positionHistory, double elapsedSeconds)
+    {
+        var t = (float)(elapsedSeconds / SecondsPerUpdate);
+        return new Vector2
+        {
+            X = Calc.AngleLerp(positionHistory[1].X, positionHistory[0].X, t),
+            Y = Calc.AngleLerp(positionHistory[1].Y, positionHistory[0].Y, t)
         };
     }
 
