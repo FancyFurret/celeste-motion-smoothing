@@ -3,6 +3,7 @@ using System.Linq;
 using Celeste.Mod.Entities;
 using Microsoft.Xna.Framework;
 using Monocle;
+using MonoMod.RuntimeDetour;
 
 namespace Celeste.Mod.MotionSmoothing.Utilities;
 
@@ -23,12 +24,22 @@ public class DecoupledGameTick
 
     public void Hook()
     {
-        On.Monocle.Engine.Update += EngineUpdateHook;
+        // Make sure our hook runs first, so that when we block the original update, other mods hooks won't run either.
+        MainThreadHelper.Schedule(() =>
+        {
+            using (new DetourConfigContext(new DetourConfig(
+                       "MotionSmoothingModule.DecoupledGameTick.EngineUpdateHook",
+                       int.MaxValue
+                   )).Use())
+            {
+                On.Monocle.Engine.Update += EngineUpdateHook;
+            }
+        });
     }
 
     public void Unhook()
     {
-        On.Monocle.Engine.Update -= EngineUpdateHook;
+        MainThreadHelper.Schedule(() => { On.Monocle.Engine.Update -= EngineUpdateHook; });
     }
 
     public void SetTargetFramerate(int updateFramerate, int drawFramerate)
