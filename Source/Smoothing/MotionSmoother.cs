@@ -176,6 +176,13 @@ public abstract class MotionSmoother<T> where T : MotionSmoother<T>
                 continue;
             }
 
+            // Manually fix boosters, can't figure out a better way of doing this
+            // Boosters do not set the sprite to invisible, and if a player is entering a booster as it respawns,
+            // it does not set the position to zero
+            if (obj is Sprite { Entity: Booster booster })
+                if (!booster.dashRoutine.Active && booster.respawnTimer <= 0)
+                    continue;
+
             // If the distance is too large, just snap to the current position
             if (Vector2.DistanceSquared(state.PositionHistory[0], state.PositionHistory[1]) >
                 MaxLerpDistance * MaxLerpDistance)
