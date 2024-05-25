@@ -116,6 +116,9 @@ public class MotionSmoothingHandler
 
         // This will miss components that are created by entities but not added to their component lists, but
         // it should be good enough when loading a SpeedrunTool state
+        
+        _positionSmoother.ClearStates();
+        _pushSpriteSmoother.ClearStates();
 
         foreach (var entity in level.Entities)
         {

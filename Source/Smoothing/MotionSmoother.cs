@@ -113,6 +113,11 @@ public abstract class MotionSmoother<T> where T : MotionSmoother<T>
         return _objectStates;
     }
 
+    public void ClearStates()
+    {
+        _objectStates.Clear();
+    }
+
     public void SmoothObject(object obj)
     {
         if (_objectStates.TryGetValue(obj, out _))
