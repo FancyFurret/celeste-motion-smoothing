@@ -1,7 +1,6 @@
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
-using Celeste.Mod.MotionSmoothing.Interop;
 using Celeste.Mod.MotionSmoothing.Utilities;
 using Microsoft.Xna.Framework;
 using Monocle;
@@ -83,8 +82,6 @@ public abstract class MotionSmoother<T> where T : MotionSmoother<T>
 
     protected static T Instance { get; private set; }
     protected List<Hook> Hooks { get; } = new();
-
-    private static float SecondsPerUpdate => (float)DecoupledGameTick.Instance.TargetUpdateElapsedTime.TotalSeconds;
 
     private readonly ConditionalWeakTable<object, SmoothingState> _objectStates = new();
     private readonly Stopwatch _timer = Stopwatch.StartNew();
@@ -188,28 +185,17 @@ public abstract class MotionSmoother<T> where T : MotionSmoother<T>
                 MaxLerpDistance * MaxLerpDistance)
                 continue;
 
-            if (state is EntitySmoothingState && player != null &&
+            if (state is EntitySmoothingState entityState && player != null &&
                 (obj == player || obj == player.Holding?.Entity))
             {
                 switch (MotionSmoothingModule.Settings.PlayerSmoothing)
                 {
                     case MotionSmoothingSettings.PlayerSmoothingMode.Interpolate:
-                        state.SmoothedPosition = Interpolate(state.PositionHistory, elapsedSeconds);
+                        state.SmoothedPosition = MotionSmoothingMath.Interpolate(state.PositionHistory, elapsedSeconds);
                         continue;
                     case MotionSmoothingSettings.PlayerSmoothingMode.Extrapolate:
-                        // Disable during screen transitions or pause
-                        if (Engine.Scene is Level { Transitioning: true } or { Paused: true } || Engine.FreezeTimer > 0)
-                            continue;
-
-                        // Disable if the player isn't actually moving (SpeedrunTool save state loading/saving, etc)
-                        if (state.PositionHistory[0] == state.PositionHistory[1])
-                            continue;
-
-                        var speed = player.Speed;
-                        if (GravityHelperImports.IsPlayerInverted?.Invoke() == true)
-                            speed.Y *= -1;
-
-                        state.SmoothedPosition = Extrapolate(state.PositionHistory, speed, elapsedSeconds);
+                        state.SmoothedPosition =
+                            PlayerPositionExtrapolator.ExtrapolatePosition(player, entityState, elapsedSeconds);
                         continue;
                     case MotionSmoothingSettings.PlayerSmoothingMode.None:
                     default:
@@ -226,41 +212,11 @@ public abstract class MotionSmoother<T> where T : MotionSmoother<T>
             // }
 
             state.SmoothedPosition = state.IsAngle
-                ? InterpolateAngle(state.PositionHistory, elapsedSeconds)
-                : Interpolate(state.PositionHistory, elapsedSeconds);
+                ? MotionSmoothingMath.InterpolateAngle(state.PositionHistory, elapsedSeconds)
+                : MotionSmoothingMath.Interpolate(state.PositionHistory, elapsedSeconds);
         }
     }
 
-    private Vector2 Interpolate(Vector2[] positionHistory, double elapsedSeconds)
-    {
-        var t = (float)(elapsedSeconds / SecondsPerUpdate);
-        return new Vector2
-        {
-            X = MathHelper.Lerp(positionHistory[1].X, positionHistory[0].X, t),
-            Y = MathHelper.Lerp(positionHistory[1].Y, positionHistory[0].Y, t)
-        };
-    }
-
-    private Vector2 InterpolateAngle(Vector2[] positionHistory, double elapsedSeconds)
-    {
-        var t = (float)(elapsedSeconds / SecondsPerUpdate);
-        return new Vector2
-        {
-            X = Calc.AngleLerp(positionHistory[1].X, positionHistory[0].X, t),
-            Y = Calc.AngleLerp(positionHistory[1].Y, positionHistory[0].Y, t)
-        };
-    }
-
-    private Vector2 Extrapolate(Vector2[] positionHistory, double elapsedSeconds)
-    {
-        var speed = (positionHistory[0] - positionHistory[1]) / SecondsPerUpdate;
-        return positionHistory[0] + speed * Engine.TimeRate * Engine.TimeRateB * (float)elapsedSeconds;
-    }
-
-    private Vector2 Extrapolate(Vector2[] positionHistory, Vector2 speed, double elapsedSeconds)
-    {
-        return positionHistory[0] + speed * Engine.TimeRate * Engine.TimeRateB * (float)elapsedSeconds;
-    }
 
     protected Vector2 GetOffset(object obj)
     {

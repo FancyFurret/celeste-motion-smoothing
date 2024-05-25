@@ -113,6 +113,7 @@ public class MotionSmoothingModule : EverestModule
 
         MotionSmoothing.Hook();
         UpdateAtDraw.Hook();
+        PlayerPositionExtrapolator.Hook();
         DecoupledGameTick.Hook();
 
         Hooked = true;
@@ -126,6 +127,7 @@ public class MotionSmoothingModule : EverestModule
 
         MotionSmoothing.Unhook();
         UpdateAtDraw.Unhook();
+        PlayerPositionExtrapolator.Unhook();
         DecoupledGameTick.Unhook();
 
         Hooked = false;
