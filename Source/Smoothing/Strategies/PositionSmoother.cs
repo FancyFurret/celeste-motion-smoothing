@@ -1,6 +1,6 @@
-﻿namespace Celeste.Mod.MotionSmoothing.Smoothing;
+﻿namespace Celeste.Mod.MotionSmoothing.Smoothing.Strategies;
 
-public class PositionSmoother : MotionSmoother<PositionSmoother>
+public class PositionSmoother : SmoothingStrategy<PositionSmoother>
 {
     private void SetPositions()
     {

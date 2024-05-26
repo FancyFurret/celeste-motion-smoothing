@@ -1,12 +1,10 @@
-﻿using System;
-using Celeste.Mod.MotionSmoothing.Interop;
-using Celeste.Mod.MotionSmoothing.Smoothing;
+﻿using Celeste.Mod.MotionSmoothing.Interop;
 using Microsoft.Xna.Framework;
 using Monocle;
 
-namespace Celeste.Mod.MotionSmoothing.Utilities;
+namespace Celeste.Mod.MotionSmoothing.Smoothing.Targets;
 
-public static class PlayerPositionExtrapolator
+public static class PlayerSmoother
 {
     private static MInput.KeyboardData _keyboardData;
     private static MInput.MouseData _mouseData;
@@ -40,7 +38,7 @@ public static class PlayerPositionExtrapolator
         orig(self, gameTime);
     }
 
-    public static Vector2 ExtrapolatePosition(Player player, EntitySmoothingState state, double elapsed)
+    public static Vector2 ExtrapolatePosition(Player player, ISmoothingState state, double elapsed)
     {
         // Disable during screen transitions or pause
         if (Engine.Scene is Level { Transitioning: true } or { Paused: true } || Engine.FreezeTimer > 0)
@@ -74,7 +72,7 @@ public static class PlayerPositionExtrapolator
         if (GravityHelperImports.IsPlayerInverted?.Invoke() == true)
             speed.Y *= -1;
 
-        return MotionSmoothingMath.Extrapolate(state.PositionHistory, speed, elapsed);
+        return ObjectSmoother.Extrapolate(state.PositionHistory, speed, elapsed);
     }
 
     private static void UpdateInput()

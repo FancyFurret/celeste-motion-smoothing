@@ -6,9 +6,9 @@ using Monocle;
 using MonoMod.Cil;
 using MonoMod.RuntimeDetour;
 
-namespace Celeste.Mod.MotionSmoothing.Smoothing;
+namespace Celeste.Mod.MotionSmoothing.Smoothing.Strategies;
 
-public class PushSpriteSmoother : MotionSmoother<PushSpriteSmoother>
+public class PushSpriteSmoother : SmoothingStrategy<PushSpriteSmoother>
 {
     private readonly Stack<object> _currentObjects = new();
 
@@ -66,6 +66,12 @@ public class PushSpriteSmoother : MotionSmoother<PushSpriteSmoother>
         };
 
         return position;
+    }
+
+    private Vector2 GetOffset(object obj)
+    {
+        var state = GetState(obj);
+        return state.SmoothedPosition - state.OriginalPosition;
     }
 
     private void HookComponentRender<T>() where T : Component

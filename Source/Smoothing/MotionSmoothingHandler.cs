@@ -1,5 +1,6 @@
 ﻿using System;
 using Celeste.Mod.MotionSmoothing.Interop;
+using Celeste.Mod.MotionSmoothing.Smoothing.Strategies;
 using Microsoft.Xna.Framework;
 using Monocle;
 
@@ -107,7 +108,7 @@ public class MotionSmoothingHandler
         
         // When a component is added to an entity, check if we actually want to smooth it
         if (component.Entity is FinalBossBeam)
-            Instance.UnsmoothObject(component);
+            Instance.StopSmoothingObject(component);
     }
 
     private void SmoothAllObjects()
@@ -154,9 +155,9 @@ public class MotionSmoothingHandler
         _pushSpriteSmoother.SmoothObject(component);
     }
     
-    private void UnsmoothObject(object obj)
+    private void StopSmoothingObject(object obj)
     {
-        _positionSmoother.UnsmoothObject(obj);
-        _pushSpriteSmoother.UnsmoothObject(obj);
+        _positionSmoother.StopSmoothingObject(obj);
+        _pushSpriteSmoother.StopSmoothingObject(obj);
     }
 }

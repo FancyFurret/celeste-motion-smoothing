@@ -2,6 +2,7 @@
 using System.Reflection;
 using Celeste.Mod.MotionSmoothing.Interop;
 using Celeste.Mod.MotionSmoothing.Smoothing;
+using Celeste.Mod.MotionSmoothing.Smoothing.Targets;
 using Celeste.Mod.MotionSmoothing.Utilities;
 using Celeste.Pico8;
 using Monocle;
@@ -113,7 +114,7 @@ public class MotionSmoothingModule : EverestModule
 
         MotionSmoothing.Hook();
         UpdateAtDraw.Hook();
-        PlayerPositionExtrapolator.Hook();
+        PlayerSmoother.Hook();
         DecoupledGameTick.Hook();
 
         Hooked = true;
@@ -127,7 +128,7 @@ public class MotionSmoothingModule : EverestModule
 
         MotionSmoothing.Unhook();
         UpdateAtDraw.Unhook();
-        PlayerPositionExtrapolator.Unhook();
+        PlayerSmoother.Unhook();
         DecoupledGameTick.Unhook();
 
         Hooked = false;
