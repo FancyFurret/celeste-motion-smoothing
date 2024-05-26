@@ -71,6 +71,7 @@ public class PushSpriteSmoother : SmoothingStrategy<PushSpriteSmoother>
     private Vector2 GetOffset(object obj)
     {
         var state = GetState(obj);
+        if (state == null) return Vector2.Zero;
         return state.SmoothedPosition - state.OriginalPosition;
     }
 

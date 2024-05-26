@@ -105,6 +105,7 @@ public abstract class SmoothingStrategy<T> where T : SmoothingStrategy<T>
 
     protected ISmoothingState GetState(object obj)
     {
+        if (obj == null) return null;
         return _objectStates.TryGetValue(obj, out var state) ? state : null;
     }
 

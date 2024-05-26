@@ -57,10 +57,7 @@ public class DecoupledGameTick
     {
         if (Instance._drawsUntilUpdate == 0)
         {
-            var oldElapsedGameTime = gameTime.ElapsedGameTime;
-            gameTime.ElapsedGameTime = Instance.TargetUpdateElapsedTime;
-            orig(self, gameTime);
-            gameTime.ElapsedGameTime = oldElapsedGameTime;
+            orig(self, new GameTime(gameTime.TotalGameTime, Instance.TargetUpdateElapsedTime, gameTime.IsRunningSlowly));
             Instance._drawsUntilUpdate = Instance._drawsPerUpdate;
         }
 
