@@ -1,4 +1,5 @@
 ﻿using System.Collections.Generic;
+using Celeste.Mod.MotionSmoothing.Smoothing.States;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using Mono.Cecil.Cil;
@@ -11,6 +12,11 @@ namespace Celeste.Mod.MotionSmoothing.Smoothing.Strategies;
 public class PushSpriteSmoother : SmoothingStrategy<PushSpriteSmoother>
 {
     private readonly Stack<object> _currentObjects = new();
+
+    public void SmoothObject(object obj, IPositionSmoothingState state)
+    {
+        base.SmoothObject(obj, state);
+    }
 
     public override void Hook()
     {
@@ -70,9 +76,11 @@ public class PushSpriteSmoother : SmoothingStrategy<PushSpriteSmoother>
 
     private Vector2 GetOffset(object obj)
     {
-        var state = GetState(obj);
-        if (state == null) return Vector2.Zero;
-        return state.SmoothedPosition - state.OriginalPosition;
+        if (GetState(obj) is not IPositionSmoothingState state)
+            return Vector2.Zero;
+
+        var targetPos = state.SmoothedRealPosition;
+        return targetPos - state.OriginalDrawPosition;
     }
 
     private void HookComponentRender<T>() where T : Component

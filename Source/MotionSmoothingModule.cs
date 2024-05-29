@@ -112,9 +112,10 @@ public class MotionSmoothingModule : EverestModule
 
         On.Monocle.Scene.Begin += SceneBeginHook;
 
+        PlayerSmoother.Hook();
+        ActorPushTracker.Hook();
         MotionSmoothing.Hook();
         UpdateAtDraw.Hook();
-        PlayerSmoother.Hook();
         DecoupledGameTick.Hook();
 
         Hooked = true;
@@ -126,9 +127,10 @@ public class MotionSmoothingModule : EverestModule
 
         On.Monocle.Scene.Begin -= SceneBeginHook;
 
+        PlayerSmoother.Unhook();
+        ActorPushTracker.Unhook();
         MotionSmoothing.Unhook();
         UpdateAtDraw.Unhook();
-        PlayerSmoother.Unhook();
         DecoupledGameTick.Unhook();
 
         Hooked = false;

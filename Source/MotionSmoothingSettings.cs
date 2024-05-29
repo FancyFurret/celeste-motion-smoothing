@@ -1,3 +1,4 @@
+using Celeste.Mod.MotionSmoothing.Utilities;
 using Microsoft.Xna.Framework.Input;
 
 namespace Celeste.Mod.MotionSmoothing;
@@ -43,21 +44,13 @@ public class MotionSmoothingSettings : EverestModuleSettings
         }
     }
 
-    public enum PlayerSmoothingMode
-    {
-        None,
-        Extrapolate,
-        Interpolate
-    }
-
     [SettingSubText(
-        "None: No player smoothing\n" +
-        "        * Movement should feel the same as vanilla\n" +
-        "Extrapolate: [Recommended] Predicts the player position\n" +
+        "None: No smoothing\n" +
+        "Extrapolate: [Recommended] Predicts object positions\n" +
         "        * Should feel very similar to vanilla\n" +
-        "Interpolate: Smooths the player position\n" +
+        "Interpolate: Smooths object position\n" +
         "        * The smoothest option, at the cost of 1-2 frames of delay")]
-    public PlayerSmoothingMode PlayerSmoothing { get; set; } = PlayerSmoothingMode.Extrapolate;
+    public SmoothingMode Smoothing { get; set; } = SmoothingMode.Extrapolate;
 
 
     private bool _tasMode = false;
