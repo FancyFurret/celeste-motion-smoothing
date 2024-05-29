@@ -16,6 +16,7 @@ public class UpdateAtDraw
         typeof(ParticleRenderer),
         typeof(MountainRenderer),
         typeof(BackdropRenderer),
+        typeof(DisplacementRenderer)
     };
 
     private HashSet<Type> EntityTypesToUpdate { get; } = new()
