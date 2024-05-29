@@ -20,10 +20,9 @@ public class ZipMoverPercentSmoothingState : FloatSmoothingState<ZipMover>
         obj.Position = GetPositionAtPercent(obj, value);
     }
 
-    public Vector2 GetPositionAtPercent(ZipMover obj, float percent, bool round = true)
+    public Vector2 GetPositionAtPercent(ZipMover obj, float percent)
     {
-        return round ? Vector2.Lerp(obj.start, obj.target, percent).Round() :
-            Vector2.Lerp(obj.start, obj.target, percent);
+        return Vector2.Lerp(obj.start, obj.target, percent).Round();
     }
 }
 

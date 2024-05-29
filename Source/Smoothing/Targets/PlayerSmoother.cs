@@ -53,7 +53,7 @@ public static class PlayerSmoother
 
     private static Vector2 Interpolate(Player player, IPositionSmoothingState state, double elapsed)
     {
-        if (ActorPushTracker.ApplyPusherOffset(player, elapsed, SmoothingMode.Extrapolate, out var pushed))
+        if (ActorPushTracker.ApplyPusherOffset(player, elapsed, SmoothingMode.Interpolate, out var pushed))
             return pushed;
         
         return SmoothingMath.Interpolate(state.RealPositionHistory, elapsed);

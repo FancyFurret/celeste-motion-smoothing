@@ -46,13 +46,6 @@ public static class PositionSmoother
             if (ActorPushTracker.ApplyPusherOffset(actor, elapsedSeconds, mode, out var pushed))
                 return pushed;
 
-        if (obj is Camera cam && player != null)
-        {
-            var playerState = MotionSmoothingHandler.Instance.GetState(player);
-            var x = PlayerSmoother.Smooth(player, playerState as IPositionSmoothingState, elapsedSeconds, mode);
-            return (x - new Vector2(320f / 2f, 180f / 2f)).Round();
-        }
-
         return SmoothingMath.Smooth(state.RealPositionHistory, elapsedSeconds, mode);
     }
 
