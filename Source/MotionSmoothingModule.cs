@@ -32,10 +32,10 @@ public class MotionSmoothingModule : EverestModule
 #endif
     }
 
-    private bool Hooked { get; set; }
     private DecoupledGameTick DecoupledGameTick { get; set; }
     private MotionSmoothingHandler MotionSmoothing { get; set; }
     private UpdateAtDraw UpdateAtDraw { get; set; }
+    private bool _hooked;
 
     public override void Load()
     {
@@ -95,6 +95,11 @@ public class MotionSmoothingModule : EverestModule
                     MotionSmoothing.Enabled = false;
                 }
             }
+            
+            if (Settings.UnlockCamera)
+                CameraSmoother.EnableUnlock();
+            else
+                CameraSmoother.DisableUnlock();
 
             Hook();
         }
@@ -102,13 +107,14 @@ public class MotionSmoothingModule : EverestModule
         {
             MotionSmoothing.Enabled = false;
             DecoupledGameTick.SetTargetFramerate(60, 60);
+            CameraSmoother.DisableUnlock();
             Unhook();
         }
     }
 
     private void Hook()
     {
-        if (Hooked) return;
+        if (_hooked) return;
 
         On.Monocle.Scene.Begin += SceneBeginHook;
 
@@ -118,12 +124,12 @@ public class MotionSmoothingModule : EverestModule
         UpdateAtDraw.Hook();
         DecoupledGameTick.Hook();
 
-        Hooked = true;
+        _hooked = true;
     }
 
     private void Unhook()
     {
-        if (!Hooked) return;
+        if (!_hooked) return;
 
         On.Monocle.Scene.Begin -= SceneBeginHook;
 
@@ -133,7 +139,7 @@ public class MotionSmoothingModule : EverestModule
         UpdateAtDraw.Unhook();
         DecoupledGameTick.Unhook();
 
-        Hooked = false;
+        _hooked = false;
     }
 
     private static void SceneBeginHook(On.Monocle.Scene.orig_Begin orig, Scene self)

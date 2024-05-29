@@ -6,6 +6,9 @@ namespace Celeste.Mod.MotionSmoothing;
 public class MotionSmoothingSettings : EverestModuleSettings
 {
     private bool _enabled = true;
+    private FrameRateMode _frameRate = FrameRateMode.Mode120;
+    private bool _unlockCamera = true;
+    private bool _tasMode = false;
 
     public bool Enabled
     {
@@ -25,14 +28,13 @@ public class MotionSmoothingSettings : EverestModuleSettings
 
     public enum FrameRateMode
     {
+        Mode60,
         Mode120,
         Mode180,
         Mode240,
         Mode300,
         Mode360
     };
-
-    private FrameRateMode _frameRate = FrameRateMode.Mode120;
 
     public FrameRateMode FrameRate
     {
@@ -52,8 +54,20 @@ public class MotionSmoothingSettings : EverestModuleSettings
         "        * The smoothest option, at the cost of 1-2 frames of delay")]
     public SmoothingMode Smoothing { get; set; } = SmoothingMode.Extrapolate;
 
-
-    private bool _tasMode = false;
+    [SettingSubText(
+        "This setting makes it so the camera is no longer\n" +
+        "restricted to full pixel increments. Ie, half a pixel\n" +
+        "could be shown on the side of the screen. This makes\n" +
+        "slow camera movements look *MUCH* smoother")]
+    public bool UnlockCamera
+    {
+        get => _unlockCamera;
+        set
+        {
+            _unlockCamera = value;
+            MotionSmoothingModule.Instance.ApplySmoothing();
+        }
+    }
 
     [SettingSubText(
         "*** This mode does not affect gameplay in levels! ***\n" +
@@ -78,6 +92,7 @@ public static class FrameRateModeExtensions
     {
         return mode switch
         {
+            MotionSmoothingSettings.FrameRateMode.Mode60 => 60,
             MotionSmoothingSettings.FrameRateMode.Mode120 => 120,
             MotionSmoothingSettings.FrameRateMode.Mode180 => 180,
             MotionSmoothingSettings.FrameRateMode.Mode240 => 240,

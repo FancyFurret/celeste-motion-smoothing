@@ -84,7 +84,7 @@ public abstract class PositionSmoothingState<T> : IPositionSmoothingState
 
     protected abstract void SetPosition(T obj, Vector2 position);
     protected abstract bool GetVisible(T obj);
-
+    
     public void UpdateHistory(object obj)
     {
         RealPositionHistory[1] = RealPositionHistory[0];
