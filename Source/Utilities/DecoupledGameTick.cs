@@ -33,13 +33,18 @@ public class DecoupledGameTick
                    )).Use())
             {
                 On.Monocle.Engine.Update += EngineUpdateHook;
+                On.Monocle.Engine.Draw += EngineDrawHook;
             }
         });
     }
 
     public void Unhook()
     {
-        MainThreadHelper.Schedule(() => { On.Monocle.Engine.Update -= EngineUpdateHook; });
+        MainThreadHelper.Schedule(() =>
+        {
+            On.Monocle.Engine.Update -= EngineUpdateHook;
+            On.Monocle.Engine.Draw -= EngineDrawHook;
+        });
     }
 
     public void SetTargetFramerate(int updateFramerate, int drawFramerate)
@@ -66,6 +71,12 @@ public class DecoupledGameTick
                            GetTimeRateComponentMultiplier(Engine.Instance.scene);
 
         Instance._drawsUntilUpdate--;
+    }
+
+    private static void EngineDrawHook(On.Monocle.Engine.orig_Draw orig, Engine self, GameTime gameTime)
+    {
+        // Engine.FPS is calculated in Draw, and ends up being 120+, so this fixes that
+        orig(self, new GameTime(gameTime.TotalGameTime, Instance.TargetUpdateElapsedTime, gameTime.IsRunningSlowly));
     }
 
     private static float GetTimeRateComponentMultiplier(Scene scene)
