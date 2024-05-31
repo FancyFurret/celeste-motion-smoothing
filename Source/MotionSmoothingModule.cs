@@ -95,7 +95,7 @@ public class MotionSmoothingModule : EverestModule
                     MotionSmoothing.Enabled = false;
                 }
             }
-            
+
             if (Settings.UnlockCamera)
                 CameraSmoother.EnableUnlock();
             else

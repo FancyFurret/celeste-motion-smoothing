@@ -1,4 +1,3 @@
-using System;
 using Celeste.Mod.MotionSmoothing.Smoothing.States;
 using Celeste.Mod.MotionSmoothing.Utilities;
 using Microsoft.Xna.Framework;
@@ -12,12 +11,12 @@ namespace Celeste.Mod.MotionSmoothing.Smoothing.Targets;
 public class CameraSmoother
 {
     private static bool _hooked;
-    
+
     public static void EnableUnlock()
     {
         if (_hooked)
             return;
-        
+
         IL.Celeste.Level.Render += LevelRenderHook;
         _hooked = true;
     }
@@ -26,7 +25,7 @@ public class CameraSmoother
     {
         if (!_hooked)
             return;
-        
+
         IL.Celeste.Level.Render -= LevelRenderHook;
         _hooked = false;
     }
@@ -34,42 +33,10 @@ public class CameraSmoother
     public static Vector2 Smooth(Camera camera, IPositionSmoothingState state, double elapsedSeconds,
         SmoothingMode mode)
     {
+        // In theory, we could calculate the Player.CameraTarget using the smoothed player position instead
+        // of interpolating the camera position, but in testing it didn't look much smoother and was more prone
+        // to issues. So for now, just interpolate the camera position.
         return SmoothingMath.Smooth(state.RealPositionHistory, elapsedSeconds, SmoothingMode.Interpolate);
-        
-        // TODO: Revisit this
-        var player = MotionSmoothingHandler.Instance.Player;
-
-        // If the camera is targeting the player, have it target the smoothed player position
-        // If not, just interpolate/extrapolate like normal
-        if (player is { Dead: false } && (player.InControl || player.ForceCameraUpdate) &&
-            Engine.Scene is Level { Transitioning: false })
-            return TargetPlayer(player, camera, elapsedSeconds);
-
-        return SmoothingMath.Smooth(state.RealPositionHistory, elapsedSeconds, mode);
-    }
-
-    private static Vector2 TargetPlayer(Player player, Camera camera, double elapsedSeconds)
-    {
-        const int stateReflectionFall = 18;
-        const int stateTempleFall = 20;
-        const int stateCassetteFly = 21;
-
-        var cameraPos = camera.Position;
-
-        var playerState = (MotionSmoothingHandler.Instance.GetState(player) as IPositionSmoothingState)!;
-        var original = player.Position;
-
-        player.Position = playerState.SmoothedRealPosition;
-        var target = player.CameraTarget;
-        player.Position = original;
-
-        if (player.StateMachine.State == stateCassetteFly && player.cassetteFlyLerp < 1.0)
-            return target;
-        if (player.StateMachine.State == stateReflectionFall)
-            return target;
-
-        var num = player.StateMachine.State == stateTempleFall ? 8f : 1f;
-        return cameraPos + (target - cameraPos) * (1f - (float)Math.Pow(0.009999999776482582 / num, elapsedSeconds));
     }
 
     public static Matrix GetCameraMatrix()
