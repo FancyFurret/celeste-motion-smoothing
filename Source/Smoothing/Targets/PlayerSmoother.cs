@@ -63,7 +63,7 @@ public static class PlayerSmoother
     {
         // Disable during screen transitions or pause
         if (Engine.Scene is Level { Transitioning: true } or { Paused: true } || Engine.FreezeTimer > 0)
-            return state.OriginalRealPosition;
+            return state.OriginalDrawPosition;
 
         // To keep physics consistent, input is still only updated at 60FPS, but we want to check if there is input
         // during the extrapolation. So temporarily update the input to the current frame.
@@ -82,7 +82,7 @@ public static class PlayerSmoother
         }
 
         if (_cancelExtrapolationUntilNextUpdate)
-            return state.OriginalRealPosition;
+            return state.OriginalDrawPosition;
 
         // Check if the player is inverted and flip the speed accordingly
         var speed = player.Speed;

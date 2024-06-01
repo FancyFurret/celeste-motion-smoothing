@@ -12,19 +12,27 @@ public static class PositionSmoother
     public static Vector2 Smooth(IPositionSmoothingState state, object obj, double elapsedSeconds, SmoothingMode mode)
     {
         if (mode == SmoothingMode.None || ShouldCancelSmoothing(state, obj))
-            return state.OriginalRealPosition;
+            return state.OriginalDrawPosition;
 
         // Manually fix boosters, can't figure out a better way of doing this
         // Boosters do not set the sprite to invisible, and if a player is entering a booster as it respawns,
         // it does not set the position to zero
         if (obj is Sprite { Entity: Booster booster } &&
             !booster.dashRoutine.Active && booster.respawnTimer <= 0)
-            return state.OriginalRealPosition;
+            return state.OriginalDrawPosition;
 
         var player = MotionSmoothingHandler.Instance.Player;
-        if (state is ActorSmoothingState entityState && player != null &&
-            (obj == player || obj == player.Holding?.Entity))
-            return PlayerSmoother.Smooth(player, entityState, elapsedSeconds, mode);
+        if (state is ActorSmoothingState entityState && player != null)
+        {
+            if (obj == player)
+                return PlayerSmoother.Smooth(player, entityState, elapsedSeconds, mode);
+            
+            if (obj == player.Holding?.Entity)
+            {
+                var playerState = (MotionSmoothingHandler.Instance.GetState(player) as IPositionSmoothingState)!;
+                return entityState.GetLastDrawPosition(mode) + playerState.GetSmoothedOffset(mode);
+            }
+        }
 
         if (obj is Entity entity)
         {
@@ -55,7 +63,11 @@ public static class PositionSmoother
     private static bool ShouldCancelSmoothing(IPositionSmoothingState state, object obj)
     {
         // If the position is moving to zero, cancel
-        if (state.RealPositionHistory[0] == Vector2.Zero || state.RealPositionHistory[1] == Vector2.Zero)
+        if (state.DrawPositionHistory[0] == Vector2.Zero || state.DrawPositionHistory[1] == Vector2.Zero)
+            return true;
+        
+        // If the position isn't changing, cancel
+        if (state.DrawPositionHistory[0] == state.DrawPositionHistory[1])
             return true;
 
         // If the entity was invisible but is now visible, cancel
@@ -66,8 +78,8 @@ public static class PositionSmoother
         }
 
         // If the distance is too large, cancel
-        if (Vector2.DistanceSquared(state.RealPositionHistory[0], state.RealPositionHistory[1]) >
-            MaxLerpDistance * MaxLerpDistance)
+        var distance = Vector2.DistanceSquared(state.RealPositionHistory[0], state.RealPositionHistory[1]);
+        if (distance > MaxLerpDistance * MaxLerpDistance)
             return true;
 
         return false;

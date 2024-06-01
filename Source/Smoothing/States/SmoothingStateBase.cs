@@ -64,6 +64,9 @@ public interface IPositionSmoothingState : ISmoothingState
     public bool WasInvisible { get; set; }
 
     public bool GetVisible(object obj);
+    
+    public Vector2 GetLastDrawPosition(SmoothingMode mode);
+    public Vector2 GetSmoothedOffset(SmoothingMode mode);
 }
 
 public abstract class PositionSmoothingState<T> : IPositionSmoothingState
@@ -104,6 +107,16 @@ public abstract class PositionSmoothingState<T> : IPositionSmoothingState
 
     public void Smooth(object obj, double elapsedSeconds, SmoothingMode mode) =>
         SmoothedRealPosition = PositionSmoother.Smooth(this, obj, elapsedSeconds, mode);
+
+    public Vector2 GetLastDrawPosition(SmoothingMode mode)
+    {
+        return mode == SmoothingMode.Interpolate ? DrawPositionHistory[1] : DrawPositionHistory[0];
+    }
+
+    public Vector2 GetSmoothedOffset(SmoothingMode mode)
+    {
+        return SmoothedRealPosition - GetLastDrawPosition(mode);
+    }
 }
 
 public abstract class FloatSmoothingState<T> : SmoothingState<T, float>

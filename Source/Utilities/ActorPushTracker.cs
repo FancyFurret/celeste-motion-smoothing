@@ -37,11 +37,7 @@ public static class ActorPushTracker
         if (!GetPusherOffset(actor, elapsedSeconds, out var offset))
             return false;
 
-        var startPos = mode == SmoothingMode.Interpolate
-            ? posState.DrawPositionHistory[1]
-            : posState.DrawPositionHistory[0];
-        pushed = startPos + offset;
-
+        pushed = posState.GetLastDrawPosition(mode) + offset;
         return true;
     }
 
@@ -76,10 +72,11 @@ public static class ActorPushTracker
 
         if (state is IPositionSmoothingState posState)
         {
-            smoothed = PositionSmoother.Smooth(posState, obj, elapsedSeconds, mode);
-            original = interp ? posState.DrawPositionHistory[1] : posState.DrawPositionHistory[0];
+            posState.Smooth(obj, elapsedSeconds, mode);
+            return posState.GetSmoothedOffset(mode);
         }
-        else if (state is ZipMoverPercentSmoothingState zipMoverState)
+        
+        if (state is ZipMoverPercentSmoothingState zipMoverState)
         {
             smoothed = zipMoverState.GetPositionAtPercent((ZipMover)obj,
                 SmoothingMath.Smooth(zipMoverState.History, elapsedSeconds, mode));

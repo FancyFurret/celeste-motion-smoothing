@@ -7,7 +7,7 @@ public class MotionSmoothingSettings : EverestModuleSettings
 {
     private bool _enabled = true;
     private FrameRateMode _frameRate = FrameRateMode.Mode120;
-    private bool _unlockCamera = true;
+    private bool _unlockCamera = false;
     private bool _tasMode = false;
 
     public bool Enabled
@@ -58,7 +58,9 @@ public class MotionSmoothingSettings : EverestModuleSettings
         "This setting makes it so the camera is no longer\n" +
         "restricted to full pixel increments. Ie, half a pixel\n" +
         "could be shown on the side of the screen. This makes\n" +
-        "slow camera movements look *MUCH* smoother")]
+        "slow camera movements look *MUCH* smoother.\n" +
+        "NOTE: This can make make it look like the player has\n" +
+        "motion blur, since the player is still pixel locked.")]
     public bool UnlockCamera
     {
         get => _unlockCamera;

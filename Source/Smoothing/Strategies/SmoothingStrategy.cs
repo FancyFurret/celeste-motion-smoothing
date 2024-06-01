@@ -61,8 +61,17 @@ public abstract class SmoothingStrategy<T> where T : SmoothingStrategy<T>
 
     public void CalculateSmoothedPositions(double elapsedSeconds, SmoothingMode mode)
     {
+        // Ensure the player is smoothed first, so that other objects can use the player's smoothed position
+        var player = MotionSmoothingHandler.Instance.Player;
+        if (player != null)
+        {
+            var state = GetState(player);
+            state?.Smooth(player, elapsedSeconds, mode);
+        }
+
         foreach (var (obj, state) in States())
-            state.Smooth(obj, elapsedSeconds, mode);
+            if (obj != player)
+                state.Smooth(obj, elapsedSeconds, mode);
     }
 
     public ISmoothingState GetState(object obj)
