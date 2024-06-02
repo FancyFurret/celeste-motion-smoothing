@@ -58,9 +58,7 @@ public class MotionSmoothingSettings : EverestModuleSettings
         "This setting makes it so the camera is no longer\n" +
         "restricted to full pixel increments. Ie, half a pixel\n" +
         "could be shown on the side of the screen. This makes\n" +
-        "slow camera movements look *MUCH* smoother.\n" +
-        "NOTE: This can make make it look like the player has\n" +
-        "motion blur, since the player is still pixel locked.")]
+        "slow camera movements look *MUCH* smoother.")]
     public bool UnlockCamera
     {
         get => _unlockCamera;

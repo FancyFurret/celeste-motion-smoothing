@@ -1,6 +1,7 @@
 using Celeste.Mod.MotionSmoothing.Smoothing.Targets;
 using Celeste.Mod.MotionSmoothing.Utilities;
 using Microsoft.Xna.Framework;
+using Monocle;
 
 namespace Celeste.Mod.MotionSmoothing.Smoothing.States;
 
@@ -95,7 +96,7 @@ public abstract class PositionSmoothingState<T> : IPositionSmoothingState
         OriginalRealPosition = RealPositionHistory[0];
 
         DrawPositionHistory[1] = DrawPositionHistory[0];
-        DrawPositionHistory[0] = GetDrawPosition((T)obj);
+        DrawPositionHistory[0] = GetDrawPosition((T)obj).Round();
         OriginalDrawPosition = DrawPositionHistory[0];
 
         if (!GetVisible((T)obj))
