@@ -77,8 +77,8 @@ public abstract class PositionSmoothingState<T> : IPositionSmoothingState
     public Vector2[] RealPositionHistory { get; } = new Vector2[2];
     public Vector2[] DrawPositionHistory { get; } = new Vector2[2];
     public Vector2 SmoothedRealPosition { get; private set; }
-    public Vector2 OriginalRealPosition { get; private set; }
-    public Vector2 OriginalDrawPosition { get; private set; }
+    public Vector2 OriginalRealPosition { get; protected set; }
+    public Vector2 OriginalDrawPosition { get; protected set; }
     public bool WasInvisible { get; set; }
 
     public bool GetVisible(object obj) => GetVisible((T)obj);
@@ -88,6 +88,9 @@ public abstract class PositionSmoothingState<T> : IPositionSmoothingState
 
     protected abstract void SetPosition(T obj, Vector2 position);
     protected abstract bool GetVisible(T obj);
+    
+    protected virtual void SetSmoothed(T obj) => SetPosition(obj, SmoothedRealPosition);
+    protected virtual void SetOriginal(T obj) => SetPosition(obj, OriginalRealPosition);
     
     public void UpdateHistory(object obj)
     {
@@ -103,8 +106,8 @@ public abstract class PositionSmoothingState<T> : IPositionSmoothingState
             WasInvisible = true;
     }
 
-    public void SetSmoothed(object obj) => SetPosition((T)obj, SmoothedRealPosition);
-    public void SetOriginal(object obj) => SetPosition((T)obj, OriginalDrawPosition);
+    public void SetSmoothed(object obj) => SetSmoothed((T)obj);
+    public void SetOriginal(object obj) => SetOriginal((T)obj);
 
     public void Smooth(object obj, double elapsedSeconds, SmoothingMode mode) =>
         SmoothedRealPosition = PositionSmoother.Smooth(this, obj, elapsedSeconds, mode);

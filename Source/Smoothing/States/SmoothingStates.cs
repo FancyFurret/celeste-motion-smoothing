@@ -60,6 +60,20 @@ public class CameraSmoothingState : PositionSmoothingState<Camera>
     protected override Vector2 GetRealPosition(Camera obj) => obj.Position;
     protected override void SetPosition(Camera obj, Vector2 position) => obj.Position = position;
     protected override bool GetVisible(Camera obj) => true;
+
+    protected override void SetSmoothed(Camera obj)
+    {
+        OriginalRealPosition = obj.Position;
+        RealPositionHistory[0] = obj.Position;
+        OriginalDrawPosition = obj.Position;
+        DrawPositionHistory[0] = obj.Position;
+        obj.Position = SmoothedRealPosition.Floor();
+    }
+    
+    protected override void SetOriginal(Camera obj)
+    {
+        obj.Position = OriginalRealPosition;
+    }
 }
 
 public class PlatformSmoothingState : PositionSmoothingState<Platform>
