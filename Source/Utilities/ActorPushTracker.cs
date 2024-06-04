@@ -2,7 +2,6 @@ using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using Celeste.Mod.MotionSmoothing.Smoothing;
 using Celeste.Mod.MotionSmoothing.Smoothing.States;
-using Celeste.Mod.MotionSmoothing.Smoothing.Targets;
 using Microsoft.Xna.Framework;
 using Monocle;
 
@@ -75,7 +74,7 @@ public static class ActorPushTracker
             posState.Smooth(obj, elapsedSeconds, mode);
             return posState.GetSmoothedOffset(mode);
         }
-        
+
         if (state is ZipMoverPercentSmoothingState zipMoverState)
         {
             smoothed = zipMoverState.GetPositionAtPercent((ZipMover)obj,
@@ -98,7 +97,7 @@ public static class ActorPushTracker
             {
                 var solid = (entity as Solid)!;
                 var state = MotionSmoothingHandler.Instance.GetState(solid);
-                if (!state.Changed)
+                if (state is not { Changed: true })
                     continue;
 
                 solid.GetRiders();

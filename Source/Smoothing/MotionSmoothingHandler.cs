@@ -43,13 +43,14 @@ public class MotionSmoothingHandler
 
     public void Load()
     {
-        On.Monocle.Entity.ctor_Vector2 += EntityCtorHook;
-        On.Monocle.Component.ctor += ComponentCtorHook;
+        On.Monocle.Tracker.EntityAdded += TrackerEntityAddedHook;
+        On.Monocle.Tracker.EntityRemoved += TrackerEntityRemovedHook;
+        On.Monocle.Tracker.ComponentAdded += TrackerComponentAddedHook;
+        On.Monocle.Tracker.ComponentRemoved += TrackerComponentRemovedHook;
+
         On.Monocle.Camera.ctor += CameraCtorHook;
         On.Monocle.Camera.ctor_int_int += CameraCtorIntIntHook;
         On.Celeste.ScreenWipe.ctor += ScreenWipeCtorHook;
-
-        On.Monocle.ComponentList.Add_Component += ComponentListAddHook;
 
         SpeedrunToolImports.RegisterSaveLoadAction?.Invoke(null, (_, _) => SmoothAllObjects(), null,
             null, null, null);
@@ -57,13 +58,14 @@ public class MotionSmoothingHandler
 
     public void Unload()
     {
-        On.Monocle.Entity.ctor_Vector2 -= EntityCtorHook;
-        On.Monocle.Component.ctor -= ComponentCtorHook;
+        On.Monocle.Tracker.EntityAdded -= TrackerEntityAddedHook;
+        On.Monocle.Tracker.EntityRemoved -= TrackerEntityRemovedHook;
+        On.Monocle.Tracker.ComponentAdded -= TrackerComponentAddedHook;
+        On.Monocle.Tracker.ComponentRemoved -= TrackerComponentRemovedHook;
+        
         On.Monocle.Camera.ctor -= CameraCtorHook;
         On.Monocle.Camera.ctor_int_int -= CameraCtorIntIntHook;
         On.Celeste.ScreenWipe.ctor -= ScreenWipeCtorHook;
-
-        On.Monocle.ComponentList.Add_Component -= ComponentListAddHook;
     }
 
     public void Hook()
@@ -122,18 +124,32 @@ public class MotionSmoothingHandler
         }
     }
 
-    private static void EntityCtorHook(On.Monocle.Entity.orig_ctor_Vector2 orig, Entity self, Vector2 position)
+    private static void TrackerEntityAddedHook(On.Monocle.Tracker.orig_EntityAdded orig, Tracker self, Entity entity)
     {
-        orig(self, position);
-        Instance.SmoothEntity(self);
+        orig(self, entity);
+        Instance.SmoothEntity(entity);
     }
 
-    private static void ComponentCtorHook(On.Monocle.Component.orig_ctor orig, Component self, bool active,
-        bool visible)
+    private static void TrackerEntityRemovedHook(On.Monocle.Tracker.orig_EntityRemoved orig, Tracker self,
+        Entity entity)
     {
-        orig(self, active, visible);
-        if (self is GraphicsComponent graphicsComponent)
+        orig(self, entity);
+        Instance.StopSmoothingObject(entity);
+    }
+
+    private static void TrackerComponentAddedHook(On.Monocle.Tracker.orig_ComponentAdded orig, Tracker self,
+        Component component)
+    {
+        orig(self, component);
+        if (component is GraphicsComponent graphicsComponent)
             Instance.SmoothComponent(graphicsComponent);
+    }
+
+    private static void TrackerComponentRemovedHook(On.Monocle.Tracker.orig_ComponentRemoved orig, Tracker self,
+        Component component)
+    {
+        orig(self, component);
+        Instance.StopSmoothingObject(component);
     }
 
     private static void CameraCtorHook(On.Monocle.Camera.orig_ctor orig, Camera self)
@@ -154,16 +170,6 @@ public class MotionSmoothingHandler
     {
         orig(self, scene, wipeIn, onComplete);
         Instance.SmoothScreenWipe(self);
-    }
-
-    private static void ComponentListAddHook(On.Monocle.ComponentList.orig_Add_Component orig, ComponentList self,
-        Component component)
-    {
-        orig(self, component);
-
-        // When a component is added to an entity, check if we actually want to smooth it
-        if (component.Entity is FinalBossBeam)
-            Instance.StopSmoothingObject(component);
     }
 
     private void SmoothAllObjects()
@@ -213,7 +219,16 @@ public class MotionSmoothingHandler
 
     private void SmoothComponent(GraphicsComponent component)
     {
-        _pushSpriteSmoother.SmoothObject(component, GetPushSpriteSmootherState(component));
+        // This used to smooth *all* components, but that was mostly unnecessary and lowered FPS quite a bit
+        // This really only needs to be done for components that move separately from their entity
+
+        // FinalBossBeam components should *not* be smoothed
+        // This check is currently not necessary but leaving here for future reference
+        // if (component.Entity is FinalBossBeam)
+        //     return;
+
+        if (component.Entity is Booster)
+            _pushSpriteSmoother.SmoothObject(component, GetPushSpriteSmootherState(component));
     }
 
     private void StopSmoothingObject(object obj)
@@ -239,7 +254,7 @@ public class MotionSmoothingHandler
         return obj switch
         {
             DustGraphic.Eyeballs => new EyeballsSmoothingState(),
-            
+
             // Specifically *don't* want to push sprite these
             ZipMover => null,
             ZipMover.ZipMoverPathRenderer => null,
