@@ -2,7 +2,6 @@ using Celeste.Mod.MotionSmoothing.Smoothing.States;
 using Celeste.Mod.MotionSmoothing.Utilities;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
-using Mono.Cecil.Cil;
 using Monocle;
 using MonoMod.Cil;
 
@@ -10,6 +9,8 @@ namespace Celeste.Mod.MotionSmoothing.Smoothing.Targets;
 
 public class CameraSmoother
 {
+    const float ScaleMultiplier = 181f / 180f;
+    
     private static bool _hooked;
 
     public static void EnableUnlock()
@@ -18,6 +19,8 @@ public class CameraSmoother
             return;
 
         IL.Celeste.Level.Render += LevelRenderHook;
+        IL.Celeste.HiresRenderer.BeginRender += HiresRendererBeginRenderHook;
+
         _hooked = true;
     }
 
@@ -27,6 +30,8 @@ public class CameraSmoother
             return;
 
         IL.Celeste.Level.Render -= LevelRenderHook;
+        IL.Celeste.HiresRenderer.BeginRender -= HiresRendererBeginRenderHook;
+
         _hooked = false;
     }
 
@@ -60,20 +65,33 @@ public class CameraSmoother
         if (cursor.TryGotoNext(MoveType.Before,
                 instr => instr.MatchLdsfld(typeof(Engine).GetField(nameof(Engine.ScreenMatrix))!)))
         {
-            cursor.Emit(OpCodes.Call, typeof(CameraSmoother).GetMethod(nameof(GetCameraMatrix))!);
-            cursor.Emit(OpCodes.Call,
-                typeof(Matrix).GetMethod("op_Multiply", new[] { typeof(Matrix), typeof(Matrix) })!);
+            cursor.EmitCall(typeof(CameraSmoother).GetMethod(nameof(GetCameraMatrix))!);
+            cursor.EmitCall(typeof(Matrix).GetMethod("op_Multiply", new[] { typeof(Matrix), typeof(Matrix) })!);
         }
 
         // Slightly scale up the level to hide the empty pixels on the right/bottom
         if (cursor.TryGotoNext(MoveType.After, instr => instr.MatchCallvirt<SpriteBatch>(nameof(SpriteBatch.Begin))))
         {
-            const float scaleMultiplier = 181f / 180f;
+            cursor.EmitLdloc(8); // scale
+            cursor.EmitLdcR4(ScaleMultiplier);
+            cursor.EmitMul();
+            cursor.EmitStloc(8);
+        }
+    }
 
-            cursor.Emit(OpCodes.Ldloc, 8); // scale
-            cursor.Emit(OpCodes.Ldc_R4, scaleMultiplier);
-            cursor.Emit(OpCodes.Mul);
-            cursor.Emit(OpCodes.Stloc, 8);
+    private static void HiresRendererBeginRenderHook(ILContext il)
+    {
+        var cursor = new ILCursor(il);
+
+        // Offset and scale the matrix for the HUD
+        if (cursor.TryGotoNext(MoveType.Before, instr => instr.MatchLdloc0()))
+        {
+            cursor.EmitCall(typeof(CameraSmoother).GetMethod(nameof(GetCameraMatrix))!);
+            cursor.Index++;
+            cursor.EmitCall(typeof(Matrix).GetMethod("op_Multiply", new[] { typeof(Matrix), typeof(Matrix) })!);
+            cursor.EmitLdcR4(ScaleMultiplier);
+            cursor.EmitCall(typeof(Matrix).GetMethod(nameof(Matrix.CreateScale), new[] { typeof(float) })!);
+            cursor.EmitCall(typeof(Matrix).GetMethod("op_Multiply", new[] { typeof(Matrix), typeof(Matrix) })!);
         }
     }
 }
