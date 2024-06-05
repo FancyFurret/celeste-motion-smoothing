@@ -6,10 +6,8 @@ using MonoMod.RuntimeDetour;
 
 namespace Celeste.Mod.MotionSmoothing.Utilities;
 
-public class UpdateAtDraw
+public class UpdateAtDraw : ToggleableFeature<UpdateAtDraw>
 {
-    private static UpdateAtDraw Instance { get; set; }
-
     private HashSet<Type> RendererTypesToUpdate { get; } = new()
     {
         typeof(HiresSnow),
@@ -28,33 +26,23 @@ public class UpdateAtDraw
     private readonly List<Renderer> _renderersToUpdate = new();
     private readonly List<Entity> _entitiesToUpdate = new();
 
-    private readonly List<Hook> _hooks = new();
-
     private bool _recording;
 
-    public UpdateAtDraw()
+    protected override void Hook()
     {
-        Instance = this;
-    }
-
-    public void Hook()
-    {
+        base.Hook();
         foreach (var rendererType in RendererTypesToUpdate)
-            _hooks.Add(new Hook(rendererType.GetMethod("Update", MotionSmoothingModule.AllFlags)!, RendererUpdateHook));
+            AddHook(new Hook(rendererType.GetMethod("Update", MotionSmoothingModule.AllFlags)!, RendererUpdateHook));
         foreach (var entityType in EntityTypesToUpdate)
-            _hooks.Add(new Hook(entityType.GetMethod("Update", MotionSmoothingModule.AllFlags)!, EntityUpdateHook));
+            AddHook(new Hook(entityType.GetMethod("Update", MotionSmoothingModule.AllFlags)!, EntityUpdateHook));
 
         On.Monocle.Engine.Update += EngineUpdateHook;
         On.Monocle.Engine.Draw += EngineDrawHook;
     }
 
-    public void Unhook()
+    protected override void Unhook()
     {
-        foreach (var hook in _hooks)
-            hook.Dispose();
-
-        _hooks.Clear();
-
+        base.Unhook();
         On.Monocle.Engine.Update -= EngineUpdateHook;
         On.Monocle.Engine.Draw -= EngineDrawHook;
     }

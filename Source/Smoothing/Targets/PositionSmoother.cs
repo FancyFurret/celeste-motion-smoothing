@@ -21,11 +21,12 @@ public static class PositionSmoother
             !booster.dashRoutine.Active && booster.respawnTimer <= 0)
             return state.OriginalDrawPosition;
 
+        // TODO: Could move these to smoothing state subclasses
         var player = MotionSmoothingHandler.Instance.Player;
         if (state is ActorSmoothingState entityState && player != null)
         {
             if (obj == player)
-                return PlayerSmoother.Smooth(player, entityState, elapsedSeconds, mode);
+                return PlayerSmoother.Instance.Smooth(player, entityState, elapsedSeconds, mode);
             
             if (obj == player.Holding?.Entity)
             {
@@ -45,17 +46,22 @@ public static class PositionSmoother
                     var startPos = mode == SmoothingMode.Interpolate
                         ? state.DrawPositionHistory[1]
                         : state.DrawPositionHistory[0];
-                    return startPos + ActorPushTracker.GetSolidOffset(moverState, mover.Platform, elapsedSeconds);
+                    return startPos + ActorPushTracker.Instance.GetSolidOffset(moverState, mover.Platform, elapsedSeconds);
                 }
             }
         }
 
         if (obj is Actor actor)
-            if (ActorPushTracker.ApplyPusherOffset(actor, elapsedSeconds, mode, out var pushed))
+            if (ActorPushTracker.Instance.ApplyPusherOffset(actor, elapsedSeconds, mode, out var pushed))
                 return pushed;
-        
-        if (obj is Camera camera)
-            return CameraSmoother.Smooth(camera, state, elapsedSeconds, mode);
+
+        if (obj is Camera)
+        {
+            // In theory, we could calculate the Player.CameraTarget using the smoothed player position instead
+            // of interpolating the camera position, but in testing it didn't look much smoother and was more prone
+            // to issues. So for now, just interpolate the camera position.
+            mode = SmoothingMode.Interpolate;
+        }
 
         return SmoothingMath.Smooth(state.RealPositionHistory, elapsedSeconds, mode);
     }

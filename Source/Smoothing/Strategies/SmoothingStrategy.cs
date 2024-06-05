@@ -2,33 +2,12 @@ using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using Celeste.Mod.MotionSmoothing.Smoothing.States;
 using Celeste.Mod.MotionSmoothing.Utilities;
-using MonoMod.RuntimeDetour;
 
 namespace Celeste.Mod.MotionSmoothing.Smoothing.Strategies;
 
-public abstract class SmoothingStrategy<T> where T : SmoothingStrategy<T>
+public abstract class SmoothingStrategy<T> : ToggleableFeature<T> where T : SmoothingStrategy<T>
 {
-    public bool Enabled { get; set; } = true;
-    protected static T Instance { get; private set; }
-    protected List<Hook> Hooks { get; } = new();
-
     private readonly ConditionalWeakTable<object, ISmoothingState> _objectStates = new();
-
-    protected SmoothingStrategy()
-    {
-        Instance = (T)this;
-    }
-
-    public virtual void Hook()
-    {
-    }
-
-    public virtual void Unhook()
-    {
-        foreach (var hook in Hooks)
-            hook.Dispose();
-        Hooks.Clear();
-    }
 
     protected IEnumerable<KeyValuePair<object, ISmoothingState>> States()
     {

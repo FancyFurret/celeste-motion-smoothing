@@ -6,17 +6,18 @@ using Monocle;
 
 namespace Celeste.Mod.MotionSmoothing.Smoothing.Targets;
 
-public static class PlayerSmoother
+public class PlayerSmoother : ToggleableFeature<PlayerSmoother>
 {
-    private static MInput.KeyboardData _keyboardData;
-    private static MInput.MouseData _mouseData;
-    private static MInput.GamePadData[] _gamePadData;
+    private MInput.KeyboardData _keyboardData;
+    private MInput.MouseData _mouseData;
+    private MInput.GamePadData[] _gamePadData;
 
-    private static bool _cancelExtrapolationUntilNextUpdate;
-    private static bool _dashPressed;
+    private bool _cancelExtrapolationUntilNextUpdate;
+    private bool _dashPressed;
 
-    public static void Hook()
+    protected override void Hook()
     {
+        base.Hook();
         _keyboardData = new MInput.KeyboardData();
         _mouseData = new MInput.MouseData();
         _gamePadData = new MInput.GamePadData[4];
@@ -26,22 +27,23 @@ public static class PlayerSmoother
         On.Monocle.Engine.Update += EngineUpdateHook;
     }
 
-    public static void Unhook()
+    protected override void Unhook()
     {
+        base.Unhook();
         On.Monocle.Engine.Update -= EngineUpdateHook;
     }
 
     private static void EngineUpdateHook(On.Monocle.Engine.orig_Update orig, Engine self, GameTime gameTime)
     {
-        _cancelExtrapolationUntilNextUpdate = false;
+        Instance._cancelExtrapolationUntilNextUpdate = false;
 
         if (!Input.Dash.Check && !Input.CrouchDash.Check)
-            _dashPressed = false;
+            Instance._dashPressed = false;
 
         orig(self, gameTime);
     }
 
-    public static Vector2 Smooth(Player player, IPositionSmoothingState state, double elapsed, SmoothingMode mode)
+    public Vector2 Smooth(Player player, IPositionSmoothingState state, double elapsed, SmoothingMode mode)
     {
         return mode switch
         {
@@ -51,15 +53,15 @@ public static class PlayerSmoother
         };
     }
 
-    private static Vector2 Interpolate(Player player, IPositionSmoothingState state, double elapsed)
+    private Vector2 Interpolate(Player player, IPositionSmoothingState state, double elapsed)
     {
-        if (ActorPushTracker.ApplyPusherOffset(player, elapsed, SmoothingMode.Interpolate, out var pushed))
+        if (ActorPushTracker.Instance.ApplyPusherOffset(player, elapsed, SmoothingMode.Interpolate, out var pushed))
             return pushed;
-        
+
         return SmoothingMath.Interpolate(state.RealPositionHistory, elapsed);
     }
 
-    private static Vector2 Extrapolate(Player player, IPositionSmoothingState state, double elapsed)
+    private Vector2 Extrapolate(Player player, IPositionSmoothingState state, double elapsed)
     {
         // Disable during screen transitions or pause
         if (Engine.Scene is Level { Transitioning: true } or { Paused: true } || Engine.FreezeTimer > 0)
@@ -88,14 +90,14 @@ public static class PlayerSmoother
         var speed = player.Speed;
         if (GravityHelperImports.IsPlayerInverted?.Invoke() == true)
             speed.Y *= -1;
-        
-        if (ActorPushTracker.ApplyPusherOffset(player, elapsed, SmoothingMode.Extrapolate, out var pushed))
+
+        if (ActorPushTracker.Instance.ApplyPusherOffset(player, elapsed, SmoothingMode.Extrapolate, out var pushed))
             return pushed + speed * Engine.TimeRate * Engine.TimeRateB * (float)elapsed;
 
         return SmoothingMath.Extrapolate(state.RealPositionHistory, elapsed);
     }
 
-    private static void UpdateInput()
+    private void UpdateInput()
     {
         _keyboardData.PreviousState = MInput.Keyboard.PreviousState;
         _keyboardData.CurrentState = MInput.Keyboard.CurrentState;
@@ -117,7 +119,7 @@ public static class PlayerSmoother
             MInput.GamePads[i].Update();
     }
 
-    private static void ResetInput()
+    private void ResetInput()
     {
         MInput.Keyboard.PreviousState = _keyboardData.PreviousState;
         MInput.Keyboard.CurrentState = _keyboardData.CurrentState;

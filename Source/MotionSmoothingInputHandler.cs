@@ -1,17 +1,49 @@
-﻿using Monocle;
+﻿using Celeste.Mod.MotionSmoothing.Utilities;
+using Monocle;
 
 namespace Celeste.Mod.MotionSmoothing;
 
-public class MotionSmoothingInputHandler : Entity
+public class MotionSmoothingInputHandler : ToggleableFeature<MotionSmoothingInputHandler>
 {
-    public override void Update()
+    public override void Load()
     {
-        base.Update();
+        base.Load();
+        On.Monocle.Scene.Begin += SceneBeginHook;
+    }
 
-        if (MotionSmoothingModule.Settings.ButtonToggleSmoothing.Pressed)
+    public override void Unload()
+    {
+        base.Unload();
+        On.Monocle.Scene.Begin -= SceneBeginHook;
+    }
+
+    private static void SceneBeginHook(On.Monocle.Scene.orig_Begin orig, Scene self)
+    {
+        orig(self);
+
+        var handler = self.Entities.FindFirst<MotionSmoothingInputHandlerEntity>();
+        if (handler == null)
         {
-            Logger.Log(LogLevel.Info, "MotionSmoothingInputHandler", "Toggling motion smoothing");
-            MotionSmoothingModule.Instance.ToggleMod();
+            handler = new MotionSmoothingInputHandlerEntity();
+            handler.Tag |= Tags.Persistent | Tags.Global;
+            self.Add(handler);
+        }
+        else
+        {
+            handler.Active = true;
+        }
+    }
+
+    private class MotionSmoothingInputHandlerEntity : Entity
+    {
+        public override void Update()
+        {
+            base.Update();
+            if (MotionSmoothingModule.Settings.ButtonToggleSmoothing.Pressed)
+            {
+                Logger.Log(LogLevel.Info, "MotionSmoothingInputHandler", "Toggling motion smoothing");
+                MotionSmoothingModule.Instance.ToggleMod();
+            }
         }
     }
 }

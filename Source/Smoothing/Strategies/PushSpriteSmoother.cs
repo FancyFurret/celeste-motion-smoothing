@@ -18,11 +18,11 @@ public class PushSpriteSmoother : SmoothingStrategy<PushSpriteSmoother>
         base.SmoothObject(obj, state);
     }
 
-    public override void Hook()
+    protected override void Hook()
     {
         base.Hook();
 
-        Hooks.Add(new Hook(typeof(SpriteBatch).GetMethod("PushSprite", MotionSmoothingModule.AllFlags)!,
+        AddHook(new Hook(typeof(SpriteBatch).GetMethod("PushSprite", MotionSmoothingModule.AllFlags)!,
             PushSpriteHook));
 
         // These catch renders that might happen outside a ComponentList
@@ -38,7 +38,7 @@ public class PushSpriteSmoother : SmoothingStrategy<PushSpriteSmoother>
         IL.Monocle.EntityList.RenderExcept += EntityListRenderHook;
     }
 
-    public override void Unhook()
+    protected override void Unhook()
     {
         base.Unhook();
 
@@ -85,18 +85,18 @@ public class PushSpriteSmoother : SmoothingStrategy<PushSpriteSmoother>
 
     private void HookComponentRender<T>() where T : Component
     {
-        Hooks.Add(new Hook(typeof(T).GetMethod("Render")!, ComponentRenderHook));
+        AddHook(new Hook(typeof(T).GetMethod("Render")!, ComponentRenderHook));
     }
 
     private void HookEntityRender<T>() where T : Entity
     {
-        Hooks.Add(new Hook(typeof(T).GetMethod("Render")!, EntityRenderHook));
+        AddHook(new Hook(typeof(T).GetMethod("Render")!, EntityRenderHook));
     }
 
     private static void ComponentListRenderHook(ILContext il)
     {
         var c = new ILCursor(il);
-        while (c.TryGotoNext(MoveType.Before, i => i.MatchCallvirt<Component>("Render")))
+        while (c.TryGotoNext(MoveType.Before, i => i.MatchCallvirt<Component>(nameof(Component.Render))))
         {
             c.Emit(OpCodes.Ldloc_1);
             c.EmitDelegate(PreObjectRender);
@@ -108,7 +108,7 @@ public class PushSpriteSmoother : SmoothingStrategy<PushSpriteSmoother>
     private static void EntityListRenderHook(ILContext il)
     {
         var c = new ILCursor(il);
-        while (c.TryGotoNext(MoveType.Before, i => i.MatchCallvirt<Entity>("Render")))
+        while (c.TryGotoNext(MoveType.Before, i => i.MatchCallvirt<Entity>(nameof(Entity.Render))))
         {
             c.Emit(OpCodes.Ldloc_1);
             c.EmitDelegate(PreObjectRender);

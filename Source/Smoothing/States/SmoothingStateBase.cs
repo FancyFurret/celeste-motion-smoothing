@@ -92,6 +92,9 @@ public abstract class PositionSmoothingState<T> : IPositionSmoothingState
     protected virtual void SetSmoothed(T obj) => SetPosition(obj, SmoothedRealPosition);
     protected virtual void SetOriginal(T obj) => SetPosition(obj, OriginalRealPosition);
     
+    protected virtual void Smooth(T obj, double elapsedSeconds, SmoothingMode mode) =>
+        SmoothedRealPosition = PositionSmoother.Smooth(this, obj, elapsedSeconds, mode);
+    
     public void UpdateHistory(object obj)
     {
         RealPositionHistory[1] = RealPositionHistory[0];
@@ -109,8 +112,9 @@ public abstract class PositionSmoothingState<T> : IPositionSmoothingState
     public void SetSmoothed(object obj) => SetSmoothed((T)obj);
     public void SetOriginal(object obj) => SetOriginal((T)obj);
 
-    public void Smooth(object obj, double elapsedSeconds, SmoothingMode mode) =>
-        SmoothedRealPosition = PositionSmoother.Smooth(this, obj, elapsedSeconds, mode);
+    public void Smooth(object obj, double elapsedSeconds, SmoothingMode mode) {
+        Smooth((T)obj, elapsedSeconds, mode);
+    }
 
     public Vector2 GetLastDrawPosition(SmoothingMode mode)
     {

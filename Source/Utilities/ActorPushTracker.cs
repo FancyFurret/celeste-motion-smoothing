@@ -7,25 +7,27 @@ using Monocle;
 
 namespace Celeste.Mod.MotionSmoothing.Utilities;
 
-public static class ActorPushTracker
+public class ActorPushTracker : ToggleableFeature<ActorPushTracker>
 {
-    private static readonly ConditionalWeakTable<Actor, HashSet<Solid>> Pushers = new();
+    private readonly ConditionalWeakTable<Actor, HashSet<Solid>> _pushers = new();
 
-    public static void Hook()
+    protected override void Hook()
     {
+        base.Hook();
         On.Monocle.Engine.Update += EngineUpdateHook;
         On.Celeste.Actor.MoveHExact += ActorMoveHExactHook;
         On.Celeste.Actor.MoveVExact += ActorMoveVExactHook;
     }
 
-    public static void Unhook()
+    protected override void Unhook()
     {
+        base.Unhook();
         On.Monocle.Engine.Update -= EngineUpdateHook;
         On.Celeste.Actor.MoveHExact -= ActorMoveHExactHook;
         On.Celeste.Actor.MoveVExact -= ActorMoveVExactHook;
     }
 
-    public static bool ApplyPusherOffset(Actor actor, double elapsedSeconds, SmoothingMode mode, out Vector2 pushed)
+    public bool ApplyPusherOffset(Actor actor, double elapsedSeconds, SmoothingMode mode, out Vector2 pushed)
     {
         pushed = Vector2.Zero;
 
@@ -40,12 +42,12 @@ public static class ActorPushTracker
         return true;
     }
 
-    public static bool GetPusherOffset(Actor actor, double elapsedSeconds, out Vector2 offset)
+    public bool GetPusherOffset(Actor actor, double elapsedSeconds, out Vector2 offset)
     {
         var pushed = false;
         offset = Vector2.Zero;
 
-        if (!Pushers.TryGetValue(actor, out var pushers) || pushers == null)
+        if (!_pushers.TryGetValue(actor, out var pushers) || pushers == null)
             return false;
 
         foreach (var pusher in pushers)
@@ -61,7 +63,7 @@ public static class ActorPushTracker
         return pushed;
     }
 
-    public static Vector2 GetSolidOffset(ISmoothingState state, object obj, double elapsedSeconds)
+    public Vector2 GetSolidOffset(ISmoothingState state, object obj, double elapsedSeconds)
     {
         var mode = MotionSmoothingModule.Settings.Smoothing;
         var interp = mode == SmoothingMode.Interpolate;
@@ -88,7 +90,7 @@ public static class ActorPushTracker
 
     private static void EngineUpdateHook(On.Monocle.Engine.orig_Update orig, Engine self, GameTime gameTime)
     {
-        foreach (var kv in Pushers)
+        foreach (var kv in Instance._pushers)
             kv.Value.Clear();
 
         if (self.scene is Level)
@@ -102,7 +104,7 @@ public static class ActorPushTracker
 
                 solid.GetRiders();
                 foreach (var rider in Solid.riders)
-                    Pushers.GetOrCreateValue(rider)!.Add(solid);
+                    Instance._pushers.GetOrCreateValue(rider)!.Add(solid);
                 Solid.riders.Clear();
             }
         }
@@ -113,14 +115,14 @@ public static class ActorPushTracker
     private static bool ActorMoveHExactHook(On.Celeste.Actor.orig_MoveHExact orig, Actor self, int moveH,
         Collision onCollide, Solid pusher)
     {
-        Pushers.GetOrCreateValue(self)!.Add(pusher);
+        Instance._pushers.GetOrCreateValue(self)!.Add(pusher);
         return orig(self, moveH, onCollide, pusher);
     }
 
     private static bool ActorMoveVExactHook(On.Celeste.Actor.orig_MoveVExact orig, Actor self, int moveV,
         Collision onCollide, Solid pusher)
     {
-        Pushers.GetOrCreateValue(self)!.Add(pusher);
+        Instance._pushers.GetOrCreateValue(self)!.Add(pusher);
         return orig(self, moveV, onCollide, pusher);
     }
 }

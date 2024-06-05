@@ -7,41 +7,29 @@ using MonoMod.Cil;
 
 namespace Celeste.Mod.MotionSmoothing.Smoothing.Targets;
 
-public class CameraSmoother
+public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
 {
     const float ScaleMultiplier = 181f / 180f;
-    
-    private static bool _hooked;
+    private const int HiresPixelSize = 1080 / 180; 
 
-    public static void EnableUnlock()
+    protected override void Hook()
     {
-        if (_hooked)
-            return;
+        base.Hook();
 
         IL.Celeste.Level.Render += LevelRenderHook;
         IL.Celeste.HiresRenderer.BeginRender += HiresRendererBeginRenderHook;
-
-        _hooked = true;
+        IL.Celeste.TalkComponent.TalkComponentUI.Render += TalkComponentUiRenderHook;
+        IL.Celeste.Lookout.Hud.Render += HudRenderHook;
     }
 
-    public static void DisableUnlock()
+    protected override void Unhook()
     {
-        if (!_hooked)
-            return;
+        base.Unhook();
 
         IL.Celeste.Level.Render -= LevelRenderHook;
         IL.Celeste.HiresRenderer.BeginRender -= HiresRendererBeginRenderHook;
-
-        _hooked = false;
-    }
-
-    public static Vector2 Smooth(Camera camera, IPositionSmoothingState state, double elapsedSeconds,
-        SmoothingMode mode)
-    {
-        // In theory, we could calculate the Player.CameraTarget using the smoothed player position instead
-        // of interpolating the camera position, but in testing it didn't look much smoother and was more prone
-        // to issues. So for now, just interpolate the camera position.
-        return SmoothingMath.Smooth(state.RealPositionHistory, elapsedSeconds, SmoothingMode.Interpolate);
+        IL.Celeste.TalkComponent.TalkComponentUI.Render -= TalkComponentUiRenderHook;
+        IL.Celeste.Lookout.Hud.Render -= HudRenderHook;
     }
 
     public static Matrix GetCameraMatrix()
@@ -50,11 +38,22 @@ public class CameraSmoother
         {
             var cameraState = (MotionSmoothingHandler.Instance.GetState(level.Camera) as IPositionSmoothingState)!;
             var pixelOffset = cameraState.SmoothedRealPosition - cameraState.SmoothedRealPosition.Floor();
-            var offset = pixelOffset * 6;
+            var offset = pixelOffset * HiresPixelSize;
             return Matrix.CreateTranslation(-offset.X, -offset.Y, 0);
         }
 
         return Matrix.Identity;
+    }
+
+    public static Vector2 GetSmoothedCameraPosition()
+    {
+        if (Engine.Scene is Level level)
+        {
+            var cameraState = (MotionSmoothingHandler.Instance.GetState(level.Camera) as IPositionSmoothingState)!;
+            return cameraState.SmoothedRealPosition;
+        }
+
+        return Vector2.Zero;
     }
 
     private static void LevelRenderHook(ILContext il)
@@ -65,7 +64,7 @@ public class CameraSmoother
         if (cursor.TryGotoNext(MoveType.Before,
                 instr => instr.MatchLdsfld(typeof(Engine).GetField(nameof(Engine.ScreenMatrix))!)))
         {
-            cursor.EmitCall(typeof(CameraSmoother).GetMethod(nameof(GetCameraMatrix))!);
+            cursor.EmitCall(typeof(UnlockedCameraSmoother).GetMethod(nameof(GetCameraMatrix))!);
             cursor.EmitCall(typeof(Matrix).GetMethod("op_Multiply", new[] { typeof(Matrix), typeof(Matrix) })!);
         }
 
@@ -83,15 +82,41 @@ public class CameraSmoother
     {
         var cursor = new ILCursor(il);
 
-        // Offset and scale the matrix for the HUD
-        if (cursor.TryGotoNext(MoveType.Before, instr => instr.MatchLdloc0()))
+        // Scale the matrix for the HUD
+        if (cursor.TryGotoNext(MoveType.After, instr => instr.MatchLdloc0()))
         {
-            cursor.EmitCall(typeof(CameraSmoother).GetMethod(nameof(GetCameraMatrix))!);
-            cursor.Index++;
-            cursor.EmitCall(typeof(Matrix).GetMethod("op_Multiply", new[] { typeof(Matrix), typeof(Matrix) })!);
             cursor.EmitLdcR4(ScaleMultiplier);
             cursor.EmitCall(typeof(Matrix).GetMethod(nameof(Matrix.CreateScale), new[] { typeof(float) })!);
             cursor.EmitCall(typeof(Matrix).GetMethod("op_Multiply", new[] { typeof(Matrix), typeof(Matrix) })!);
+        }
+    }
+
+    private static void TalkComponentUiRenderHook(ILContext il)
+    {
+        var cursor = new ILCursor(il);
+
+        // Use the smoothed camera position
+        if (cursor.TryGotoNext(MoveType.After,
+                instr => instr.MatchCallvirt<Camera>("get_Position"),
+                instr => instr.MatchCall(typeof(Calc).GetMethod(nameof(Calc.Floor))!)))
+        {
+            // Ignore this value
+            cursor.EmitPop();
+
+            // Get just the smoothed position
+            cursor.EmitCall(typeof(UnlockedCameraSmoother).GetMethod(nameof(GetSmoothedCameraPosition))!);
+        }
+    }
+
+    private static void HudRenderHook(ILContext il)
+    {
+        var cursor = new ILCursor(il);
+
+        if (cursor.TryGotoNext(MoveType.Before, instr => instr.MatchStloc(5)))
+        {
+            // Add another pixel to the border size, so it covers up the empty pixels on the right/bottom
+            cursor.EmitLdcI4(HiresPixelSize);
+            cursor.EmitAdd();
         }
     }
 }

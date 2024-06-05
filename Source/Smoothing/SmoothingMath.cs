@@ -1,3 +1,4 @@
+using Celeste.Mod.MotionSmoothing.FrameUncap;
 using Celeste.Mod.MotionSmoothing.Utilities;
 using Microsoft.Xna.Framework;
 using Monocle;

@@ -3,27 +3,14 @@ using System.Diagnostics;
 using Celeste.Mod.MotionSmoothing.Interop;
 using Celeste.Mod.MotionSmoothing.Smoothing.States;
 using Celeste.Mod.MotionSmoothing.Smoothing.Strategies;
+using Celeste.Mod.MotionSmoothing.Utilities;
 using Microsoft.Xna.Framework;
 using Monocle;
 
 namespace Celeste.Mod.MotionSmoothing.Smoothing;
 
-public class MotionSmoothingHandler
+public class MotionSmoothingHandler : ToggleableFeature<MotionSmoothingHandler>
 {
-    public static MotionSmoothingHandler Instance { get; private set; }
-
-    public bool Enabled
-    {
-        get => _enabled;
-        set
-        {
-            _enabled = value;
-            _valueSmoother.Enabled = value;
-            _pushSpriteSmoother.Enabled = value;
-        }
-    }
-    private bool _enabled = true;
-
     public Player Player => _playerReference?.TryGetTarget(out var player) == true ? player : null;
     private WeakReference<Player> _playerReference;
 
@@ -35,14 +22,43 @@ public class MotionSmoothingHandler
 
     public MotionSmoothingHandler()
     {
-        Instance = this;
-
         _valueSmoother = new ValueSmoother();
         _pushSpriteSmoother = new PushSpriteSmoother();
     }
 
-    public void Load()
+    public override void Load()
     {
+        base.Load();
+        SpeedrunToolImports.RegisterSaveLoadAction?.Invoke(null, (_, _) => SmoothAllObjects(), null,
+            null, null, null);
+    }
+
+    public override void Enable()
+    {
+        base.Enable();
+        _valueSmoother.Enable();
+        _pushSpriteSmoother.Enable();
+        
+        SmoothAllObjects();
+    }
+
+    public override void Disable()
+    {
+        base.Disable();
+        _valueSmoother.Disable();
+        _pushSpriteSmoother.Disable();
+        
+        _valueSmoother.ClearStates();
+        _pushSpriteSmoother.ClearStates();
+    }
+
+    protected override void Hook()
+    {
+        base.Hook();
+        
+        On.Monocle.Engine.Update += EngineUpdateHook;
+        On.Monocle.Engine.Draw += EngineDrawHook;
+        
         On.Monocle.Tracker.EntityAdded += TrackerEntityAddedHook;
         On.Monocle.Tracker.EntityRemoved += TrackerEntityRemovedHook;
         On.Monocle.Tracker.ComponentAdded += TrackerComponentAddedHook;
@@ -52,36 +68,23 @@ public class MotionSmoothingHandler
         On.Monocle.Camera.ctor_int_int += CameraCtorIntIntHook;
         On.Celeste.ScreenWipe.ctor += ScreenWipeCtorHook;
 
-        SpeedrunToolImports.RegisterSaveLoadAction?.Invoke(null, (_, _) => SmoothAllObjects(), null,
-            null, null, null);
     }
 
-    public void Unload()
+    protected override void Unhook()
     {
+        base.Unhook();
+        
+        On.Monocle.Engine.Update -= EngineUpdateHook;
+        On.Monocle.Engine.Draw -= EngineDrawHook;
+        
         On.Monocle.Tracker.EntityAdded -= TrackerEntityAddedHook;
         On.Monocle.Tracker.EntityRemoved -= TrackerEntityRemovedHook;
         On.Monocle.Tracker.ComponentAdded -= TrackerComponentAddedHook;
         On.Monocle.Tracker.ComponentRemoved -= TrackerComponentRemovedHook;
-        
+
         On.Monocle.Camera.ctor -= CameraCtorHook;
         On.Monocle.Camera.ctor_int_int -= CameraCtorIntIntHook;
         On.Celeste.ScreenWipe.ctor -= ScreenWipeCtorHook;
-    }
-
-    public void Hook()
-    {
-        On.Monocle.Engine.Update += EngineUpdateHook;
-        On.Monocle.Engine.Draw += EngineDrawHook;
-        _valueSmoother.Hook();
-        _pushSpriteSmoother.Hook();
-    }
-
-    public void Unhook()
-    {
-        On.Monocle.Engine.Update -= EngineUpdateHook;
-        On.Monocle.Engine.Draw -= EngineDrawHook;
-        _valueSmoother.Unhook();
-        _pushSpriteSmoother.Unhook();
     }
 
     public ISmoothingState GetState(object obj)
@@ -175,9 +178,6 @@ public class MotionSmoothingHandler
     private void SmoothAllObjects()
     {
         if (Engine.Scene is not Level level) return;
-
-        // This will miss components that are created by entities but not added to their component lists, but
-        // it should be good enough when loading a SpeedrunTool state
 
         _valueSmoother.ClearStates();
         _pushSpriteSmoother.ClearStates();

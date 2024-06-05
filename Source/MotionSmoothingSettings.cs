@@ -7,7 +7,7 @@ public class MotionSmoothingSettings : EverestModuleSettings
 {
     private bool _enabled = true;
     private FrameRateMode _frameRate = FrameRateMode.Mode120;
-    private bool _unlockCamera = false;
+    private bool _unlockCamera = true;
     private bool _tasMode = false;
 
     public bool Enabled
@@ -19,7 +19,7 @@ public class MotionSmoothingSettings : EverestModuleSettings
             _enabled = value;
 
             if (old != value)
-                MotionSmoothingModule.Instance.ApplySmoothing();
+                MotionSmoothingModule.Instance.ApplySettings();
         }
     }
 
@@ -42,7 +42,7 @@ public class MotionSmoothingSettings : EverestModuleSettings
         set
         {
             _frameRate = value;
-            MotionSmoothingModule.Instance.ApplySmoothing();
+            MotionSmoothingModule.Instance.ApplySettings();
         }
     }
 
@@ -65,7 +65,7 @@ public class MotionSmoothingSettings : EverestModuleSettings
         set
         {
             _unlockCamera = value;
-            MotionSmoothingModule.Instance.ApplySmoothing();
+            MotionSmoothingModule.Instance.ApplySettings();
         }
     }
 
@@ -81,7 +81,7 @@ public class MotionSmoothingSettings : EverestModuleSettings
         set
         {
             _tasMode = value;
-            MotionSmoothingModule.Instance.ApplySmoothing();
+            MotionSmoothingModule.Instance.ApplySettings();
         }
     }
 }

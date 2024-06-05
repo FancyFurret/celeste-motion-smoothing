@@ -1,28 +1,24 @@
 using System;
 using System.Linq;
 using Celeste.Mod.Entities;
+using Celeste.Mod.MotionSmoothing.Utilities;
 using Microsoft.Xna.Framework;
 using Monocle;
 using MonoMod.RuntimeDetour;
 
-namespace Celeste.Mod.MotionSmoothing.Utilities;
+namespace Celeste.Mod.MotionSmoothing.FrameUncap;
 
-public class DecoupledGameTick
+public class DecoupledGameTick : ToggleableFeature<DecoupledGameTick>, IFrameUncapStrategy
 {
-    public static DecoupledGameTick Instance { get; private set; }
-    public TimeSpan TargetUpdateElapsedTime { get; private set; } = TimeSpan.FromSeconds(1 / 60.0);
-
+    public TimeSpan TargetUpdateElapsedTime { get; set; }
+    public TimeSpan TargetDrawElapsedTime { get; set; }
+    
     private readonly Game _game = Engine.Instance;
 
     private int _drawsPerUpdate = 1;
     private int _drawsUntilUpdate;
 
-    public DecoupledGameTick()
-    {
-        Instance = this;
-    }
-
-    public void Hook()
+    protected override void Hook()
     {
         // Make sure our hook runs first, so that when we block the original update, other mods hooks won't run either.
         MainThreadHelper.Schedule(() =>
@@ -36,15 +32,19 @@ public class DecoupledGameTick
                 On.Monocle.Engine.Draw += EngineDrawHook;
             }
         });
+        
+        base.Hook();
     }
 
-    public void Unhook()
+    protected override void Unhook()
     {
         MainThreadHelper.Schedule(() =>
         {
             On.Monocle.Engine.Update -= EngineUpdateHook;
             On.Monocle.Engine.Draw -= EngineDrawHook;
         });
+        
+        base.Unhook();
     }
 
     public void SetTargetFramerate(int updateFramerate, int drawFramerate)
@@ -52,10 +52,12 @@ public class DecoupledGameTick
         if (drawFramerate % updateFramerate != 0)
             throw new ArgumentException("Update framerate must be divisible by draw framerate");
 
+        TargetDrawElapsedTime = new TimeSpan((long)Math.Round(10_000_000.0 / drawFramerate)); 
+        TargetUpdateElapsedTime = new TimeSpan((long)Math.Round(10_000_000.0 / updateFramerate));
+        
         _drawsPerUpdate = drawFramerate / updateFramerate;
         _drawsUntilUpdate = _drawsPerUpdate;
-        _game.TargetElapsedTime = new TimeSpan((long)Math.Round(10_000_000.0 / drawFramerate));
-        TargetUpdateElapsedTime = new TimeSpan((long)Math.Round(10_000_000.0 / updateFramerate));
+        _game.TargetElapsedTime = TargetDrawElapsedTime;
     }
 
     private static void EngineUpdateHook(On.Monocle.Engine.orig_Update orig, Engine self, GameTime gameTime)

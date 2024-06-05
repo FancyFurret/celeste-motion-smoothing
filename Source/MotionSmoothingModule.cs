@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Reflection;
+using Celeste.Mod.MotionSmoothing.FrameUncap;
 using Celeste.Mod.MotionSmoothing.Interop;
 using Celeste.Mod.MotionSmoothing.Smoothing;
 using Celeste.Mod.MotionSmoothing.Smoothing.Targets;
@@ -32,132 +33,103 @@ public class MotionSmoothingModule : EverestModule
 #endif
     }
 
-    private DecoupledGameTick DecoupledGameTick { get; set; }
-    private MotionSmoothingHandler MotionSmoothing { get; set; }
-    private UpdateAtDraw UpdateAtDraw { get; set; }
-    private bool _hooked;
+    private DecoupledGameTick DecoupledGameTick { get; } = new();
+    private MotionSmoothingHandler MotionSmoothing { get; } = new();
+    private UnlockedCameraSmoother UnlockedCameraSmoother { get; } = new();
+    private ActorPushTracker ActorPushTracker { get; } = new();
+    private UpdateAtDraw UpdateAtDraw { get; } = new();
+    private MotionSmoothingInputHandler InputHandler { get; } = new();
+    private PlayerSmoother PlayerSmoother { get; } = new();
 
     public override void Load()
     {
-        // TODO: Eventually... non pixel locked camera
-
         typeof(GravityHelperImports).ModInterop();
         typeof(SpeedrunToolImports).ModInterop();
 
-        DecoupledGameTick = new DecoupledGameTick();
-        MotionSmoothing = new MotionSmoothingHandler();
-        UpdateAtDraw = new UpdateAtDraw();
-
+        DecoupledGameTick.Load();
         MotionSmoothing.Load();
-        ApplySmoothing();
+        UnlockedCameraSmoother.Load();
+        ActorPushTracker.Load();
+        UpdateAtDraw.Load();
+        InputHandler.Load();
+        PlayerSmoother.Load();
+
+        InputHandler.Enable();
+        
+        On.Monocle.Scene.Begin += SceneBeginHook;
+
+        ApplySettings();
     }
 
     public override void Unload()
     {
+        DecoupledGameTick.Unload();
         MotionSmoothing.Unload();
-        Unhook();
+        UnlockedCameraSmoother.Unload();
+        ActorPushTracker.Unload();
+        UpdateAtDraw.Unload();
+        InputHandler.Unload();
+        PlayerSmoother.Unload();
+
+        On.Monocle.Scene.Begin -= SceneBeginHook;
     }
 
     public void ToggleMod()
     {
         Settings.Enabled = !Settings.Enabled;
-        ApplySmoothing();
+        ApplySettings();
     }
 
-    public void ApplySmoothing()
+    public void ApplySettings()
     {
         if (MotionSmoothing == null) return;
 
-        if (Settings.Enabled)
+        if (!Settings.Enabled)
         {
-            if (
-                Engine.Scene is Level ||
-                Engine.Scene is LevelLoader ||
-                Engine.Scene is LevelExit ||
-                Engine.Scene is Emulator)
-            {
-                // If we're in a level, keep the update rate at 60fps
-                DecoupledGameTick.SetTargetFramerate(60, Settings.FrameRate.ToFps());
-                MotionSmoothing.Enabled = true;
-            }
-            else
-            {
-                // If we're not in a level, just use the target framerate
-                if (Settings.TasMode)
-                {
-                    // For now, just draw at 60 as well. Motion smoothing in the Overworld looks awful at the moment.
-                    DecoupledGameTick.SetTargetFramerate(60, 60);
-                    MotionSmoothing.Enabled = false;
-                }
-                else
-                {
-                    DecoupledGameTick.SetTargetFramerate(Settings.FrameRate.ToFps(), Settings.FrameRate.ToFps());
-                    MotionSmoothing.Enabled = false;
-                }
-            }
-
-            if (Settings.UnlockCamera)
-                CameraSmoother.EnableUnlock();
-            else
-                CameraSmoother.DisableUnlock();
-
-            Hook();
-        }
-        else
-        {
-            MotionSmoothing.Enabled = false;
             DecoupledGameTick.SetTargetFramerate(60, 60);
-            CameraSmoother.DisableUnlock();
-            Unhook();
+            DecoupledGameTick.Disable();
+            MotionSmoothing.Disable();
+            UnlockedCameraSmoother.Disable();
+            ActorPushTracker.Disable();
+            UpdateAtDraw.Disable();
+            return;
         }
-    }
 
-    private void Hook()
-    {
-        if (_hooked) return;
+        DecoupledGameTick.Enable();
 
-        On.Monocle.Scene.Begin += SceneBeginHook;
+        var inLevel = Engine.Scene is Level || Engine.Scene is LevelLoader ||
+                      Engine.Scene is LevelExit || Engine.Scene is Emulator;
+        if (!inLevel)
+        {
+            // For TAS, just draw at 60 as well. Motion smoothing in the Overworld looks awful at the moment.
+            // If we're not in a level, just use the target framerate
+            var fps = Settings.TasMode ? 60 : Settings.FrameRate.ToFps();
+            DecoupledGameTick.SetTargetFramerate(fps, fps);
+            MotionSmoothing.Disable();
+            ActorPushTracker.Disable();
+            UpdateAtDraw.Disable();
+            UnlockedCameraSmoother.Disable();
+            PlayerSmoother.Disable();
+            return;
+        }
 
-        PlayerSmoother.Hook();
-        ActorPushTracker.Hook();
-        MotionSmoothing.Hook();
-        UpdateAtDraw.Hook();
-        DecoupledGameTick.Hook();
+        // If we're in a level, keep the update rate at 60fps
+        DecoupledGameTick.SetTargetFramerate(60, Settings.FrameRate.ToFps());
+        MotionSmoothing.Enable();
+        DecoupledGameTick.Enable();
+        ActorPushTracker.Enable();
+        UpdateAtDraw.Enable();
+        PlayerSmoother.Enable();
 
-        _hooked = true;
-    }
-
-    private void Unhook()
-    {
-        if (!_hooked) return;
-
-        On.Monocle.Scene.Begin -= SceneBeginHook;
-
-        PlayerSmoother.Unhook();
-        ActorPushTracker.Unhook();
-        MotionSmoothing.Unhook();
-        UpdateAtDraw.Unhook();
-        DecoupledGameTick.Unhook();
-
-        _hooked = false;
+        if (Settings.UnlockCamera)
+            UnlockedCameraSmoother.Enable();
+        else
+            UnlockedCameraSmoother.Disable();
     }
 
     private static void SceneBeginHook(On.Monocle.Scene.orig_Begin orig, Scene self)
     {
         orig(self);
-
-        var handler = self.Entities.FindFirst<MotionSmoothingInputHandler>();
-        if (handler == null)
-        {
-            handler = new MotionSmoothingInputHandler();
-            handler.Tag |= Tags.Persistent | Tags.Global;
-            self.Add(handler);
-        }
-        else
-        {
-            handler.Active = true;
-        }
-
-        Instance.ApplySmoothing();
+        Instance.ApplySettings();
     }
 }
