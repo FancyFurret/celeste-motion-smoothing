@@ -38,7 +38,33 @@ public class EyeballsSmoothingState : PositionSmoothingState<DustGraphic.Eyeball
 
 public class ComponentSmoothingState : PositionSmoothingState<GraphicsComponent>
 {
-    protected override Vector2 GetRealPosition(GraphicsComponent obj) => obj.Position;
+    protected override Vector2 GetRealPosition(GraphicsComponent obj)
+    {
+        if (obj.Entity is Booster booster)
+        {
+            // Boosters use the player's draw position, not real position, so make sure we smooth with the player's 
+            // real position instead
+            var player = MotionSmoothingHandler.Instance.Player;
+            if ((player.StateMachine.State == 2 || player.StateMachine.state == 5) && booster.BoostingPlayer)
+            {
+                var playerRealCenterX = player.ExactPosition.X + (player.Collider?.Center.X ?? 0);
+                var playerRealCenterY = player.ExactPosition.Y + (player.Collider?.Center.Y ?? 0);
+                return new Vector2(playerRealCenterX, playerRealCenterY) + Booster.playerOffset - booster.Position;
+            }
+        }
+
+        return obj.Position;
+    }
+
+    protected override Vector2 GetDrawPosition(GraphicsComponent obj)
+    {
+        // Boosters floor the position
+        if (obj.Entity is Booster)
+            return obj.Position.Floor();
+
+        return obj.Position;
+    }
+
     protected override void SetPosition(GraphicsComponent obj, Vector2 position) => obj.Position = position;
     protected override bool GetVisible(GraphicsComponent obj) => obj.Visible;
 }
@@ -69,7 +95,7 @@ public class CameraSmoothingState : PositionSmoothingState<Camera>
         DrawPositionHistory[0] = obj.Position;
         obj.Position = SmoothedRealPosition.Floor();
     }
-    
+
     protected override void SetOriginal(Camera obj)
     {
         obj.Position = OriginalRealPosition;
