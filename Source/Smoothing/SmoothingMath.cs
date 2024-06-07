@@ -1,3 +1,4 @@
+using System;
 using Microsoft.Xna.Framework;
 using Monocle;
 
@@ -5,7 +6,8 @@ namespace Celeste.Mod.MotionSmoothing.Smoothing;
 
 public static class SmoothingMath
 {
-    private const float SecondsPerUpdate = 1f / 60f;
+    private static readonly float SecondsPerUpdate =
+        (float)new TimeSpan((long)Math.Round(10_000_000.0 / 60)).TotalSeconds;
 
     public static float Smooth(float[] history, double elapsedSeconds, SmoothingMode mode)
     {
