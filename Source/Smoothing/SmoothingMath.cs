@@ -1,5 +1,3 @@
-using Celeste.Mod.MotionSmoothing.FrameUncap;
-using Celeste.Mod.MotionSmoothing.Utilities;
 using Microsoft.Xna.Framework;
 using Monocle;
 
@@ -7,7 +5,8 @@ namespace Celeste.Mod.MotionSmoothing.Smoothing;
 
 public static class SmoothingMath
 {
-    private static float SecondsPerUpdate => (float)DecoupledGameTick.Instance.TargetUpdateElapsedTime.TotalSeconds;
+    private static float SecondsPerUpdate =>
+        (float)MotionSmoothingModule.Instance.FrameUncapStrategy.TargetUpdateElapsedTime.TotalSeconds;
 
     public static float Smooth(float[] history, double elapsedSeconds, SmoothingMode mode)
     {

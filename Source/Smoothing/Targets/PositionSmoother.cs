@@ -27,7 +27,7 @@ public static class PositionSmoother
         {
             if (obj == player)
                 return PlayerSmoother.Instance.Smooth(player, entityState, elapsedSeconds, mode);
-            
+
             if (obj == player.Holding?.Entity)
             {
                 var playerState = (MotionSmoothingHandler.Instance.GetState(player) as IPositionSmoothingState)!;
@@ -46,7 +46,8 @@ public static class PositionSmoother
                     var startPos = mode == SmoothingMode.Interpolate
                         ? state.DrawPositionHistory[1]
                         : state.DrawPositionHistory[0];
-                    return startPos + ActorPushTracker.Instance.GetSolidOffset(moverState, mover.Platform, elapsedSeconds);
+                    return startPos +
+                           ActorPushTracker.Instance.GetSolidOffset(moverState, mover.Platform, elapsedSeconds);
                 }
             }
         }
@@ -71,7 +72,7 @@ public static class PositionSmoother
         // If the position is moving to zero, cancel
         if (state.DrawPositionHistory[0] == Vector2.Zero || state.DrawPositionHistory[1] == Vector2.Zero)
             return true;
-        
+
         // If the position isn't changing, cancel
         if (state.DrawPositionHistory[0] == state.DrawPositionHistory[1])
             return true;

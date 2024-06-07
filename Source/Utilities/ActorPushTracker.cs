@@ -65,7 +65,7 @@ public class ActorPushTracker : ToggleableFeature<ActorPushTracker>
 
     public Vector2 GetSolidOffset(ISmoothingState state, object obj, double elapsedSeconds)
     {
-        var mode = MotionSmoothingModule.Settings.Smoothing;
+        var mode = MotionSmoothingModule.Settings.SmoothingMode;
         var interp = mode == SmoothingMode.Interpolate;
 
         var smoothed = Vector2.Zero;

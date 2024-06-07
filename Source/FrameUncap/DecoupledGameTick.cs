@@ -1,5 +1,6 @@
-using System;
+﻿using System;
 using System.Linq;
+using System.Threading;
 using Celeste.Mod.Entities;
 using Celeste.Mod.MotionSmoothing.Utilities;
 using Microsoft.Xna.Framework;
@@ -12,73 +13,113 @@ public class DecoupledGameTick : ToggleableFeature<DecoupledGameTick>, IFrameUnc
 {
     public TimeSpan TargetUpdateElapsedTime { get; set; }
     public TimeSpan TargetDrawElapsedTime { get; set; }
-    
+
     private readonly Game _game = Engine.Instance;
 
-    private int _drawsPerUpdate = 1;
-    private int _drawsUntilUpdate;
+    private TimeSpan _accumulatedElapsedTime;
+    private TimeSpan _accumulatedUpdateElapsedTime;
+    private TimeSpan _accumulatedDrawElapsedTime;
+    private long _previousTicks;
 
     protected override void Hook()
     {
-        // Make sure our hook runs first, so that when we block the original update, other mods hooks won't run either.
-        MainThreadHelper.Schedule(() =>
-        {
-            using (new DetourConfigContext(new DetourConfig(
-                       "MotionSmoothingModule.DecoupledGameTick.EngineUpdateHook",
-                       int.MaxValue
-                   )).Use())
-            {
-                On.Monocle.Engine.Update += EngineUpdateHook;
-                On.Monocle.Engine.Draw += EngineDrawHook;
-            }
-        });
-        
         base.Hook();
-    }
-
-    protected override void Unhook()
-    {
-        MainThreadHelper.Schedule(() =>
-        {
-            On.Monocle.Engine.Update -= EngineUpdateHook;
-            On.Monocle.Engine.Draw -= EngineDrawHook;
-        });
-        
-        base.Unhook();
+        AddHook(new Hook(typeof(Game).GetMethod(nameof(Game.Tick))!, GameTickHook));
     }
 
     public void SetTargetFramerate(int updateFramerate, int drawFramerate)
     {
-        if (drawFramerate % updateFramerate != 0)
-            throw new ArgumentException("Update framerate must be divisible by draw framerate");
-
-        TargetDrawElapsedTime = new TimeSpan((long)Math.Round(10_000_000.0 / drawFramerate)); 
+        TargetDrawElapsedTime = new TimeSpan((long)Math.Round(10_000_000.0 / drawFramerate));
         TargetUpdateElapsedTime = new TimeSpan((long)Math.Round(10_000_000.0 / updateFramerate));
-        
-        _drawsPerUpdate = drawFramerate / updateFramerate;
-        _drawsUntilUpdate = _drawsPerUpdate;
-        _game.TargetElapsedTime = TargetDrawElapsedTime;
+        _previousTicks = _game.gameTimer.Elapsed.Ticks;
     }
 
-    private static void EngineUpdateHook(On.Monocle.Engine.orig_Update orig, Engine self, GameTime gameTime)
+    private void Tick()
     {
-        if (Instance._drawsUntilUpdate == 0)
+        AdvanceElapsedTime();
+
+        // Figure out how much time we need to wait until the next draw and/or update
+        var updateTimeLeft = TargetUpdateElapsedTime - _accumulatedUpdateElapsedTime;
+        var drawTimeLeft = TargetDrawElapsedTime - _accumulatedDrawElapsedTime;
+        var targetElapsedTime = TimeSpan.FromTicks(Math.Min(updateTimeLeft.Ticks, drawTimeLeft.Ticks));
+
+        // Wait for that amount of time
+        while (_accumulatedElapsedTime + _game.worstCaseSleepPrecision < targetElapsedTime)
         {
-            orig(self, new GameTime(gameTime.TotalGameTime, Instance.TargetUpdateElapsedTime, gameTime.IsRunningSlowly));
-            Instance._drawsUntilUpdate = Instance._drawsPerUpdate;
+            Thread.Sleep(1);
+            _game.UpdateEstimatedSleepPrecision(AdvanceElapsedTime());
         }
 
-        Engine.RawDeltaTime = (float)gameTime.ElapsedGameTime.TotalSeconds;
-        Engine.DeltaTime = Engine.RawDeltaTime * Engine.TimeRate * Engine.TimeRateB *
-                           GetTimeRateComponentMultiplier(Engine.Instance.scene);
+        while (_accumulatedElapsedTime < targetElapsedTime)
+        {
+            Thread.SpinWait(1);
+            AdvanceElapsedTime();
+        }
 
-        Instance._drawsUntilUpdate--;
-    }
+        // Cap the accumulated time
+        if (_accumulatedElapsedTime >= Game.MaxElapsedTime)
+            _accumulatedElapsedTime = Game.MaxElapsedTime;
 
-    private static void EngineDrawHook(On.Monocle.Engine.orig_Draw orig, Engine self, GameTime gameTime)
-    {
-        // Engine.FPS is calculated in Draw, and ends up being 120+, so this fixes that
-        orig(self, new GameTime(gameTime.TotalGameTime, Instance.TargetUpdateElapsedTime, gameTime.IsRunningSlowly));
+        // Update if ready
+        if (_accumulatedUpdateElapsedTime >= TargetUpdateElapsedTime)
+        {
+            // Poll events
+            FNAPlatform.PollEvents(_game, ref _game.currentAdapter, _game.textInputControlDown,
+                ref _game.textInputSuppress);
+            
+            // Update
+            _game.gameTime.ElapsedGameTime = TargetUpdateElapsedTime;
+            var updates = 0;
+            while (_accumulatedUpdateElapsedTime >= TargetUpdateElapsedTime)
+            {
+                _game.gameTime.TotalGameTime += TargetUpdateElapsedTime;
+                _accumulatedUpdateElapsedTime -= TargetUpdateElapsedTime;
+                ++updates;
+                _game.AssertNotDisposed();
+                _game.Update(_game.gameTime);
+            }
+
+            // Handle lag
+            _game.updateFrameLag += Math.Max(0, updates - 1);
+            if (_game.gameTime.IsRunningSlowly)
+            {
+                if (_game.updateFrameLag == 0)
+                    _game.gameTime.IsRunningSlowly = false;
+            }
+            else if (_game.updateFrameLag >= 5)
+                _game.gameTime.IsRunningSlowly = true;
+            if (updates == 1 && _game.updateFrameLag > 0)
+                --_game.updateFrameLag;
+            
+            _game.gameTime.ElapsedGameTime = TimeSpan.FromTicks(TargetUpdateElapsedTime.Ticks * updates);
+        }
+
+        // Draw if ready
+        if (_accumulatedDrawElapsedTime >= TargetDrawElapsedTime)
+        {
+            // Drawing doesn't need to be as accurate as updating, so we can just draw whenever we're ready
+            if (_game.suppressDraw)
+            {
+                _game.suppressDraw = false;
+            }
+            else
+            {
+                // Engine.FPS is calculated in Draw, and ends up being 120+, so this fixes that
+                _game.gameTime.ElapsedGameTime = TargetUpdateElapsedTime;
+                
+                // Ensure DeltaTime is accurate for drawing
+                Engine.RawDeltaTime = (float)_accumulatedDrawElapsedTime.TotalSeconds;
+                Engine.DeltaTime = Engine.RawDeltaTime * Engine.TimeRate * Engine.TimeRateB *
+                                   GetTimeRateComponentMultiplier(Engine.Instance.scene);
+                
+                if (!_game.BeginDraw())
+                    return;
+                _game.Draw(_game.gameTime);
+                _game.EndDraw();
+                
+                _accumulatedDrawElapsedTime = TimeSpan.Zero;
+            }
+        }
     }
 
     private static float GetTimeRateComponentMultiplier(Scene scene)
@@ -90,4 +131,25 @@ public class DecoupledGameTick : ToggleableFeature<DecoupledGameTick>, IFrameUnc
                 .Select((Func<TimeRateModifier, float>)(trm => trm.Multiplier))
                 .Aggregate(1f, (Func<float, float, float>)((acc, val) => acc * val));
     }
+
+    private TimeSpan AdvanceElapsedTime()
+    {
+        var ticks = _game.gameTimer.Elapsed.Ticks;
+        var timeSpan = TimeSpan.FromTicks(ticks - _previousTicks);
+        _accumulatedElapsedTime += timeSpan;
+        _accumulatedUpdateElapsedTime += timeSpan;
+        _accumulatedDrawElapsedTime += timeSpan;
+        _previousTicks = ticks;
+        return timeSpan;
+    }
+
+    // ReSharper disable once InconsistentNaming
+    private delegate void orig_Tick(Game self);
+
+#pragma warning disable CL0003
+    private static void GameTickHook(orig_Tick orig, Game self)
+    {
+        Instance.Tick();
+    }
+#pragma warning restore CL0003
 }

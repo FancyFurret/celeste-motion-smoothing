@@ -33,7 +33,15 @@ public class MotionSmoothingModule : EverestModule
 #endif
     }
 
+    public IFrameUncapStrategy FrameUncapStrategy => Settings.UpdateMode switch
+    {
+        UpdateMode.Interval => UpdateEveryNTicks,
+        UpdateMode.Dynamic => DecoupledGameTick,
+        _ => throw new ArgumentOutOfRangeException()
+    };
+    private UpdateEveryNTicks UpdateEveryNTicks { get; } = new();
     private DecoupledGameTick DecoupledGameTick { get; } = new();
+    
     private MotionSmoothingHandler MotionSmoothing { get; } = new();
     private UnlockedCameraSmoother UnlockedCameraSmoother { get; } = new();
     private ActorPushTracker ActorPushTracker { get; } = new();
@@ -46,7 +54,7 @@ public class MotionSmoothingModule : EverestModule
         typeof(GravityHelperImports).ModInterop();
         typeof(SpeedrunToolImports).ModInterop();
 
-        DecoupledGameTick.Load();
+        UpdateEveryNTicks.Load();
         MotionSmoothing.Load();
         UnlockedCameraSmoother.Load();
         ActorPushTracker.Load();
@@ -63,7 +71,7 @@ public class MotionSmoothingModule : EverestModule
 
     public override void Unload()
     {
-        DecoupledGameTick.Unload();
+        UpdateEveryNTicks.Unload();
         MotionSmoothing.Unload();
         UnlockedCameraSmoother.Unload();
         ActorPushTracker.Unload();
@@ -86,8 +94,10 @@ public class MotionSmoothingModule : EverestModule
 
         if (!Settings.Enabled)
         {
-            DecoupledGameTick.SetTargetFramerate(60, 60);
+            UpdateEveryNTicks.SetTargetFramerate(60, 60);
+            UpdateEveryNTicks.Disable();
             DecoupledGameTick.Disable();
+            
             MotionSmoothing.Disable();
             UnlockedCameraSmoother.Disable();
             ActorPushTracker.Disable();
@@ -95,7 +105,16 @@ public class MotionSmoothingModule : EverestModule
             return;
         }
 
-        DecoupledGameTick.Enable();
+        if (Settings.UpdateMode == UpdateMode.Dynamic)
+        {
+            UpdateEveryNTicks.Disable();
+            DecoupledGameTick.Enable();
+        }
+        else
+        {
+            DecoupledGameTick.Disable();
+            UpdateEveryNTicks.Enable();
+        }
 
         var inLevel = Engine.Scene is Level || Engine.Scene is LevelLoader ||
                       Engine.Scene is LevelExit || Engine.Scene is Emulator;
@@ -103,8 +122,8 @@ public class MotionSmoothingModule : EverestModule
         {
             // For TAS, just draw at 60 as well. Motion smoothing in the Overworld looks awful at the moment.
             // If we're not in a level, just use the target framerate
-            var fps = Settings.TasMode ? 60 : Settings.FrameRate.ToFps();
-            DecoupledGameTick.SetTargetFramerate(fps, fps);
+            var fps = Settings.TasMode ? 60 : Settings.FrameRate;
+            FrameUncapStrategy.SetTargetFramerate(fps, fps);
             MotionSmoothing.Disable();
             ActorPushTracker.Disable();
             UpdateAtDraw.Disable();
@@ -114,9 +133,8 @@ public class MotionSmoothingModule : EverestModule
         }
 
         // If we're in a level, keep the update rate at 60fps
-        DecoupledGameTick.SetTargetFramerate(60, Settings.FrameRate.ToFps());
+        FrameUncapStrategy.SetTargetFramerate(60, Settings.FrameRate);
         MotionSmoothing.Enable();
-        DecoupledGameTick.Enable();
         ActorPushTracker.Enable();
         UpdateAtDraw.Enable();
         PlayerSmoother.Enable();
