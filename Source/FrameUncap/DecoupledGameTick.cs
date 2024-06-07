@@ -31,7 +31,7 @@ public class DecoupledGameTick : ToggleableFeature<DecoupledGameTick>, IFrameUnc
     {
         TargetDrawElapsedTime = new TimeSpan((long)Math.Round(10_000_000.0 / drawFramerate));
         TargetUpdateElapsedTime = new TimeSpan((long)Math.Round(10_000_000.0 / updateFramerate));
-        _previousTicks = _game.gameTimer.Elapsed.Ticks;
+        _previousTicks = _game.gameTimer?.Elapsed.Ticks ?? 0;
     }
 
     private void Tick()

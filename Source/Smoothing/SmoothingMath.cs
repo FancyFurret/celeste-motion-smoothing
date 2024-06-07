@@ -5,8 +5,7 @@ namespace Celeste.Mod.MotionSmoothing.Smoothing;
 
 public static class SmoothingMath
 {
-    private static float SecondsPerUpdate =>
-        (float)MotionSmoothingModule.Instance.FrameUncapStrategy.TargetUpdateElapsedTime.TotalSeconds;
+    private const float SecondsPerUpdate = 1f / 60f;
 
     public static float Smooth(float[] history, double elapsedSeconds, SmoothingMode mode)
     {
