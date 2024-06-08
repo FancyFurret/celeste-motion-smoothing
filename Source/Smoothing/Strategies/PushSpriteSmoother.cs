@@ -80,6 +80,12 @@ public class PushSpriteSmoother : SmoothingStrategy<PushSpriteSmoother>
             return Vector2.Zero;
 
         var targetPos = state.SmoothedRealPosition;
+
+        // Probably placebo, but it feels like this makes the player less
+        // smooth even though that makes no sense
+        if (obj is not Player)
+            targetPos = targetPos.Round();
+        
         return targetPos - state.OriginalDrawPosition;
     }
 
