@@ -296,6 +296,7 @@ public class MotionSmoothingHandler : ToggleableFeature<MotionSmoothingHandler>
             // Specifically *don't* want to push sprite these
             ZipMover => null,
             ZipMover.ZipMoverPathRenderer => null,
+            Trigger => null,
 
             // These should be last so that more specific types are handled first
             Platform => new PlatformSmoothingState(),
