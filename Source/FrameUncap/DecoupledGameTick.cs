@@ -1,7 +1,5 @@
 ﻿using System;
-using System.Linq;
 using System.Threading;
-using Celeste.Mod.Entities;
 using Celeste.Mod.MotionSmoothing.Utilities;
 using Microsoft.Xna.Framework;
 using Monocle;
@@ -66,7 +64,7 @@ public class DecoupledGameTick : ToggleableFeature<DecoupledGameTick>, IFrameUnc
             // Poll events
             FNAPlatform.PollEvents(_game, ref _game.currentAdapter, _game.textInputControlDown,
                 ref _game.textInputSuppress);
-            
+
             // Update
             _game.gameTime.ElapsedGameTime = TargetUpdateElapsedTime;
             var updates = 0;
@@ -88,9 +86,10 @@ public class DecoupledGameTick : ToggleableFeature<DecoupledGameTick>, IFrameUnc
             }
             else if (_game.updateFrameLag >= 5)
                 _game.gameTime.IsRunningSlowly = true;
+
             if (updates == 1 && _game.updateFrameLag > 0)
                 --_game.updateFrameLag;
-            
+
             _game.gameTime.ElapsedGameTime = TimeSpan.FromTicks(TargetUpdateElapsedTime.Ticks * updates);
         }
 
@@ -106,30 +105,19 @@ public class DecoupledGameTick : ToggleableFeature<DecoupledGameTick>, IFrameUnc
             {
                 // Engine.FPS is calculated in Draw, and ends up being 120+, so this fixes that
                 _game.gameTime.ElapsedGameTime = TargetUpdateElapsedTime;
-                
+
                 // Ensure DeltaTime is accurate for drawing
                 Engine.RawDeltaTime = (float)_accumulatedDrawElapsedTime.TotalSeconds;
-                Engine.DeltaTime = Engine.RawDeltaTime * Engine.TimeRate * Engine.TimeRateB *
-                                   GetTimeRateComponentMultiplier(Engine.Instance.scene);
-                
+                Engine.DeltaTime = GameUtils.CalculateDeltaTime(Engine.RawDeltaTime);
+
                 if (!_game.BeginDraw())
                     return;
                 _game.Draw(_game.gameTime);
                 _game.EndDraw();
-                
+
                 _accumulatedDrawElapsedTime = TimeSpan.Zero;
             }
         }
-    }
-
-    private static float GetTimeRateComponentMultiplier(Scene scene)
-    {
-        return scene == null
-            ? 1f
-            : scene.Tracker.GetComponents<TimeRateModifier>().Cast<TimeRateModifier>()
-                .Where((Func<TimeRateModifier, bool>)(trm => trm.Enabled))
-                .Select((Func<TimeRateModifier, float>)(trm => trm.Multiplier))
-                .Aggregate(1f, (Func<float, float, float>)((acc, val) => acc * val));
     }
 
     private TimeSpan AdvanceElapsedTime()

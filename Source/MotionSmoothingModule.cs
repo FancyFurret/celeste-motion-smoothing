@@ -41,12 +41,13 @@ public class MotionSmoothingModule : EverestModule
     };
     private UpdateEveryNTicks UpdateEveryNTicks { get; } = new();
     private DecoupledGameTick DecoupledGameTick { get; } = new();
-    
+
     private MotionSmoothingHandler MotionSmoothing { get; } = new();
     private UnlockedCameraSmoother UnlockedCameraSmoother { get; } = new();
     private ActorPushTracker ActorPushTracker { get; } = new();
     private UpdateAtDraw UpdateAtDraw { get; } = new();
     private MotionSmoothingInputHandler InputHandler { get; } = new();
+    private DebugRenderFix DebugRenderFix { get; } = new();
 
     public override void Load()
     {
@@ -59,9 +60,10 @@ public class MotionSmoothingModule : EverestModule
         ActorPushTracker.Load();
         UpdateAtDraw.Load();
         InputHandler.Load();
+        DebugRenderFix.Load();
 
         InputHandler.Enable();
-        
+
         On.Monocle.Scene.Begin += SceneBeginHook;
 
         ApplySettings();
@@ -75,6 +77,7 @@ public class MotionSmoothingModule : EverestModule
         ActorPushTracker.Unload();
         UpdateAtDraw.Unload();
         InputHandler.Unload();
+        DebugRenderFix.Unload();
 
         On.Monocle.Scene.Begin -= SceneBeginHook;
     }
@@ -94,11 +97,12 @@ public class MotionSmoothingModule : EverestModule
             UpdateEveryNTicks.SetTargetFramerate(60, 60);
             UpdateEveryNTicks.Disable();
             DecoupledGameTick.Disable();
-            
+
             MotionSmoothing.Disable();
             UnlockedCameraSmoother.Disable();
             ActorPushTracker.Disable();
             UpdateAtDraw.Disable();
+            DebugRenderFix.Disable();
             return;
         }
 
@@ -133,6 +137,7 @@ public class MotionSmoothingModule : EverestModule
         MotionSmoothing.Enable();
         ActorPushTracker.Enable();
         UpdateAtDraw.Enable();
+        DebugRenderFix.Enable();
 
         if (Settings.UnlockCamera)
             UnlockedCameraSmoother.Enable();

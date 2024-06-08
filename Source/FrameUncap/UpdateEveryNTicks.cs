@@ -79,20 +79,9 @@ public class UpdateEveryNTicks : ToggleableFeature<UpdateEveryNTicks>, IFrameUnc
     private static void EngineDrawHook(On.Monocle.Engine.orig_Draw orig, Engine self, GameTime gameTime)
     {
         Engine.RawDeltaTime = (float)gameTime.ElapsedGameTime.TotalSeconds;
-        Engine.DeltaTime = Engine.RawDeltaTime * Engine.TimeRate * Engine.TimeRateB *
-                           GetTimeRateComponentMultiplier(Engine.Instance.scene);
+        Engine.DeltaTime = GameUtils.CalculateDeltaTime(Engine.RawDeltaTime);
 
         // Engine.FPS is calculated in Draw, and ends up being 120+, so this fixes that
         orig(self, new GameTime(gameTime.TotalGameTime, Instance.TargetUpdateElapsedTime, gameTime.IsRunningSlowly));
-    }
-
-    private static float GetTimeRateComponentMultiplier(Scene scene)
-    {
-        return scene == null
-            ? 1f
-            : scene.Tracker.GetComponents<TimeRateModifier>().Cast<TimeRateModifier>()
-                .Where((Func<TimeRateModifier, bool>)(trm => trm.Enabled))
-                .Select((Func<TimeRateModifier, float>)(trm => trm.Multiplier))
-                .Aggregate(1f, (Func<float, float, float>)((acc, val) => acc * val));
     }
 }
