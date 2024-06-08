@@ -11,7 +11,7 @@ public static class PositionSmoother
 
     public static Vector2 Smooth(IPositionSmoothingState state, object obj, double elapsedSeconds, SmoothingMode mode)
     {
-        if (mode == SmoothingMode.None || ShouldCancelSmoothing(state, obj))
+        if (ShouldCancelSmoothing(state, obj))
             return state.OriginalDrawPosition;
 
         // Manually fix boosters, can't figure out a better way of doing this

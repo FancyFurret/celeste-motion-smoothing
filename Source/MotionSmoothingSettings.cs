@@ -5,7 +5,6 @@ namespace Celeste.Mod.MotionSmoothing;
 
 public enum SmoothingMode
 {
-    None,
     Extrapolate,
     Interpolate
 }
@@ -76,7 +75,6 @@ public class MotionSmoothingSettings : EverestModuleSettings
     }
 
     [SettingSubText(
-        "None: No smoothing\n" +
         "Extrapolate: [Recommended] Predicts object positions\n" +
         "        * Should feel very similar to vanilla\n" +
         "Interpolate: Smooths object position\n" +
