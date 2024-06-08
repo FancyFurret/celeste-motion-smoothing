@@ -117,3 +117,9 @@ public class ActorSmoothingState : PositionSmoothingState<Actor>
     protected override void SetPosition(Actor obj, Vector2 position) => obj.Position = position;
     protected override bool GetVisible(Actor obj) => obj.Visible;
 }
+
+public class LevelZoomSmoothingState : FloatSmoothingState<Level>
+{
+    protected override float GetValue(Level obj) => obj.Zoom;
+    protected override void SetValue(Level obj, float value) => obj.Zoom = value;
+}

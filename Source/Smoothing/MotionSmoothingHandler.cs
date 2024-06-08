@@ -65,6 +65,7 @@ public class MotionSmoothingHandler : ToggleableFeature<MotionSmoothingHandler>
         On.Monocle.Tracker.ComponentAdded += TrackerComponentAddedHook;
         On.Monocle.Tracker.ComponentRemoved += TrackerComponentRemovedHook;
 
+        On.Celeste.Level.ctor += LevelCtorHook;
         On.Monocle.Camera.ctor += CameraCtorHook;
         On.Monocle.Camera.ctor_int_int += CameraCtorIntIntHook;
         On.Celeste.ScreenWipe.ctor += ScreenWipeCtorHook;
@@ -83,6 +84,7 @@ public class MotionSmoothingHandler : ToggleableFeature<MotionSmoothingHandler>
         On.Monocle.Tracker.ComponentAdded -= TrackerComponentAddedHook;
         On.Monocle.Tracker.ComponentRemoved -= TrackerComponentRemovedHook;
 
+        On.Celeste.Level.ctor -= LevelCtorHook;
         On.Monocle.Camera.ctor -= CameraCtorHook;
         On.Monocle.Camera.ctor_int_int -= CameraCtorIntIntHook;
         On.Celeste.ScreenWipe.ctor -= ScreenWipeCtorHook;
@@ -181,6 +183,12 @@ public class MotionSmoothingHandler : ToggleableFeature<MotionSmoothingHandler>
         Instance.StopSmoothingObject(component);
     }
 
+    private static void LevelCtorHook(On.Celeste.Level.orig_ctor orig, Level self)
+    {
+        orig(self);
+        Instance.SmoothLevel(self);
+    }
+
     private static void CameraCtorHook(On.Monocle.Camera.orig_ctor orig, Camera self)
     {
         orig(self);
@@ -216,17 +224,23 @@ public class MotionSmoothingHandler : ToggleableFeature<MotionSmoothingHandler>
                     SmoothComponent(graphicsComponent);
         }
 
+        SmoothLevel(level);
         SmoothCamera(level.Camera);
     }
 
     private void SmoothScreenWipe(ScreenWipe screenWipe)
     {
-        _valueSmoother.SmoothObject(screenWipe, GetPositionSmootherState(screenWipe));
+        _valueSmoother.SmoothObject(screenWipe, new ScreenWipeSmoothingState());
     }
 
     private void SmoothCamera(Camera camera)
     {
-        _valueSmoother.SmoothObject(camera, GetPositionSmootherState(camera));
+        _valueSmoother.SmoothObject(camera, new CameraSmoothingState());
+    }
+
+    private void SmoothLevel(Level level)
+    {
+        _valueSmoother.SmoothObject(level, new LevelZoomSmoothingState());
     }
 
     private void SmoothEntity(Entity entity)
@@ -269,8 +283,6 @@ public class MotionSmoothingHandler : ToggleableFeature<MotionSmoothingHandler>
         {
             ZipMover => new ZipMoverPercentSmoothingState(),
             FinalBossBeam => new FinalBossBeamSmoothingState(),
-            Camera => new CameraSmoothingState(),
-            ScreenWipe => new ScreenWipeSmoothingState(),
             _ => null
         };
     }
