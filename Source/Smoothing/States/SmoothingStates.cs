@@ -12,12 +12,26 @@ public class EntitySmoothingState : PositionSmoothingState<Entity>
 
 public class ZipMoverPercentSmoothingState : FloatSmoothingState<ZipMover>
 {
+    private Vector2 _originalPosition;
+    
     protected override float GetValue(ZipMover obj) => obj.percent;
 
     protected override void SetValue(ZipMover obj, float value)
     {
         obj.percent = value;
         obj.Position = GetPositionAtPercent(obj, value);
+    }
+
+    protected override void SetSmoothed(ZipMover obj)
+    {
+        _originalPosition = obj.Position;
+        base.SetSmoothed(obj);
+    }
+
+    protected override void SetOriginal(ZipMover obj)
+    {
+        base.SetOriginal(obj);
+        obj.Position = _originalPosition;
     }
 
     public Vector2 GetPositionAtPercent(ZipMover obj, float percent)
@@ -120,6 +134,6 @@ public class ActorSmoothingState : PositionSmoothingState<Actor>
 
 public class LevelZoomSmoothingState : FloatSmoothingState<Level>
 {
-    protected override float GetValue(Level obj) => obj.Zoom;
+    protected override float GetValue(Level obj) => obj.Zoom == 0f ? 1 : obj.Zoom;
     protected override void SetValue(Level obj, float value) => obj.Zoom = value;
 }

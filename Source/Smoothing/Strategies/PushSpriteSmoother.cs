@@ -1,5 +1,6 @@
 ﻿using System.Collections.Generic;
 using Celeste.Mod.MotionSmoothing.Smoothing.States;
+using Celeste.Mod.MotionSmoothing.Utilities;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using Mono.Cecil.Cil;
@@ -61,6 +62,7 @@ public class PushSpriteSmoother : SmoothingStrategy<PushSpriteSmoother>
 
     private Vector2 GetSpritePosition(Vector2 position)
     {
+        if (DebugRenderFix.IsDebugRendering) return position;
         if (_currentObjects.Count == 0) return position;
 
         var obj = _currentObjects.Peek();

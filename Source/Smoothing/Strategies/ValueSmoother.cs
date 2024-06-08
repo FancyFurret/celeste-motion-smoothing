@@ -9,13 +9,13 @@ public class ValueSmoother : SmoothingStrategy<ValueSmoother>
         base.SmoothObject(obj, state);
     }
 
-    private void SetPositions()
+    public void SetPositions()
     {
         foreach (var (obj, state) in States())
             state.SetSmoothed(obj);
     }
 
-    private void ResetPositions()
+    public void ResetPositions()
     {
         foreach (var (obj, state) in States())
             state.SetOriginal(obj);

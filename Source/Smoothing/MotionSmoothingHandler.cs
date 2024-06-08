@@ -19,8 +19,8 @@ public class MotionSmoothingHandler : ToggleableFeature<MotionSmoothingHandler>
     public bool WasPaused => _pauseCounter > 0;
     private int _pauseCounter;
 
-    private readonly ValueSmoother _valueSmoother = new();
-    private readonly PushSpriteSmoother _pushSpriteSmoother = new();
+    public ValueSmoother ValueSmoother { get; } = new();
+    public PushSpriteSmoother PushSpriteSmoother { get; } = new();
 
     private readonly Stopwatch _timer = Stopwatch.StartNew();
     private long _lastTicks;
@@ -36,8 +36,8 @@ public class MotionSmoothingHandler : ToggleableFeature<MotionSmoothingHandler>
     public override void Enable()
     {
         base.Enable();
-        _valueSmoother.Enable();
-        _pushSpriteSmoother.Enable();
+        ValueSmoother.Enable();
+        PushSpriteSmoother.Enable();
 
         SmoothAllObjects();
     }
@@ -45,11 +45,11 @@ public class MotionSmoothingHandler : ToggleableFeature<MotionSmoothingHandler>
     public override void Disable()
     {
         base.Disable();
-        _valueSmoother.Disable();
-        _pushSpriteSmoother.Disable();
+        ValueSmoother.Disable();
+        PushSpriteSmoother.Disable();
 
-        _valueSmoother.ClearStates();
-        _pushSpriteSmoother.ClearStates();
+        ValueSmoother.ClearStates();
+        PushSpriteSmoother.ClearStates();
     }
 
     protected override void Hook()
@@ -92,7 +92,7 @@ public class MotionSmoothingHandler : ToggleableFeature<MotionSmoothingHandler>
 
     public ISmoothingState GetState(object obj)
     {
-        return _valueSmoother.GetState(obj) ?? _pushSpriteSmoother.GetState(obj);
+        return ValueSmoother.GetState(obj) ?? PushSpriteSmoother.GetState(obj);
     }
 
     private static void SceneAfterUpdateHook(On.Monocle.Scene.orig_AfterUpdate orig, Scene self)
@@ -103,8 +103,8 @@ public class MotionSmoothingHandler : ToggleableFeature<MotionSmoothingHandler>
         // if the game is not frozen and if the scene *actually* had a chance to update its positions
         if (Instance.Enabled)
         {
-            Instance._valueSmoother.UpdatePositions();
-            Instance._pushSpriteSmoother.UpdatePositions();
+            Instance.ValueSmoother.UpdatePositions();
+            Instance.PushSpriteSmoother.UpdatePositions();
             Instance._positionsWereUpdated = true;
             Instance._lastTicks = Instance._timer.ElapsedTicks;
             if (Instance._pauseCounter > 0)
@@ -135,12 +135,12 @@ public class MotionSmoothingHandler : ToggleableFeature<MotionSmoothingHandler>
 
             if (Instance._positionsWereUpdated)
             {
-                Instance._valueSmoother.CalculateSmoothedPositions(elapsedSeconds, mode);
-                Instance._pushSpriteSmoother.CalculateSmoothedPositions(elapsedSeconds, mode);
+                Instance.ValueSmoother.CalculateSmoothedPositions(elapsedSeconds, mode);
+                Instance.PushSpriteSmoother.CalculateSmoothedPositions(elapsedSeconds, mode);
             }
 
-            Instance._valueSmoother.PreRender();
-            Instance._pushSpriteSmoother.PreRender();
+            Instance.ValueSmoother.PreRender();
+            Instance.PushSpriteSmoother.PreRender();
 
             // Reset the input back so that physics is still consistent
             Instance.AtDrawInputHandler.ResetInput();
@@ -150,8 +150,8 @@ public class MotionSmoothingHandler : ToggleableFeature<MotionSmoothingHandler>
 
         if (Instance.Enabled)
         {
-            Instance._valueSmoother.PostRender();
-            Instance._pushSpriteSmoother.PostRender();
+            Instance.ValueSmoother.PostRender();
+            Instance.PushSpriteSmoother.PostRender();
         }
     }
 
@@ -213,8 +213,8 @@ public class MotionSmoothingHandler : ToggleableFeature<MotionSmoothingHandler>
     {
         if (Engine.Scene is not Level level) return;
 
-        _valueSmoother.ClearStates();
-        _pushSpriteSmoother.ClearStates();
+        ValueSmoother.ClearStates();
+        PushSpriteSmoother.ClearStates();
 
         foreach (var entity in level.Entities)
         {
@@ -230,12 +230,12 @@ public class MotionSmoothingHandler : ToggleableFeature<MotionSmoothingHandler>
 
     private void SmoothScreenWipe(ScreenWipe screenWipe)
     {
-        _valueSmoother.SmoothObject(screenWipe, new ScreenWipeSmoothingState());
+        ValueSmoother.SmoothObject(screenWipe, new ScreenWipeSmoothingState());
     }
 
     private void SmoothCamera(Camera camera)
     {
-        _valueSmoother.SmoothObject(camera, new CameraSmoothingState());
+        ValueSmoother.SmoothObject(camera, new CameraSmoothingState());
     }
 
     private void SmoothLevel(Level level)
@@ -250,11 +250,11 @@ public class MotionSmoothingHandler : ToggleableFeature<MotionSmoothingHandler>
 
         var state = GetPositionSmootherState(entity);
         if (state != null)
-            _valueSmoother.SmoothObject(entity, state);
+            ValueSmoother.SmoothObject(entity, state);
 
         var pushSpriteState = GetPushSpriteSmootherState(entity);
         if (pushSpriteState != null)
-            _pushSpriteSmoother.SmoothObject(entity, pushSpriteState);
+            PushSpriteSmoother.SmoothObject(entity, pushSpriteState);
     }
 
     private void SmoothComponent(GraphicsComponent component)
@@ -268,13 +268,13 @@ public class MotionSmoothingHandler : ToggleableFeature<MotionSmoothingHandler>
         //     return;
 
         if (component.Entity is Booster)
-            _pushSpriteSmoother.SmoothObject(component, GetPushSpriteSmootherState(component));
+            PushSpriteSmoother.SmoothObject(component, GetPushSpriteSmootherState(component));
     }
 
     private void StopSmoothingObject(object obj)
     {
-        _valueSmoother.StopSmoothingObject(obj);
-        _pushSpriteSmoother.StopSmoothingObject(obj);
+        ValueSmoother.StopSmoothingObject(obj);
+        PushSpriteSmoother.StopSmoothingObject(obj);
     }
 
     private ISmoothingState GetPositionSmootherState(object obj)

@@ -1,5 +1,4 @@
 using Celeste.Mod.MotionSmoothing.Smoothing.Targets;
-using Celeste.Mod.MotionSmoothing.Utilities;
 using Microsoft.Xna.Framework;
 using Monocle;
 
@@ -39,6 +38,9 @@ public abstract class SmoothingState<TObject, TValue> : ISmoothingState<TValue>
     protected abstract TValue GetValue(TObject obj);
     protected abstract void SetValue(TObject obj, TValue value);
     protected abstract TValue SmoothValue(TObject obj, double elapsedSeconds, SmoothingMode mode);
+    
+    protected virtual void SetSmoothed(TObject obj) => SetValue(obj, Smoothed);
+    protected virtual void SetOriginal(TObject obj) => SetValue(obj, Original);
 
     public void UpdateHistory(object obj)
     {
@@ -47,8 +49,8 @@ public abstract class SmoothingState<TObject, TValue> : ISmoothingState<TValue>
         Original = History[0];
     }
 
-    public void SetSmoothed(object obj) => SetValue((TObject)obj, Smoothed);
-    public void SetOriginal(object obj) => SetValue((TObject)obj, Original);
+    public void SetSmoothed(object obj) => SetSmoothed((TObject)obj);
+    public void SetOriginal(object obj) => SetOriginal((TObject)obj);
 
     public void Smooth(object obj, double elapsedSeconds, SmoothingMode mode) =>
         Smoothed = SmoothValue((TObject)obj, elapsedSeconds, mode);
