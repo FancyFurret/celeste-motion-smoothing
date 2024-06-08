@@ -56,14 +56,6 @@ public static class PositionSmoother
             if (ActorPushTracker.Instance.ApplyPusherOffset(actor, elapsedSeconds, mode, out var pushed))
                 return pushed;
 
-        if (obj is Camera)
-        {
-            // In theory, we could calculate the Player.CameraTarget using the smoothed player position instead
-            // of interpolating the camera position, but in testing it didn't look much smoother and was more prone
-            // to issues. So for now, just interpolate the camera position.
-            mode = SmoothingMode.Interpolate;
-        }
-
         return SmoothingMath.Smooth(state.RealPositionHistory, elapsedSeconds, mode);
     }
 

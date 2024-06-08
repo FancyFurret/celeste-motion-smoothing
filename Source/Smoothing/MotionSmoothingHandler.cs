@@ -15,7 +15,7 @@ public class MotionSmoothingHandler : ToggleableFeature<MotionSmoothingHandler>
     private WeakReference<Player> _playerReference;
 
     public AtDrawInputHandler AtDrawInputHandler { get; } = new();
-    
+
     public bool WasPaused => _pauseCounter > 0;
     private int _pauseCounter;
 
@@ -24,7 +24,8 @@ public class MotionSmoothingHandler : ToggleableFeature<MotionSmoothingHandler>
 
     private readonly Stopwatch _timer = Stopwatch.StartNew();
     private long _lastTicks;
-    
+    private bool _positionsWereUpdated;
+
     public override void Load()
     {
         base.Load();
@@ -55,6 +56,7 @@ public class MotionSmoothingHandler : ToggleableFeature<MotionSmoothingHandler>
     {
         base.Hook();
 
+        On.Monocle.Scene.AfterUpdate += SceneAfterUpdateHook;
         On.Monocle.Engine.Update += EngineUpdateHook;
         On.Monocle.Engine.Draw += EngineDrawHook;
 
@@ -72,6 +74,7 @@ public class MotionSmoothingHandler : ToggleableFeature<MotionSmoothingHandler>
     {
         base.Unhook();
 
+        On.Monocle.Scene.AfterUpdate -= SceneAfterUpdateHook;
         On.Monocle.Engine.Update -= EngineUpdateHook;
         On.Monocle.Engine.Draw -= EngineDrawHook;
 
@@ -90,19 +93,27 @@ public class MotionSmoothingHandler : ToggleableFeature<MotionSmoothingHandler>
         return _valueSmoother.GetState(obj) ?? _pushSpriteSmoother.GetState(obj);
     }
 
-    private static void EngineUpdateHook(On.Monocle.Engine.orig_Update orig, Engine self, GameTime gameTime)
+    private static void SceneAfterUpdateHook(On.Monocle.Scene.orig_AfterUpdate orig, Scene self)
     {
-        orig(self, gameTime);
+        orig(self);
 
+        // Updating positions in Scene.AfterUpdate (instead of Engine.Update) ensures that we only update the positions
+        // if the game is not frozen and if the scene *actually* had a chance to update its positions
         if (Instance.Enabled)
         {
-            Instance._lastTicks = Instance._timer.ElapsedTicks;
             Instance._valueSmoother.UpdatePositions();
             Instance._pushSpriteSmoother.UpdatePositions();
-            
+            Instance._positionsWereUpdated = true;
+            Instance._lastTicks = Instance._timer.ElapsedTicks;
             if (Instance._pauseCounter > 0)
                 Instance._pauseCounter--;
         }
+    }
+
+    private static void EngineUpdateHook(On.Monocle.Engine.orig_Update orig, Engine self, GameTime gameTime)
+    {
+        Instance._positionsWereUpdated = false;
+        orig(self, gameTime);
     }
 
     private static void EngineDrawHook(On.Monocle.Engine.orig_Draw orig, Engine self, GameTime gameTime)
@@ -120,8 +131,12 @@ public class MotionSmoothingHandler : ToggleableFeature<MotionSmoothingHandler>
             if (Instance.AtDrawInputHandler.PressedThisUpdate(Input.Pause))
                 Instance._pauseCounter = 5;
 
-            Instance._valueSmoother.CalculateSmoothedPositions(elapsedSeconds, mode);
-            Instance._pushSpriteSmoother.CalculateSmoothedPositions(elapsedSeconds, mode);
+            if (Instance._positionsWereUpdated)
+            {
+                Instance._valueSmoother.CalculateSmoothedPositions(elapsedSeconds, mode);
+                Instance._pushSpriteSmoother.CalculateSmoothedPositions(elapsedSeconds, mode);
+            }
+
             Instance._valueSmoother.PreRender();
             Instance._pushSpriteSmoother.PreRender();
 
