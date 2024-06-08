@@ -14,6 +14,24 @@ public static class PositionSmoother
         if (ShouldCancelSmoothing(state, obj))
             return state.OriginalDrawPosition;
 
+        var smoothed = GetSmoothedPosition(state, obj, elapsedSeconds, mode);
+
+        // If we are changing X direction, cancel X smoothing
+        if (DirectionChanged(state.RealPositionHistory[2].X, state.RealPositionHistory[1].X,
+                state.RealPositionHistory[0].X))
+            smoothed.X = state.OriginalDrawPosition.X;
+
+        // If we are changing Y direction, cancel Y smoothing
+        if (DirectionChanged(state.RealPositionHistory[2].Y, state.RealPositionHistory[1].Y,
+                state.RealPositionHistory[0].Y))
+            smoothed.Y = state.OriginalDrawPosition.Y;
+
+        return smoothed;
+    }
+
+    private static Vector2 GetSmoothedPosition(IPositionSmoothingState state, object obj, double elapsedSeconds,
+        SmoothingMode mode)
+    {
         // Manually fix boosters, can't figure out a better way of doing this
         // Boosters do not set the sprite to invisible, and if a player is entering a booster as it respawns,
         // it does not set the position to zero
@@ -65,10 +83,6 @@ public static class PositionSmoother
         if (state.DrawPositionHistory[0] == Vector2.Zero || state.DrawPositionHistory[1] == Vector2.Zero)
             return true;
 
-        // If the position isn't changing, cancel
-        if (state.DrawPositionHistory[0] == state.DrawPositionHistory[1])
-            return true;
-
         // If the entity was invisible but is now visible, cancel
         if (state.WasInvisible && state.GetVisible(obj))
         {
@@ -87,5 +101,10 @@ public static class PositionSmoother
             return true;
 
         return false;
+    }
+
+    private static bool DirectionChanged(float a, float b, float c)
+    {
+        return a > b && b < c || a < b && b > c;
     }
 }

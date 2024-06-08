@@ -87,7 +87,7 @@ public class PushSpriteSmoother : SmoothingStrategy<PushSpriteSmoother>
         // smooth even though that makes no sense
         if (obj is not Player)
             targetPos = targetPos.Round();
-        
+
         return targetPos - state.OriginalDrawPosition;
     }
 
