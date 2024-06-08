@@ -14,18 +14,17 @@ public class MotionSmoothingHandler : ToggleableFeature<MotionSmoothingHandler>
     public Player Player => _playerReference?.TryGetTarget(out var player) == true ? player : null;
     private WeakReference<Player> _playerReference;
 
-    private readonly ValueSmoother _valueSmoother;
-    private readonly PushSpriteSmoother _pushSpriteSmoother;
+    public AtDrawInputHandler AtDrawInputHandler { get; } = new();
+    
+    public bool WasPaused => _pauseCounter > 0;
+    private int _pauseCounter;
+
+    private readonly ValueSmoother _valueSmoother = new();
+    private readonly PushSpriteSmoother _pushSpriteSmoother = new();
 
     private readonly Stopwatch _timer = Stopwatch.StartNew();
     private long _lastTicks;
-
-    public MotionSmoothingHandler()
-    {
-        _valueSmoother = new ValueSmoother();
-        _pushSpriteSmoother = new PushSpriteSmoother();
-    }
-
+    
     public override void Load()
     {
         base.Load();
@@ -38,7 +37,7 @@ public class MotionSmoothingHandler : ToggleableFeature<MotionSmoothingHandler>
         base.Enable();
         _valueSmoother.Enable();
         _pushSpriteSmoother.Enable();
-        
+
         SmoothAllObjects();
     }
 
@@ -47,7 +46,7 @@ public class MotionSmoothingHandler : ToggleableFeature<MotionSmoothingHandler>
         base.Disable();
         _valueSmoother.Disable();
         _pushSpriteSmoother.Disable();
-        
+
         _valueSmoother.ClearStates();
         _pushSpriteSmoother.ClearStates();
     }
@@ -55,10 +54,10 @@ public class MotionSmoothingHandler : ToggleableFeature<MotionSmoothingHandler>
     protected override void Hook()
     {
         base.Hook();
-        
+
         On.Monocle.Engine.Update += EngineUpdateHook;
         On.Monocle.Engine.Draw += EngineDrawHook;
-        
+
         On.Monocle.Tracker.EntityAdded += TrackerEntityAddedHook;
         On.Monocle.Tracker.EntityRemoved += TrackerEntityRemovedHook;
         On.Monocle.Tracker.ComponentAdded += TrackerComponentAddedHook;
@@ -67,16 +66,15 @@ public class MotionSmoothingHandler : ToggleableFeature<MotionSmoothingHandler>
         On.Monocle.Camera.ctor += CameraCtorHook;
         On.Monocle.Camera.ctor_int_int += CameraCtorIntIntHook;
         On.Celeste.ScreenWipe.ctor += ScreenWipeCtorHook;
-
     }
 
     protected override void Unhook()
     {
         base.Unhook();
-        
+
         On.Monocle.Engine.Update -= EngineUpdateHook;
         On.Monocle.Engine.Draw -= EngineDrawHook;
-        
+
         On.Monocle.Tracker.EntityAdded -= TrackerEntityAddedHook;
         On.Monocle.Tracker.EntityRemoved -= TrackerEntityRemovedHook;
         On.Monocle.Tracker.ComponentAdded -= TrackerComponentAddedHook;
@@ -101,6 +99,9 @@ public class MotionSmoothingHandler : ToggleableFeature<MotionSmoothingHandler>
             Instance._lastTicks = Instance._timer.ElapsedTicks;
             Instance._valueSmoother.UpdatePositions();
             Instance._pushSpriteSmoother.UpdatePositions();
+            
+            if (Instance._pauseCounter > 0)
+                Instance._pauseCounter--;
         }
     }
 
@@ -112,10 +113,20 @@ public class MotionSmoothingHandler : ToggleableFeature<MotionSmoothingHandler>
             var elapsedTicks = Instance._timer.ElapsedTicks - Instance._lastTicks;
             var elapsedSeconds = (double)elapsedTicks / Stopwatch.Frequency;
 
+            // To keep physics consistent, input is still only updated at 60FPS, but we want to check if there is input
+            // during smoothing. So temporarily update the input to the current frame.
+            Instance.AtDrawInputHandler.UpdateInput();
+
+            if (Instance.AtDrawInputHandler.PressedThisUpdate(Input.Pause))
+                Instance._pauseCounter = 5;
+
             Instance._valueSmoother.CalculateSmoothedPositions(elapsedSeconds, mode);
             Instance._pushSpriteSmoother.CalculateSmoothedPositions(elapsedSeconds, mode);
             Instance._valueSmoother.PreRender();
             Instance._pushSpriteSmoother.PreRender();
+
+            // Reset the input back so that physics is still consistent
+            Instance.AtDrawInputHandler.ResetInput();
         }
 
         orig(self, gameTime);

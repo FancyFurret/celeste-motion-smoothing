@@ -26,7 +26,7 @@ public static class PositionSmoother
         if (state is ActorSmoothingState entityState && player != null)
         {
             if (obj == player)
-                return PlayerSmoother.Instance.Smooth(player, entityState, elapsedSeconds, mode);
+                return PlayerSmoother.Smooth(player, entityState, elapsedSeconds, mode);
 
             if (obj == player.Holding?.Entity)
             {
@@ -87,6 +87,11 @@ public static class PositionSmoother
         // If the distance is too large, cancel
         var distance = Vector2.DistanceSquared(state.RealPositionHistory[0], state.RealPositionHistory[1]);
         if (distance > MaxLerpDistance * MaxLerpDistance)
+            return true;
+
+        // Fixes pause buffering (otherwise the player could be extrapolated, and then snap back to the location they
+        // were paused at the next update
+        if (MotionSmoothingHandler.Instance.WasPaused)
             return true;
 
         return false;

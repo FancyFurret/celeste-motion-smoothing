@@ -47,7 +47,6 @@ public class MotionSmoothingModule : EverestModule
     private ActorPushTracker ActorPushTracker { get; } = new();
     private UpdateAtDraw UpdateAtDraw { get; } = new();
     private MotionSmoothingInputHandler InputHandler { get; } = new();
-    private PlayerSmoother PlayerSmoother { get; } = new();
 
     public override void Load()
     {
@@ -60,7 +59,6 @@ public class MotionSmoothingModule : EverestModule
         ActorPushTracker.Load();
         UpdateAtDraw.Load();
         InputHandler.Load();
-        PlayerSmoother.Load();
 
         InputHandler.Enable();
         
@@ -77,7 +75,6 @@ public class MotionSmoothingModule : EverestModule
         ActorPushTracker.Unload();
         UpdateAtDraw.Unload();
         InputHandler.Unload();
-        PlayerSmoother.Unload();
 
         On.Monocle.Scene.Begin -= SceneBeginHook;
     }
@@ -128,7 +125,6 @@ public class MotionSmoothingModule : EverestModule
             ActorPushTracker.Disable();
             UpdateAtDraw.Disable();
             UnlockedCameraSmoother.Disable();
-            PlayerSmoother.Disable();
             return;
         }
 
@@ -137,7 +133,6 @@ public class MotionSmoothingModule : EverestModule
         MotionSmoothing.Enable();
         ActorPushTracker.Enable();
         UpdateAtDraw.Enable();
-        PlayerSmoother.Enable();
 
         if (Settings.UnlockCamera)
             UnlockedCameraSmoother.Enable();
