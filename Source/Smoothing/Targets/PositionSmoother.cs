@@ -48,7 +48,7 @@ public static class PositionSmoother
 
             if (obj == player.Holding?.Entity)
             {
-                var playerState = (MotionSmoothingHandler.Instance.GetState(player) as IPositionSmoothingState)!;
+                var playerState = MotionSmoothingHandler.Instance.PlayerState;
                 return entityState.GetLastDrawPosition(mode) + playerState.GetSmoothedOffset(mode);
             }
         }

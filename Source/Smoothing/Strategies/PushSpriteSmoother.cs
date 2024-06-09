@@ -31,6 +31,7 @@ public class PushSpriteSmoother : SmoothingStrategy<PushSpriteSmoother>
         HookComponentRender<Sprite>();
         HookComponentRender<Image>();
         HookComponentRender<DustGraphic>(); // Components (that aren't GraphicsComponents) can be smoothed by looking at their Entity's position
+        HookComponentRender<PlayerHair>();
 
         IL.Monocle.ComponentList.Render += ComponentListRenderHook;
         IL.Monocle.EntityList.Render += EntityListRenderHook;
@@ -69,6 +70,7 @@ public class PushSpriteSmoother : SmoothingStrategy<PushSpriteSmoother>
         position += obj switch
         {
             GraphicsComponent graphicsComponent => GetOffset(graphicsComponent) + GetOffset(graphicsComponent.Entity),
+            PlayerHair hair => GetHairOffset(hair),
             Component component => GetOffset(component.Entity),
             _ => GetOffset(obj)
         };
@@ -76,18 +78,21 @@ public class PushSpriteSmoother : SmoothingStrategy<PushSpriteSmoother>
         return position;
     }
 
+    private Vector2 GetHairOffset(PlayerHair hair)
+    {
+        var playerState = MotionSmoothingHandler.Instance.PlayerState;
+        if (playerState == null) return Vector2.Zero;
+        
+        var targetPos = playerState.SmoothedRealPosition.Round();
+        return targetPos - playerState.OriginalDrawPosition;
+    }
+
     private Vector2 GetOffset(object obj)
     {
         if (GetState(obj) is not IPositionSmoothingState state)
             return Vector2.Zero;
 
-        var targetPos = state.SmoothedRealPosition;
-
-        // Probably placebo, but it feels like this makes the player less
-        // smooth even though that makes no sense
-        if (obj is not Player)
-            targetPos = targetPos.Round();
-
+        var targetPos = state.SmoothedRealPosition.Round();
         return targetPos - state.OriginalDrawPosition;
     }
 

@@ -13,7 +13,7 @@ public class EntitySmoothingState : PositionSmoothingState<Entity>
 public class ZipMoverPercentSmoothingState : FloatSmoothingState<ZipMover>
 {
     private Vector2 _originalPosition;
-    
+
     protected override float GetValue(ZipMover obj) => obj.percent;
 
     protected override void SetValue(ZipMover obj, float value)
@@ -103,16 +103,8 @@ public class CameraSmoothingState : PositionSmoothingState<Camera>
 
     protected override void SetSmoothed(Camera obj)
     {
-        OriginalRealPosition = obj.Position;
-        RealPositionHistory[0] = obj.Position;
-        OriginalDrawPosition = obj.Position;
-        DrawPositionHistory[0] = obj.Position;
+        base.SetSmoothed(obj);
         obj.Position = SmoothedRealPosition.Floor();
-    }
-
-    protected override void SetOriginal(Camera obj)
-    {
-        obj.Position = OriginalRealPosition;
     }
 }
 

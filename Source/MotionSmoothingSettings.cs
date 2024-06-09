@@ -17,8 +17,8 @@ public enum UpdateMode
 
 public enum UnlockCameraMode
 {
-    Zoom,
     Extend,
+    Zoom,
     Border
 }
 
@@ -29,7 +29,7 @@ public class MotionSmoothingSettings : EverestModuleSettings
     private bool _tasMode = false;
     private int _frameRate = 120;
     private bool _unlockCamera = true;
-    private UnlockCameraMode _unlockCameraMode = UnlockCameraMode.Zoom;
+    private UnlockCameraMode _unlockCameraMode = UnlockCameraMode.Extend;
     private SmoothingMode _smoothingMode = SmoothingMode.Extrapolate;
     private UpdateMode _updateMode = UpdateMode.Interval;
 

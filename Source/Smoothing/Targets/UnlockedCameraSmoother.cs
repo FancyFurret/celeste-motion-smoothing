@@ -20,7 +20,8 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
         IL.Celeste.Level.Render += LevelRenderHook;
         IL.Celeste.HiresRenderer.BeginRender += HiresRendererBeginRenderHook;
         IL.Celeste.TalkComponent.TalkComponentUI.Render += TalkComponentUiRenderHook;
-        IL.Celeste.Lookout.Hud.Render += HudRenderHook;
+        IL.Celeste.Lookout.Hud.Render += LookoutHudRenderHook;
+        On.Monocle.Camera.CameraToScreen += CameraToScreenHook;
     }
 
     protected override void Unhook()
@@ -30,7 +31,8 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
         IL.Celeste.Level.Render -= LevelRenderHook;
         IL.Celeste.HiresRenderer.BeginRender -= HiresRendererBeginRenderHook;
         IL.Celeste.TalkComponent.TalkComponentUI.Render -= TalkComponentUiRenderHook;
-        IL.Celeste.Lookout.Hud.Render -= HudRenderHook;
+        IL.Celeste.Lookout.Hud.Render -= LookoutHudRenderHook;
+        On.Monocle.Camera.CameraToScreen -= CameraToScreenHook;
     }
 
     private static Vector2 GetCameraOffset()
@@ -39,15 +41,15 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
         {
             var cameraState = (MotionSmoothingHandler.Instance.GetState(level.Camera) as IPositionSmoothingState)!;
             var pixelOffset = cameraState.SmoothedRealPosition.Floor() - cameraState.SmoothedRealPosition;
-            return pixelOffset * HiresPixelSize;
+            return pixelOffset;
         }
 
         return Vector2.Zero;
     }
 
-    public static Matrix GetCameraMatrix()
+    public static Matrix GetScreenCameraMatrix()
     {
-        var offset = GetCameraOffset();
+        var offset = GetCameraOffset() * HiresPixelSize;
 
         if (MotionSmoothingModule.Settings.UnlockCameraMode == UnlockCameraMode.Border ||
             MotionSmoothingModule.Settings.UnlockCameraMode == UnlockCameraMode.Extend)
@@ -132,7 +134,7 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
         if (cursor.TryGotoNext(MoveType.Before,
                 instr => instr.MatchLdsfld(typeof(Engine).GetField(nameof(Engine.ScreenMatrix))!)))
         {
-            cursor.EmitDelegate(GetCameraMatrix);
+            cursor.EmitDelegate(GetScreenCameraMatrix);
             cursor.EmitCall(typeof(Matrix).GetMethod("op_Multiply", new[] { typeof(Matrix), typeof(Matrix) })!);
         }
 
@@ -191,7 +193,7 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
         }
     }
 
-    private static void HudRenderHook(ILContext il)
+    private static void LookoutHudRenderHook(ILContext il)
     {
         var cursor = new ILCursor(il);
 
@@ -201,5 +203,11 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
             cursor.EmitLdcI4(HiresPixelSize);
             cursor.EmitAdd();
         }
+    }
+
+    private static Vector2 CameraToScreenHook(On.Monocle.Camera.orig_CameraToScreen orig, Camera camera,
+        Vector2 position)
+    {
+        return orig(camera, position + GetCameraOffset());
     }
 }
