@@ -286,6 +286,7 @@ public class MotionSmoothingHandler : ToggleableFeature<MotionSmoothingHandler>
             ZipMover => new ZipMoverPercentSmoothingState(),
             FinalBossBeam => new FinalBossBeamSmoothingState(),
             global::Celeste.Player => new ActorSmoothingState(),
+            TextMenu => new EntitySmoothingState(),
             _ => null
         };
     }
@@ -301,6 +302,7 @@ public class MotionSmoothingHandler : ToggleableFeature<MotionSmoothingHandler>
             ZipMover.ZipMoverPathRenderer => null,
             Trigger => null,
             global::Celeste.Player => null,
+            TextMenu => null,
 
             // These should be last so that more specific types are handled first
             Platform => new PlatformSmoothingState(),
