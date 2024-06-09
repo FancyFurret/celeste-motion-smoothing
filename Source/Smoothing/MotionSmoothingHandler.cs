@@ -14,6 +14,8 @@ public class MotionSmoothingHandler : ToggleableFeature<MotionSmoothingHandler>
     public Player Player => _playerReference?.TryGetTarget(out var player) == true ? player : null;
     private WeakReference<Player> _playerReference;
 
+    public IPositionSmoothingState PlayerState => ValueSmoother.GetState(Player) as IPositionSmoothingState;
+
     public AtDrawInputHandler AtDrawInputHandler { get; } = new();
 
     public bool WasPaused => _pauseCounter > 0;
@@ -240,7 +242,7 @@ public class MotionSmoothingHandler : ToggleableFeature<MotionSmoothingHandler>
 
     private void SmoothLevel(Level level)
     {
-        _valueSmoother.SmoothObject(level, new LevelZoomSmoothingState());
+        ValueSmoother.SmoothObject(level, new LevelZoomSmoothingState());
     }
 
     private void SmoothEntity(Entity entity)
