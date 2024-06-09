@@ -15,13 +15,21 @@ public enum UpdateMode
     Dynamic
 }
 
+public enum UnlockCameraMode
+{
+    Zoom,
+    Extend,
+    Border
+}
+
 public class MotionSmoothingSettings : EverestModuleSettings
 {
     // Defaults
     private bool _enabled = true;
-    private bool _unlockCamera = true;
     private bool _tasMode = false;
     private int _frameRate = 120;
+    private bool _unlockCamera = true;
+    private UnlockCameraMode _unlockCameraMode = UnlockCameraMode.Zoom;
     private SmoothingMode _smoothingMode = SmoothingMode.Extrapolate;
     private UpdateMode _updateMode = UpdateMode.Interval;
 
@@ -72,6 +80,18 @@ public class MotionSmoothingSettings : EverestModuleSettings
             _unlockCamera = value;
             MotionSmoothingModule.Instance.ApplySettings();
         }
+    }
+
+    [SettingSubText(
+        "Only applies if Unlock Camera is enabled. Determines\n" +
+        "how unrendered portions of the level are hidden.\n" +
+        "Zoom: Zooms the camera in slightly\n" +
+        "Extend: Extends the level to the edge of the window\n" +
+        "Border: Adds a small black border around the level")]
+    public UnlockCameraMode UnlockCameraMode
+    {
+        get => _unlockCameraMode;
+        set => _unlockCameraMode = value;
     }
 
     [SettingSubText(
