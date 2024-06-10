@@ -83,7 +83,7 @@ public class ComponentSmoothingState : PositionSmoothingState<GraphicsComponent>
     protected override bool GetVisible(GraphicsComponent obj) => obj.Visible;
 }
 
-public class ScreenWipeSmoothingState : FloatSmoothingState<ScreenWipe>
+public class ScreenWipeSmoothingState : PercentSmoothingState<ScreenWipe>
 {
     protected override float GetValue(ScreenWipe obj) => obj.Percent;
     protected override void SetValue(ScreenWipe obj, float value) => obj.Percent = value;

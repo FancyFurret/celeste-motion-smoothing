@@ -1,3 +1,4 @@
+using System;
 using Celeste.Mod.MotionSmoothing.Smoothing.Targets;
 using Microsoft.Xna.Framework;
 using Monocle;
@@ -142,6 +143,12 @@ public abstract class FloatSmoothingState<T> : SmoothingState<T, float>
 {
     protected override float SmoothValue(T obj, double elapsedSeconds, SmoothingMode mode) =>
         SmoothingMath.Smooth(History, elapsedSeconds, mode);
+}
+
+public abstract class PercentSmoothingState<T> : SmoothingState<T, float>
+{
+    protected override float SmoothValue(T obj, double elapsedSeconds, SmoothingMode mode) =>
+        Math.Clamp(SmoothingMath.Smooth(History, elapsedSeconds, mode), 0f, 1f);
 }
 
 public abstract class AngleSmoothingState<T> : SmoothingState<T, float>
