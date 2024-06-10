@@ -109,7 +109,7 @@ public class MotionSmoothingHandler : ToggleableFeature<MotionSmoothingHandler>
             Instance.PushSpriteSmoother.UpdatePositions();
             Instance._positionsWereUpdated = true;
             Instance._lastTicks = Instance._timer.ElapsedTicks;
-            if (Instance._pauseCounter > 0)
+            if (!Engine.Scene.Paused && Instance._pauseCounter > 0)
                 Instance._pauseCounter--;
         }
     }
@@ -133,7 +133,7 @@ public class MotionSmoothingHandler : ToggleableFeature<MotionSmoothingHandler>
             Instance.AtDrawInputHandler.UpdateInput();
 
             if (Instance.AtDrawInputHandler.PressedThisUpdate(Input.Pause))
-                Instance._pauseCounter = 5;
+                Instance._pauseCounter = 10;
 
             if (Instance._positionsWereUpdated)
             {
