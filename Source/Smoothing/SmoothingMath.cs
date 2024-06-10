@@ -23,7 +23,7 @@ public static class SmoothingMath
         return mode switch
         {
             SmoothingMode.Interpolate => InterpolateAngle(history, elapsedSeconds),
-            SmoothingMode.Extrapolate => Extrapolate(history, elapsedSeconds),
+            SmoothingMode.Extrapolate => ExtrapolateAngle(history, elapsedSeconds),
             _ => history[0]
         };
     }
@@ -60,6 +60,12 @@ public static class SmoothingMath
     {
         var speed = (history[0] - history[1]) / SecondsPerUpdate;
         return history[0] + speed * Engine.TimeRate * Engine.TimeRateB * (float)elapsedSeconds;
+    }
+    
+    public static float ExtrapolateAngle(float[] history, double elapsedSeconds)
+    {
+        var speed = Calc.AngleDiff(history[1], history[0]) / SecondsPerUpdate;
+        return Calc.WrapAngle(history[0] + speed * Engine.TimeRate * Engine.TimeRateB * (float)elapsedSeconds);
     }
 
     public static Vector2 Extrapolate(Vector2[] positionHistory, double elapsedSeconds)

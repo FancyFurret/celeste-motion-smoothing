@@ -38,7 +38,7 @@ public abstract class SmoothingState<TObject, TValue> : ISmoothingState<TValue>
     protected abstract TValue GetValue(TObject obj);
     protected abstract void SetValue(TObject obj, TValue value);
     protected abstract TValue SmoothValue(TObject obj, double elapsedSeconds, SmoothingMode mode);
-    
+
     protected virtual void SetSmoothed(TObject obj) => SetValue(obj, Smoothed);
     protected virtual void SetOriginal(TObject obj) => SetValue(obj, Original);
 
