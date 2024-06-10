@@ -29,7 +29,7 @@ public static class PlayerSmoother
     private static Vector2 Extrapolate(Player player, IPositionSmoothingState state, double elapsed)
     {
         // Disable during screen transitions or pause
-        if (Engine.Scene is Level { Transitioning: true } or { Paused: true } || Engine.FreezeTimer > 0)
+        if (Engine.Scene is Level { Transitioning: true } or { Paused: true })
             return state.OriginalDrawPosition;
 
         // If the player is about to dash, reset the states so the player position stops going in the wrong direction
