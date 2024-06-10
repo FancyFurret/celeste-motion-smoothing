@@ -80,9 +80,11 @@ public class PushSpriteSmoother : SmoothingStrategy<PushSpriteSmoother>
 
     private Vector2 GetHairOffset(PlayerHair hair)
     {
-        var playerState = MotionSmoothingHandler.Instance.PlayerState;
+        var playerState = (hair.Entity is Player
+            ? MotionSmoothingHandler.Instance.PlayerState
+            : GetState(hair.Entity)) as IPositionSmoothingState;
         if (playerState == null) return Vector2.Zero;
-        
+
         var targetPos = playerState.SmoothedRealPosition.Round();
         return targetPos - playerState.OriginalDrawPosition;
     }
