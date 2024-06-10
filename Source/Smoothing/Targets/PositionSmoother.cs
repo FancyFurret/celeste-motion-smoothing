@@ -95,11 +95,6 @@ public static class PositionSmoother
         if (distance > MaxLerpDistance * MaxLerpDistance)
             return true;
 
-        // Fixes pause buffering (otherwise the player could be extrapolated, and then snap back to the location they
-        // were paused at the next update
-        if (MotionSmoothingHandler.Instance.WasPaused || Engine.Scene.Paused)
-            return true;
-
         return false;
     }
 

@@ -53,8 +53,14 @@ public abstract class SmoothingState<TObject, TValue> : ISmoothingState<TValue>
     public void SetSmoothed(object obj) => SetSmoothed((TObject)obj);
     public void SetOriginal(object obj) => SetOriginal((TObject)obj);
 
-    public void Smooth(object obj, double elapsedSeconds, SmoothingMode mode) =>
-        Smoothed = SmoothValue((TObject)obj, elapsedSeconds, mode);
+    public void Smooth(object obj, double elapsedSeconds, SmoothingMode mode)
+    {
+        // Fixes pause buffering
+        if (MotionSmoothingHandler.Instance.WasPaused || Engine.Scene.Paused)
+            Smoothed = Original;
+        else
+            Smoothed = SmoothValue((TObject)obj, elapsedSeconds, mode);
+    }
 }
 
 // Positions get a fancier state object in order to deal with visibility, and draw vs exact positions
@@ -101,8 +107,15 @@ public abstract class PositionSmoothingState<T> : IPositionSmoothingState
 
     protected virtual void SetOriginal(T obj) => SetPosition(obj, PreSmoothedPosition);
 
-    protected virtual void Smooth(T obj, double elapsedSeconds, SmoothingMode mode) =>
-        SmoothedRealPosition = PositionSmoother.Smooth(this, obj, elapsedSeconds, mode);
+    protected virtual void Smooth(T obj, double elapsedSeconds, SmoothingMode mode)
+    {
+        // Fixes pause buffering (otherwise the player could be extrapolated, and then snap back to the location they
+        // were paused at the next update
+        if (MotionSmoothingHandler.Instance.WasPaused || Engine.Scene.Paused)
+            SmoothedRealPosition = OriginalDrawPosition;
+        else
+            SmoothedRealPosition = PositionSmoother.Smooth(this, obj, elapsedSeconds, mode);
+    }
 
     public void UpdateHistory(object obj)
     {
