@@ -1,3 +1,4 @@
+using System;
 using Microsoft.Xna.Framework;
 using Monocle;
 
@@ -126,6 +127,6 @@ public class ActorSmoothingState : PositionSmoothingState<Actor>
 
 public class LevelZoomSmoothingState : FloatSmoothingState<Level>
 {
-    protected override float GetValue(Level obj) => obj.Zoom == 0f ? 1 : obj.Zoom;
-    protected override void SetValue(Level obj, float value) => obj.Zoom = value;
+    protected override float GetValue(Level obj) => Math.Max(obj.Zoom, 1f);
+    protected override void SetValue(Level obj, float value) => obj.Zoom = Math.Max(value, 1f);
 }
