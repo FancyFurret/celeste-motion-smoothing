@@ -48,6 +48,7 @@ public class MotionSmoothingModule : EverestModule
     private UpdateAtDraw UpdateAtDraw { get; } = new();
     private MotionSmoothingInputHandler InputHandler { get; } = new();
     private DebugRenderFix DebugRenderFix { get; } = new();
+    private DeltaTimeFix DeltaTimeFix { get; } = new();
 
     public override void Load()
     {
@@ -62,6 +63,7 @@ public class MotionSmoothingModule : EverestModule
         UpdateAtDraw.Load();
         InputHandler.Load();
         DebugRenderFix.Load();
+        DeltaTimeFix.Load();
 
         InputHandler.Enable();
 
@@ -79,6 +81,7 @@ public class MotionSmoothingModule : EverestModule
         UpdateAtDraw.Unload();
         InputHandler.Unload();
         DebugRenderFix.Unload();
+        DeltaTimeFix.Unload();
 
         On.Monocle.Scene.Begin -= SceneBeginHook;
     }
@@ -104,6 +107,7 @@ public class MotionSmoothingModule : EverestModule
             ActorPushTracker.Disable();
             UpdateAtDraw.Disable();
             DebugRenderFix.Disable();
+            DeltaTimeFix.Disable();
             return;
         }
 
@@ -139,6 +143,7 @@ public class MotionSmoothingModule : EverestModule
         ActorPushTracker.Enable();
         UpdateAtDraw.Enable();
         DebugRenderFix.Enable();
+        DeltaTimeFix.Enable();
 
         if (Settings.UnlockCamera)
             UnlockedCameraSmoother.Enable();
