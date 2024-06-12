@@ -1,3 +1,4 @@
+using Celeste.Mod.MotionSmoothing.Interop;
 using Celeste.Mod.MotionSmoothing.Smoothing.States;
 using Celeste.Mod.MotionSmoothing.Utilities;
 using Microsoft.Xna.Framework;
@@ -37,6 +38,9 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
 
     private static Vector2 GetCameraOffset()
     {
+        if (CelesteTasInterop.CenterCamera)
+            return Vector2.Zero;
+
         if (Engine.Scene is Level level)
         {
             var cameraState = (MotionSmoothingHandler.Instance.GetState(level.Camera) as IPositionSmoothingState)!;

@@ -1,4 +1,5 @@
 using System;
+using Celeste.Mod.MotionSmoothing.Interop;
 using Microsoft.Xna.Framework;
 using Monocle;
 
@@ -98,13 +99,15 @@ public class FinalBossBeamSmoothingState : AngleSmoothingState<FinalBossBeam>
 
 public class CameraSmoothingState : PositionSmoothingState<Camera>
 {
+    protected override bool CancelSmoothing => CelesteTasInterop.CenterCamera;
     protected override Vector2 GetRealPosition(Camera obj) => obj.Position;
     protected override void SetPosition(Camera obj, Vector2 position) => obj.Position = position;
     protected override bool GetVisible(Camera obj) => true;
 
     protected override void SetSmoothed(Camera obj)
     {
-        base.SetSmoothed(obj);
+        if (CancelSmoothing) return;
+        PreSmoothedPosition = obj.Position;
         obj.Position = SmoothedRealPosition.Floor();
     }
 }
@@ -127,6 +130,8 @@ public class ActorSmoothingState : PositionSmoothingState<Actor>
 
 public class LevelZoomSmoothingState : FloatSmoothingState<Level>
 {
+    protected override SmoothingMode? OverrideSmoothingMode => SmoothingMode.Extrapolate;
+    protected override bool CancelSmoothing => CelesteTasInterop.CenterCamera;
     protected override float GetValue(Level obj) => Math.Max(obj.Zoom, 1f);
     protected override void SetValue(Level obj, float value) => obj.Zoom = Math.Max(value, 1f);
 }

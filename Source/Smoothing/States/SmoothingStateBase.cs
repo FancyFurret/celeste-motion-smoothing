@@ -32,16 +32,30 @@ public abstract class SmoothingState<TObject, TValue> : ISmoothingState<TValue>
     public TValue[] History { get; } = new TValue[2];
     public TValue Smoothed { get; set; }
     public TValue Original { get; set; }
+    protected TValue PreSmoothed { get; set; }
 
     public TValue GetValue(object obj) => GetValue((TObject)obj);
     public void SetValue(object obj, TValue value) => SetValue((TObject)obj, value);
+
+    protected virtual SmoothingMode? OverrideSmoothingMode => null;
+    protected virtual bool CancelSmoothing => false;
 
     protected abstract TValue GetValue(TObject obj);
     protected abstract void SetValue(TObject obj, TValue value);
     protected abstract TValue SmoothValue(TObject obj, double elapsedSeconds, SmoothingMode mode);
 
-    protected virtual void SetSmoothed(TObject obj) => SetValue(obj, Smoothed);
-    protected virtual void SetOriginal(TObject obj) => SetValue(obj, Original);
+    protected virtual void SetSmoothed(TObject obj)
+    {
+        if (CancelSmoothing) return;
+        PreSmoothed = GetValue(obj);
+        SetValue(obj, Smoothed);
+    }
+
+    protected virtual void SetOriginal(TObject obj)
+    {
+        if (CancelSmoothing) return;
+        SetValue(obj, PreSmoothed);
+    }
 
     public void UpdateHistory(object obj)
     {
@@ -55,6 +69,9 @@ public abstract class SmoothingState<TObject, TValue> : ISmoothingState<TValue>
 
     public void Smooth(object obj, double elapsedSeconds, SmoothingMode mode)
     {
+        if (OverrideSmoothingMode.HasValue)
+            mode = OverrideSmoothingMode.Value;
+
         // Fixes pause buffering
         if (MotionSmoothingHandler.Instance.WasPaused || Engine.Scene.Paused)
             Smoothed = Original;
@@ -88,10 +105,13 @@ public abstract class PositionSmoothingState<T> : IPositionSmoothingState
     public Vector2 SmoothedRealPosition { get; private set; }
     public Vector2 OriginalRealPosition { get; private set; }
     public Vector2 OriginalDrawPosition { get; private set; }
-    private Vector2 PreSmoothedPosition { get; set; }
+    protected Vector2 PreSmoothedPosition { get; set; }
     public bool WasInvisible { get; set; }
 
     public bool GetVisible(object obj) => GetVisible((T)obj);
+
+    protected virtual SmoothingMode? OverrideSmoothingMode => null;
+    protected virtual bool CancelSmoothing => false;
 
     protected abstract Vector2 GetRealPosition(T obj);
     protected virtual Vector2 GetDrawPosition(T obj) => GetRealPosition(obj);
@@ -101,14 +121,22 @@ public abstract class PositionSmoothingState<T> : IPositionSmoothingState
 
     protected virtual void SetSmoothed(T obj)
     {
+        if (CancelSmoothing) return;
         PreSmoothedPosition = GetDrawPosition(obj);
         SetPosition(obj, SmoothedRealPosition.Round());
     }
 
-    protected virtual void SetOriginal(T obj) => SetPosition(obj, PreSmoothedPosition);
+    protected virtual void SetOriginal(T obj)
+    {
+        if (CancelSmoothing) return;
+        SetPosition(obj, PreSmoothedPosition);
+    }
 
     protected virtual void Smooth(T obj, double elapsedSeconds, SmoothingMode mode)
     {
+        if (OverrideSmoothingMode.HasValue)
+            mode = OverrideSmoothingMode.Value;
+
         // Fixes pause buffering (otherwise the player could be extrapolated, and then snap back to the location they
         // were paused at the next update
         if (MotionSmoothingHandler.Instance.WasPaused || Engine.Scene.Paused)
