@@ -1,5 +1,7 @@
+using System;
 using Celeste.Mod.MotionSmoothing.Utilities;
 using Microsoft.Xna.Framework.Input;
+using YamlDotNet.Serialization;
 
 namespace Celeste.Mod.MotionSmoothing;
 
@@ -33,6 +35,10 @@ public class MotionSmoothingSettings : EverestModuleSettings
     private SmoothingMode _smoothingMode = SmoothingMode.Extrapolate;
     private UpdateMode _updateMode = UpdateMode.Interval;
 
+    // Used for compatibility with Viv's game speed mod
+    private double _gameSpeed = 60;
+    private bool _gameSpeedInLevelOnly = true;
+
     private FrameRateTextMenuItem _frameRateMenuItem;
 
     public bool Enabled
@@ -42,13 +48,13 @@ public class MotionSmoothingSettings : EverestModuleSettings
         {
             _enabled = value;
             MotionSmoothingModule.Instance.ApplySettings();
+            MotionSmoothingModule.Instance.EnabledActions.ForEach(action => action(value));
         }
     }
 
     [DefaultButtonBinding(new Buttons(), Keys.F8)]
     public ButtonBinding ButtonToggleSmoothing { get; set; }
 
-    [SettingIgnore]
     public int FrameRate
     {
         get => _frameRate;
@@ -136,6 +142,32 @@ public class MotionSmoothingSettings : EverestModuleSettings
         set
         {
             _tasMode = value;
+            MotionSmoothingModule.Instance.ApplySettings();
+        }
+    }
+
+    [SettingIgnore]
+    [YamlIgnore]
+    public double GameSpeed
+    {
+        get => _gameSpeed;
+        set
+        {
+            _gameSpeed = value;
+            MotionSmoothingModule.Instance.ApplySettings();
+        }
+    }
+
+    [SettingIgnore] [YamlIgnore] public bool GameSpeedModified => Math.Abs(_gameSpeed - 60) > double.Epsilon;
+
+    [SettingIgnore]
+    [YamlIgnore]
+    public bool GameSpeedInLevelOnly
+    {
+        get => _gameSpeedInLevelOnly;
+        set
+        {
+            _gameSpeedInLevelOnly = value;
             MotionSmoothingModule.Instance.ApplySettings();
         }
     }

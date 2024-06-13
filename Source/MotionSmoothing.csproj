@@ -20,6 +20,7 @@
         <PackageReference Include="MonoMod.RuntimeDetour" Version="25.0.2" PrivateAssets="all" ExcludeAssets="runtime" />
         <PackageReference Include="MonoMod.Patcher" Version="25.0.0-prerelease.2" />
         <PackageReference Include="CelesteAnalyzer" Version="*" />
+        <PackageReference Include="YamlDotNet" Version="15.1.6" />
     </ItemGroup>
 
     <ItemGroup>
@@ -35,6 +36,13 @@
     <Target Name="CopyFiles" AfterTargets="Build" Inputs="$(OutputPath)\$(AssemblyName).dll;$(OutputPath)\$(AssemblyName).pdb" Outputs="..\bin\$(AssemblyName).dll;..\bin\$(AssemblyName).pdb">
         <Copy SourceFiles="$(OutputPath)\$(AssemblyName).dll" DestinationFolder="..\bin" />
         <Copy SourceFiles="$(OutputPath)\$(AssemblyName).pdb" DestinationFolder="..\bin" />
+    </Target>
+    
+    <Target Name="DeployToMods" AfterTargets="CopyFiles" Inputs="$(ZippedFiles)" Outputs="$(CelestePrefix)\Mods\MotionSmoothing">
+        <Copy SourceFiles="..\everest.yaml" DestinationFolder="$(CelestePrefix)\Mods\MotionSmoothing" />
+        <Copy SourceFiles="..\bin\MotionSmoothing.dll" DestinationFolder="$(CelestePrefix)\Mods\MotionSmoothing\bin" />
+        <Copy SourceFiles="..\bin\MotionSmoothing.pdb" DestinationFolder="$(CelestePrefix)\Mods\MotionSmoothing\bin" />
+        <Copy SourceFiles="..\Dialog\English.txt" DestinationFolder="$(CelestePrefix)\Mods\MotionSmoothing\Dialog" />
     </Target>
 
     <Target Name="PackageMod" AfterTargets="CopyFiles" Inputs="$(ZippedFiles)" Outputs="..\MotionSmoothing.zip" Condition="'$(Configuration)' == 'Release'">

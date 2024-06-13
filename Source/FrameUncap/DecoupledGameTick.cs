@@ -1,16 +1,24 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Threading;
 using Celeste.Mod.MotionSmoothing.Utilities;
 using Microsoft.Xna.Framework;
 using Monocle;
+using MonoMod.Cil;
 using MonoMod.RuntimeDetour;
 
 namespace Celeste.Mod.MotionSmoothing.FrameUncap;
 
 public class DecoupledGameTick : ToggleableFeature<DecoupledGameTick>, IFrameUncapStrategy
 {
-    public TimeSpan TargetUpdateElapsedTime { get; set; }
-    public TimeSpan TargetDrawElapsedTime { get; set; }
+    // This is how fast Update should be called
+    public TimeSpan TargetUpdateElapsedTime { get; set; } = GameUtils.UpdateElapsedTime;
+
+    // This is how fast Draw should be called
+    public TimeSpan TargetDrawElapsedTime { get; set; } = GameUtils.UpdateElapsedTime;
+
+    // This is what will be passed to Update, that gets used to calculate DeltaTime
+    public TimeSpan TargetUpdateDeltaTime { get; set; } = GameUtils.UpdateElapsedTime;
 
     private readonly Game _game = Engine.Instance;
 
@@ -22,14 +30,57 @@ public class DecoupledGameTick : ToggleableFeature<DecoupledGameTick>, IFrameUnc
     protected override void Hook()
     {
         base.Hook();
+
         AddHook(new Hook(typeof(Game).GetMethod(nameof(Game.Tick))!, GameTickHook));
+
+        MainThreadHelper.Schedule(() =>
+        {
+            using (new DetourConfigContext(new DetourConfig(
+                       "MotionSmoothingModule.DecoupledGameTick.LevelUpdateHook",
+                       after: new List<string> { "SpeedMod" }
+                   )).Use())
+            {
+                IL.Celeste.Level.UpdateTime += LevelUpdateTimeHook;
+            }
+        });
     }
 
-    public void SetTargetFramerate(int updateFramerate, int drawFramerate)
+    protected override void Unhook()
+    {
+        base.Unhook();
+
+        MainThreadHelper.Schedule(() => { IL.Celeste.Level.UpdateTime -= LevelUpdateTimeHook; });
+    }
+
+    public void SetTargetFramerate(double updateFramerate, double drawFramerate)
     {
         TargetDrawElapsedTime = new TimeSpan((long)Math.Round(10_000_000.0 / drawFramerate));
         TargetUpdateElapsedTime = new TimeSpan((long)Math.Round(10_000_000.0 / updateFramerate));
+        TargetUpdateDeltaTime = TargetUpdateElapsedTime;
         _previousTicks = _game.gameTimer?.Elapsed.Ticks ?? 0;
+    }
+
+    public void SetTargetDeltaTime(double deltaTime)
+    {
+        TargetUpdateDeltaTime = new TimeSpan((long)Math.Round(10_000_000.0 / deltaTime));
+    }
+
+    private static void LevelUpdateTimeHook(ILContext il)
+    {
+        var cursor = new ILCursor(il);
+
+        if (cursor.TryGotoNext(MoveType.After, instr => instr.MatchCall<Engine>("get_RawDeltaTime")))
+        {
+            static double GetDeltaTime(float oldDt)
+            {
+                if (MotionSmoothingModule.Settings.GameSpeedModified)
+                    return (float)Instance.TargetUpdateDeltaTime.TotalSeconds * 60f /
+                           MotionSmoothingModule.Settings.GameSpeed;
+                return oldDt;
+            }
+
+            cursor.EmitDelegate(GetDeltaTime);
+        }
     }
 
     private void Tick()
@@ -66,11 +117,12 @@ public class DecoupledGameTick : ToggleableFeature<DecoupledGameTick>, IFrameUnc
                 ref _game.textInputSuppress);
 
             // Update
-            _game.gameTime.ElapsedGameTime = TargetUpdateElapsedTime;
+            // Make sure to use the TargetUpdateDeltaTime for this, since this is how DeltaTime is calculated
+            _game.gameTime.ElapsedGameTime = TargetUpdateDeltaTime;
             var updates = 0;
             while (_accumulatedUpdateElapsedTime >= TargetUpdateElapsedTime)
             {
-                _game.gameTime.TotalGameTime += TargetUpdateElapsedTime;
+                _game.gameTime.TotalGameTime += TargetUpdateDeltaTime;
                 _accumulatedUpdateElapsedTime -= TargetUpdateElapsedTime;
                 ++updates;
                 _game.AssertNotDisposed();
@@ -90,7 +142,7 @@ public class DecoupledGameTick : ToggleableFeature<DecoupledGameTick>, IFrameUnc
             if (updates == 1 && _game.updateFrameLag > 0)
                 --_game.updateFrameLag;
 
-            _game.gameTime.ElapsedGameTime = TimeSpan.FromTicks(TargetUpdateElapsedTime.Ticks * updates);
+            _game.gameTime.ElapsedGameTime = TimeSpan.FromTicks(TargetUpdateDeltaTime.Ticks * updates);
         }
 
         // Draw if ready
@@ -104,7 +156,7 @@ public class DecoupledGameTick : ToggleableFeature<DecoupledGameTick>, IFrameUnc
             else
             {
                 // Engine.FPS is calculated in Draw, and ends up being 120+, so this fixes that
-                _game.gameTime.ElapsedGameTime = TargetUpdateElapsedTime;
+                _game.gameTime.ElapsedGameTime = TargetUpdateDeltaTime;
 
                 // Ensure DeltaTime is accurate for drawing
                 Engine.RawDeltaTime = (float)_accumulatedDrawElapsedTime.TotalSeconds;

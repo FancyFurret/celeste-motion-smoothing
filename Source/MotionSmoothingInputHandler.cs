@@ -42,7 +42,7 @@ public class MotionSmoothingInputHandler : ToggleableFeature<MotionSmoothingInpu
             if (MotionSmoothingModule.Settings.ButtonToggleSmoothing.Pressed)
             {
                 Logger.Log(LogLevel.Info, "MotionSmoothingInputHandler", "Toggling motion smoothing");
-                MotionSmoothingModule.Instance.ToggleMod();
+                MotionSmoothingModule.Settings.Enabled = !MotionSmoothingModule.Settings.Enabled;
             }
         }
     }

@@ -1,4 +1,3 @@
-using Celeste.Mod.MotionSmoothing.Utilities;
 using Microsoft.Xna.Framework;
 using Monocle;
 
@@ -6,7 +5,7 @@ namespace Celeste.Mod.MotionSmoothing.Smoothing;
 
 public static class SmoothingMath
 {
-    private static readonly float SecondsPerUpdate = GameUtils.UpdateElapsedSeconds;
+    private static float SecondsPerUpdate => (float)(1f / MotionSmoothingModule.Settings.GameSpeed);
 
     public static float Smooth(float[] history, double elapsedSeconds, SmoothingMode mode)
     {
@@ -61,7 +60,7 @@ public static class SmoothingMath
         var speed = (history[0] - history[1]) / SecondsPerUpdate;
         return history[0] + speed * Engine.TimeRate * Engine.TimeRateB * (float)elapsedSeconds;
     }
-    
+
     public static float ExtrapolateAngle(float[] history, double elapsedSeconds)
     {
         var speed = Calc.AngleDiff(history[1], history[0]) / SecondsPerUpdate;

@@ -47,19 +47,22 @@ public class UpdateEveryNTicks : ToggleableFeature<UpdateEveryNTicks>, IFrameUnc
         base.Unhook();
     }
 
-    public void SetTargetFramerate(int updateFramerate, int drawFramerate)
+    public void SetTargetFramerate(double updateFramerate, double drawFramerate)
     {
+        updateFramerate = Math.Floor(updateFramerate);
+        drawFramerate = Math.Floor(drawFramerate);
+
         if (drawFramerate % updateFramerate != 0)
         {
             Logger.Log(LogLevel.Warn, "MotionSmoothingModule",
                 "Draw framerate must be a multiple of update framerate.");
-            drawFramerate = (int)(Math.Ceiling(drawFramerate / (float)updateFramerate) * updateFramerate);
+            drawFramerate = (int)(Math.Ceiling(drawFramerate / updateFramerate) * updateFramerate);
         }
 
         TargetDrawElapsedTime = new TimeSpan((long)Math.Round(10_000_000.0 / drawFramerate));
         TargetUpdateElapsedTime = new TimeSpan((long)Math.Round(10_000_000.0 / updateFramerate));
 
-        _drawsPerUpdate = drawFramerate / updateFramerate;
+        _drawsPerUpdate = (int)drawFramerate / (int)updateFramerate;
         _drawsUntilUpdate = _drawsPerUpdate;
         _game.TargetElapsedTime = TargetDrawElapsedTime;
     }

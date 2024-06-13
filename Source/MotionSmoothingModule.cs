@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Reflection;
 using Celeste.Mod.MotionSmoothing.FrameUncap;
 using Celeste.Mod.MotionSmoothing.Interop;
@@ -33,6 +34,8 @@ public class MotionSmoothingModule : EverestModule
 #endif
     }
 
+    public List<Action<bool>> EnabledActions { get; } = new();
+
     public IFrameUncapStrategy FrameUncapStrategy => Settings.UpdateMode switch
     {
         UpdateMode.Interval => UpdateEveryNTicks,
@@ -52,6 +55,7 @@ public class MotionSmoothingModule : EverestModule
 
     public override void Load()
     {
+        typeof(MotionSmoothingExports).ModInterop();
         typeof(GravityHelperImports).ModInterop();
         typeof(SpeedrunToolImports).ModInterop();
         CelesteTasInterop.Load();
@@ -86,19 +90,12 @@ public class MotionSmoothingModule : EverestModule
         On.Monocle.Scene.Begin -= SceneBeginHook;
     }
 
-    public void ToggleMod()
-    {
-        Settings.Enabled = !Settings.Enabled;
-        ApplySettings();
-    }
-
     public void ApplySettings()
     {
         if (MotionSmoothing == null) return;
 
         if (!Settings.Enabled)
         {
-            UpdateEveryNTicks.SetTargetFramerate(60, 60);
             UpdateEveryNTicks.Disable();
             DecoupledGameTick.Disable();
 
@@ -111,7 +108,11 @@ public class MotionSmoothingModule : EverestModule
             return;
         }
 
-        if (Settings.UpdateMode == UpdateMode.Dynamic)
+        var inLevel = Engine.Scene is Level || Engine.Scene is LevelLoader ||
+                      Engine.Scene is LevelExit || Engine.Scene is Emulator;
+
+        // If the game speed is modified, then we have to use dynamic mode
+        if (Settings.UpdateMode == UpdateMode.Dynamic || Settings.GameSpeedModified)
         {
             UpdateEveryNTicks.Disable();
             DecoupledGameTick.Enable();
@@ -122,28 +123,37 @@ public class MotionSmoothingModule : EverestModule
             UpdateEveryNTicks.Enable();
         }
 
-        var inLevel = Engine.Scene is Level || Engine.Scene is LevelLoader ||
-                      Engine.Scene is LevelExit || Engine.Scene is Emulator;
         if (!inLevel)
         {
             // For TAS, just draw at 60 as well. Motion smoothing in the Overworld looks awful at the moment.
             // If we're not in a level, just use the target framerate
-            var fps = Settings.TasMode ? 60 : Settings.FrameRate;
-            FrameUncapStrategy.SetTargetFramerate(fps, fps);
+            var drawFps = Settings.TasMode ? 60 : Settings.FrameRate;
+            var updateFps = (double)Settings.FrameRate;
+            if (Settings.TasMode) updateFps = 60;
+            else if (Settings.GameSpeedModified && !Settings.GameSpeedInLevelOnly) updateFps = Settings.GameSpeed;
+            
+            FrameUncapStrategy.SetTargetFramerate(updateFps, drawFps);
             MotionSmoothing.Disable();
             ActorPushTracker.Disable();
             UpdateAtDraw.Disable();
             UnlockedCameraSmoother.Disable();
+
+            if (DecoupledGameTick.Enabled && (Settings.TasMode || !Settings.GameSpeedInLevelOnly))
+                DecoupledGameTick.SetTargetDeltaTime(60);
+
             return;
         }
 
         // If we're in a level, keep the update rate at 60fps
-        FrameUncapStrategy.SetTargetFramerate(60, Settings.FrameRate);
+        FrameUncapStrategy.SetTargetFramerate(Settings.GameSpeed, Settings.FrameRate);
         MotionSmoothing.Enable();
         ActorPushTracker.Enable();
         UpdateAtDraw.Enable();
         DebugRenderFix.Enable();
         DeltaTimeFix.Enable();
+
+        if (DecoupledGameTick.Enabled)
+            DecoupledGameTick.SetTargetDeltaTime(60);
 
         if (Settings.UnlockCamera)
             UnlockedCameraSmoother.Enable();
