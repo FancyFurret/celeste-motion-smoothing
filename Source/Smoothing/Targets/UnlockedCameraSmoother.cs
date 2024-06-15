@@ -12,7 +12,7 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
 {
     private const float ZoomScaleMultiplier = 181f / 180f;
     private const int HiresPixelSize = 1080 / 180;
-    private const int BorderOffset = HiresPixelSize / 2;
+    public const int BorderOffset = HiresPixelSize / 2;
 
     protected override void Hook()
     {
@@ -36,7 +36,7 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
         On.Monocle.Camera.CameraToScreen -= CameraToScreenHook;
     }
 
-    private static Vector2 GetCameraOffset()
+    public static Vector2 GetCameraOffset()
     {
         if (CelesteTasInterop.CenterCamera)
             return Vector2.Zero;
@@ -84,15 +84,13 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
         return Vector2.Zero;
     }
 
-    private static void RenderExtend(Vector2 origin, Vector2 offset, float scale)
+    public static void RenderExtend(Vector2 origin, Vector2 offset, float scale)
     {
         const int textureWidth = 320;
         const int textureHeight = 180;
 
-        if (MotionSmoothingModule.Settings.UnlockCameraMode != UnlockCameraMode.Extend)
-            return;
-        if (((Level)Engine.Scene).ScreenPadding > 0)
-            return;
+        if (MotionSmoothingModule.Settings.UnlockCameraMode != UnlockCameraMode.Extend) return;
+        if (((Level)Engine.Scene).ScreenPadding > 0) return;
 
         var effect = SaveData.Instance.Assists.MirrorMode ? SpriteEffects.FlipHorizontally : SpriteEffects.None;
         var texture = GameplayBuffers.Level;
@@ -110,7 +108,7 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
             new Rectangle(0, 0, 1, textureHeight), Color.White, 0.0f, origin, scale, effect, 0.0f);
     }
 
-    private static void RenderBorder()
+    public static void RenderBorder()
     {
         if (MotionSmoothingModule.Settings.UnlockCameraMode != UnlockCameraMode.Border)
             return;

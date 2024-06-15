@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.Reflection;
 using Celeste.Mod.MotionSmoothing.FrameUncap;
+using Celeste.Mod.MotionSmoothing.HiresRenderer;
 using Celeste.Mod.MotionSmoothing.Interop;
 using Celeste.Mod.MotionSmoothing.Smoothing;
 using Celeste.Mod.MotionSmoothing.Smoothing.Targets;
@@ -52,6 +53,7 @@ public class MotionSmoothingModule : EverestModule
     private MotionSmoothingInputHandler InputHandler { get; } = new();
     private DebugRenderFix DebugRenderFix { get; } = new();
     private DeltaTimeFix DeltaTimeFix { get; } = new();
+    private HiresLevelRenderer HiresLevelRenderer { get; } = new();
 
     public override void Load()
     {
@@ -68,6 +70,7 @@ public class MotionSmoothingModule : EverestModule
         InputHandler.Load();
         DebugRenderFix.Load();
         DeltaTimeFix.Load();
+        HiresLevelRenderer.Load();
 
         InputHandler.Enable();
 
@@ -86,6 +89,7 @@ public class MotionSmoothingModule : EverestModule
         InputHandler.Unload();
         DebugRenderFix.Unload();
         DeltaTimeFix.Unload();
+        HiresLevelRenderer.Unload();
 
         On.Monocle.Scene.Begin -= SceneBeginHook;
     }
@@ -105,6 +109,7 @@ public class MotionSmoothingModule : EverestModule
             UpdateAtDraw.Disable();
             DebugRenderFix.Disable();
             DeltaTimeFix.Disable();
+            HiresLevelRenderer.Disable();
             return;
         }
 
@@ -151,6 +156,7 @@ public class MotionSmoothingModule : EverestModule
         UpdateAtDraw.Enable();
         DebugRenderFix.Enable();
         DeltaTimeFix.Enable();
+        HiresLevelRenderer.Enable();
 
         if (DecoupledGameTick.Enabled)
             DecoupledGameTick.SetTargetDeltaTime(60);
