@@ -150,7 +150,7 @@ public class HiresLevelRenderer : ToggleableFeature<HiresLevelRenderer>
         Engine.Instance.GraphicsDevice.SetRenderTarget(GameplayBuffers.Level);
         Engine.Instance.GraphicsDevice.Clear(self.BackgroundColor);
         DrawToLores(HiresLevel);
-        self.Bloom.Apply(HiresLevel, self); // Our hook sets the RT back HiresLevel
+        self.Bloom.Apply(GameplayBuffers.Level, self); // Our hook sets the RT back HiresLevel
 
         // Draw the foreground
         var oldForegroundMatrix = self.Foreground.Matrix;
