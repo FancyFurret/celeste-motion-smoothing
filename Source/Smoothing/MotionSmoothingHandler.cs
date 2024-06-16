@@ -14,7 +14,7 @@ public class MotionSmoothingHandler : ToggleableFeature<MotionSmoothingHandler>
     public Player Player => _playerReference?.TryGetTarget(out var player) == true ? player : null;
     private WeakReference<Player> _playerReference;
 
-    public IPositionSmoothingState PlayerState => ValueSmoother.GetState(Player) as IPositionSmoothingState;
+    public PlayerSmoothingState PlayerState => ValueSmoother.GetState(Player) as PlayerSmoothingState;
 
     public AtDrawInputHandler AtDrawInputHandler { get; } = new();
 
@@ -287,7 +287,7 @@ public class MotionSmoothingHandler : ToggleableFeature<MotionSmoothingHandler>
         {
             ZipMover => new ZipMoverPercentSmoothingState(),
             FinalBossBeam => new FinalBossBeamSmoothingState(),
-            global::Celeste.Player => new ActorSmoothingState(),
+            global::Celeste.Player => new PlayerSmoothingState(),
             TextMenu => new EntitySmoothingState(),
             _ => null
         };

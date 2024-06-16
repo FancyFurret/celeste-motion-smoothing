@@ -200,11 +200,10 @@ public class HiresLevelRenderer : ToggleableFeature<HiresLevelRenderer>
 
         // Calculate offsets/scale
         var transformationMatrix = Matrix.CreateScale(6f) * Engine.ScreenMatrix;
-        var lowRes = new Vector2(HiresWidth, HiresHeight);
-        // var lowRes = new Vector2(320, 180);
-        var zoom = lowRes / self.ZoomTarget;
+        var size = new Vector2(HiresWidth, HiresHeight);
+        var zoom = size / self.ZoomTarget;
         var origin = self.ZoomTarget != 1.0
-            ? ((self.ZoomFocusPoint * HiresMultiplier) - zoom / 2f) / (lowRes - zoom) * lowRes
+            ? (self.ZoomFocusPoint * HiresMultiplier - zoom / 2f) / (size - zoom) * size
             : Vector2.Zero;
         var orDefault1 = GFX.ColorGrades.GetOrDefault(self.lastColorGrade, GFX.ColorGrades["none"]);
         var orDefault2 = GFX.ColorGrades.GetOrDefault(self.Session.ColorGrade, GFX.ColorGrades["none"]);
@@ -364,14 +363,15 @@ public class HiresLevelRenderer : ToggleableFeature<HiresLevelRenderer>
             }
 
             // Make sure the player is locked to a pixel when not moving as to not give away the subpixel
-            if (entity is Player player)
+            if (entity is Player)
             {
-                if (state.RealPositionHistory[0] == state.RealPositionHistory[1])
-                {
-                    player.Position = state.SmoothedRealPosition.Round();
-                    entity.Render();
-                    continue;
-                }
+                var playerState = (state as PlayerSmoothingState)!;
+                if (Math.Abs(playerState.SmoothedPositionHistory[0].X - playerState.SmoothedPositionHistory[1].X) <
+                    float.Epsilon)
+                    offset.X = 0;
+                if (Math.Abs(playerState.SmoothedPositionHistory[0].Y - playerState.SmoothedPositionHistory[1].Y) <
+                    float.Epsilon)
+                    offset.Y = 0;
             }
 
             // Render current buffer with no offset

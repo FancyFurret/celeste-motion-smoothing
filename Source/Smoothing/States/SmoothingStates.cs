@@ -128,6 +128,19 @@ public class ActorSmoothingState : PositionSmoothingState<Actor>
     protected override bool GetVisible(Actor obj) => obj.Visible;
 }
 
+public class PlayerSmoothingState : ActorSmoothingState
+{
+    public Vector2[] SmoothedPositionHistory { get; } = new Vector2[2];
+
+    protected override void SetSmoothed(Actor obj)
+    {
+        base.SetSmoothed(obj);
+        SmoothedPositionHistory[1] = SmoothedPositionHistory[0];
+        SmoothedPositionHistory[0] = SmoothedRealPosition;
+    }
+}
+
+
 public class LevelZoomSmoothingState : FloatSmoothingState<Level>
 {
     protected override SmoothingMode? OverrideSmoothingMode => SmoothingMode.Extrapolate;
