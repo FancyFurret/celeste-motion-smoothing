@@ -57,7 +57,6 @@ public class DecoupledGameTick : ToggleableFeature<DecoupledGameTick>, IFrameUnc
         TargetDrawElapsedTime = new TimeSpan((long)Math.Round(10_000_000.0 / drawFramerate));
         TargetUpdateElapsedTime = new TimeSpan((long)Math.Round(10_000_000.0 / updateFramerate));
         TargetUpdateDeltaTime = TargetUpdateElapsedTime;
-        _previousTicks = _game.gameTimer?.Elapsed.Ticks ?? 0;
     }
 
     public void SetTargetDeltaTime(double deltaTime)
@@ -74,8 +73,7 @@ public class DecoupledGameTick : ToggleableFeature<DecoupledGameTick>, IFrameUnc
             static double GetDeltaTime(float oldDt)
             {
                 if (MotionSmoothingModule.Settings.GameSpeedModified)
-                    return (float)Instance.TargetUpdateDeltaTime.TotalSeconds * 60f /
-                           MotionSmoothingModule.Settings.GameSpeed;
+                    return Instance.TargetUpdateElapsedTime.TotalSeconds;
                 return oldDt;
             }
 
