@@ -43,6 +43,8 @@
         <Copy SourceFiles="..\bin\MotionSmoothing.dll" DestinationFolder="$(CelestePrefix)\Mods\MotionSmoothing\bin" />
         <Copy SourceFiles="..\bin\MotionSmoothing.pdb" DestinationFolder="$(CelestePrefix)\Mods\MotionSmoothing\bin" />
         <Copy SourceFiles="..\Dialog\English.txt" DestinationFolder="$(CelestePrefix)\Mods\MotionSmoothing\Dialog" />
+        <Copy SourceFiles="..\Effects\HiresDistort.fx" DestinationFolder="$(CelestePrefix)\Mods\MotionSmoothing\Effects" />
+        <Copy SourceFiles="..\Effects\HiresDistort.cso" DestinationFolder="$(CelestePrefix)\Mods\MotionSmoothing\Effects" />
     </Target>
 
     <Target Name="PackageMod" AfterTargets="CopyFiles" Inputs="$(ZippedFiles)" Outputs="..\MotionSmoothing.zip" Condition="'$(Configuration)' == 'Release'">

@@ -17,17 +17,41 @@ public class HiresLevelRenderer : ToggleableFeature<HiresLevelRenderer>
     public static VirtualRenderTarget HiresLevel;
     public static VirtualRenderTarget HiresDisplace;
 
-    private const int HiresMultiplier = 6;
-    private const int HiresWidth = 320 * HiresMultiplier;
-    private const int HiresHeight = 180 * HiresMultiplier;
-
     public static Matrix ToHiresCamOffset { get; private set; }
     public static Matrix ToHires { get; private set; }
     public static Matrix ToLowresCamOffset { get; private set; }
     public static Matrix ToLowres { get; private set; }
     public static Matrix BackdropMatrix { get; private set; }
 
+    private const int HiresMultiplier = 6;
+    private const int HiresWidth = 320 * HiresMultiplier;
+    private const int HiresHeight = 180 * HiresMultiplier;
+
     private HiresFixes Fixes { get; } = new();
+
+    private static Effect _fxHiresDistort;
+
+    public override void Load()
+    {
+        base.Load();
+        On.Celeste.GFX.LoadEffects += GfxLoadEffectsHook;
+    }
+
+    public override void Unload()
+    {
+        base.Unload();
+        _fxHiresDistort.Dispose();
+        On.Celeste.GFX.LoadEffects -= GfxLoadEffectsHook;
+    }
+
+    private static void GfxLoadEffectsHook(On.Celeste.GFX.orig_LoadEffects orig)
+    {
+        orig();
+        _fxHiresDistort = new Effect(Engine.Graphics.GraphicsDevice,
+            Everest.Content.Get("MotionSmoothing:/Effects/HiresDistort.cso").Data);
+        GFX.FxDistort = _fxHiresDistort;
+    }
+    
 
     public override void Enable()
     {
@@ -106,7 +130,6 @@ public class HiresLevelRenderer : ToggleableFeature<HiresLevelRenderer>
         // Update the matrices that are used for rendering
         ToHiresCamOffset = Matrix.CreateScale(6f) * UnlockedCameraSmoother.GetScreenCameraMatrix();
         ToHires = Matrix.CreateScale(6f);
-        // ToLowresCamOffset = Matrix.Invert(ToHiresCamOffset) * Matrix.CreateTranslation(-1, -1, 0);
         ToLowresCamOffset = Matrix.Invert(ToHiresCamOffset);
         ToLowres = Matrix.Invert(ToHires);
         BackdropMatrix = ToHires;
@@ -124,6 +147,22 @@ public class HiresLevelRenderer : ToggleableFeature<HiresLevelRenderer>
         // Our custom Gameplay Renderer leaves the render target on GameplayBuffers.Gameplay, so swap back to hires
         Engine.Instance.GraphicsDevice.SetRenderTarget(HiresGameplay);
         self.Lighting.Render(self);
+
+        // Temporarily render gameplay into the level, so we can extend it
+        Engine.Instance.GraphicsDevice.SetRenderTarget(HiresLevel);
+        Engine.Instance.GraphicsDevice.Clear(Color.Black);
+        Draw.SpriteBatch.Begin(SpriteSortMode.Deferred, BlendState.Opaque, SamplerState.PointClamp,
+            DepthStencilState.Default, RasterizerState.CullNone);
+        Draw.SpriteBatch.Draw(HiresGameplay, Vector2.Zero, Color.White);
+        Draw.SpriteBatch.End();
+
+        // Extend the hires gameplay buffer, so that the distortion can be applied to the edges
+        Engine.Instance.GraphicsDevice.SetRenderTarget(HiresGameplay);
+        Draw.SpriteBatch.Begin(SpriteSortMode.Deferred, BlendState.Opaque, SamplerState.PointClamp,
+            DepthStencilState.Default, RasterizerState.CullNone);
+        RenderHiresExtend(HiresLevel, Vector2.Zero, Vector2.Zero, 1f);
+        Draw.SpriteBatch.End();
+
 
         // Generate a hires displacement map for use later down the line
         Engine.Instance.GraphicsDevice.SetRenderTarget(HiresDisplace);
@@ -144,6 +183,7 @@ public class HiresLevelRenderer : ToggleableFeature<HiresLevelRenderer>
         self.Background.Matrix = oldBackgroundMatrix;
 
         // Draw gameplay with distortion
+        _fxHiresDistort.Parameters["cameraOffset"].SetValue(-UnlockedCameraSmoother.GetCameraOffset());
         Distort.Render(HiresGameplay, HiresDisplace, self.Displacement.HasDisplacement(self));
 
         // We can render the bloom at low resolution, so generate a low res level
@@ -226,7 +266,7 @@ public class HiresLevelRenderer : ToggleableFeature<HiresLevelRenderer>
         Draw.SpriteBatch.Draw(HiresLevel, origin + offset, HiresLevel.Bounds, Color.White, 0.0f,
             origin, scale,
             SaveData.Instance.Assists.MirrorMode ? SpriteEffects.FlipHorizontally : SpriteEffects.None, 0.0f);
-        RenderHiresExtend(origin, offset, scale);
+        RenderHiresExtend(HiresLevel, origin, offset, scale);
         Draw.SpriteBatch.End();
 
         // The rest isn't changed
@@ -251,8 +291,10 @@ public class HiresLevelRenderer : ToggleableFeature<HiresLevelRenderer>
         UnlockedCameraSmoother.RenderBorder();
     }
 
-    private static void RenderHiresExtend(Vector2 origin, Vector2 offset, float scale)
+    private static void RenderHiresExtend(VirtualRenderTarget target, Vector2 origin, Vector2 offset, float scale)
     {
+        // TODO: Make this a shader instead
+
         const int textureWidth = HiresWidth;
         const int textureHeight = HiresHeight;
         const int size = HiresMultiplier;
@@ -261,9 +303,8 @@ public class HiresLevelRenderer : ToggleableFeature<HiresLevelRenderer>
         if (((Level)Engine.Scene).ScreenPadding > 0) return;
 
         var effect = SaveData.Instance.Assists.MirrorMode ? SpriteEffects.FlipHorizontally : SpriteEffects.None;
-        var texture = HiresLevel;
-        var camOffset = UnlockedCameraSmoother.GetCameraOffset() * HiresMultiplier
-                        + new Vector2(UnlockedCameraSmoother.BorderOffset, UnlockedCameraSmoother.BorderOffset);
+        var texture = target;
+        var camOffset = UnlockedCameraSmoother.GetCameraOffset() * HiresMultiplier;
 
         var camOffsetX = (int)Math.Round(camOffset.X);
         var camOffsetY = (int)Math.Round(camOffset.Y);

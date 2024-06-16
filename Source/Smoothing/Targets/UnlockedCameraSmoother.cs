@@ -12,7 +12,6 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
 {
     private const float ZoomScaleMultiplier = 181f / 180f;
     private const int HiresPixelSize = 1080 / 180;
-    public const int BorderOffset = HiresPixelSize / 2;
 
     protected override void Hook()
     {
@@ -45,6 +44,11 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
         {
             var cameraState = (MotionSmoothingHandler.Instance.GetState(level.Camera) as IPositionSmoothingState)!;
             var pixelOffset = cameraState.SmoothedRealPosition.Floor() - cameraState.SmoothedRealPosition;
+
+            if (MotionSmoothingModule.Settings.UnlockCameraMode == UnlockCameraMode.Border ||
+                MotionSmoothingModule.Settings.UnlockCameraMode == UnlockCameraMode.Extend)
+                pixelOffset += new Vector2(.5f, .5f);
+
             return pixelOffset;
         }
 
@@ -54,11 +58,6 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
     public static Matrix GetScreenCameraMatrix()
     {
         var offset = GetCameraOffset() * HiresPixelSize;
-
-        if (MotionSmoothingModule.Settings.UnlockCameraMode == UnlockCameraMode.Border ||
-            MotionSmoothingModule.Settings.UnlockCameraMode == UnlockCameraMode.Extend)
-            offset += new Vector2(BorderOffset, BorderOffset);
-
         return Matrix.CreateTranslation(offset.X, offset.Y, 0);
     }
 

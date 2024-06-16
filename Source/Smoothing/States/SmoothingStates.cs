@@ -140,7 +140,6 @@ public class PlayerSmoothingState : ActorSmoothingState
     }
 }
 
-
 public class LevelZoomSmoothingState : FloatSmoothingState<Level>
 {
     protected override SmoothingMode? OverrideSmoothingMode => SmoothingMode.Extrapolate;
