@@ -51,7 +51,7 @@ public class HiresLevelRenderer : ToggleableFeature<HiresLevelRenderer>
             Everest.Content.Get("MotionSmoothing:/Effects/HiresDistort.cso").Data);
         GFX.FxDistort = _fxHiresDistort;
     }
-    
+
 
     public override void Enable()
     {
@@ -177,10 +177,12 @@ public class HiresLevelRenderer : ToggleableFeature<HiresLevelRenderer>
         SmoothCameraPosition(self);
 
         // Draw background to level
-        var oldBackgroundMatrix = self.Background.Matrix;
-        self.Background.Matrix = BackdropMatrix;
+        var loresLevel = GameplayBuffers.Level;
+        GameplayBuffers.Level = HiresLevel;
+        Instance.Fixes.EnableFixMatrices = true;
         self.Background.Render(self);
-        self.Background.Matrix = oldBackgroundMatrix;
+        Instance.Fixes.EnableFixMatrices = false;
+        GameplayBuffers.Level = loresLevel;
 
         // Draw gameplay with distortion
         _fxHiresDistort.Parameters["cameraOffset"].SetValue(-UnlockedCameraSmoother.GetCameraOffset());
@@ -190,13 +192,15 @@ public class HiresLevelRenderer : ToggleableFeature<HiresLevelRenderer>
         Engine.Instance.GraphicsDevice.SetRenderTarget(GameplayBuffers.Level);
         Engine.Instance.GraphicsDevice.Clear(self.BackgroundColor);
         DrawToLores(HiresLevel);
-        self.Bloom.Apply(GameplayBuffers.Level, self); // Our hook sets the RT back HiresLevel
+        self.Bloom.Apply(GameplayBuffers.Level, self);
 
         // Draw the foreground
-        var oldForegroundMatrix = self.Foreground.Matrix;
-        self.Foreground.Matrix = BackdropMatrix;
+        Engine.Instance.GraphicsDevice.SetRenderTarget(HiresLevel);
+        GameplayBuffers.Level = HiresLevel;
+        Instance.Fixes.EnableFixMatrices = true;
         self.Foreground.Render(self);
-        self.Foreground.Matrix = oldForegroundMatrix;
+        Instance.Fixes.EnableFixMatrices = false;
+        GameplayBuffers.Level = loresLevel;
 
         // Glitch
         Glitch.Apply(GameplayBuffers.Level, self.glitchTimer * 2f, self.glitchSeed, 6.2831855f);
