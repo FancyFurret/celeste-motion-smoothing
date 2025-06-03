@@ -31,8 +31,6 @@ public class MotionSmoothingHandler : ToggleableFeature<MotionSmoothingHandler>
     public override void Load()
     {
         base.Load();
-        SpeedrunToolImports.RegisterSaveLoadAction?.Invoke(null, (_, _) => SmoothAllObjects(), null,
-            null, null, null);
     }
 
     public override void Enable()

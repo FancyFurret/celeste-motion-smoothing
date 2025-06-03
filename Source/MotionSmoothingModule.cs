@@ -60,7 +60,6 @@ public class MotionSmoothingModule : EverestModule
     {
         typeof(MotionSmoothingExports).ModInterop();
         typeof(GravityHelperImports).ModInterop();
-        typeof(SpeedrunToolImports).ModInterop();
         CelesteTasInterop.Load();
 
         UpdateEveryNTicks.Load();
