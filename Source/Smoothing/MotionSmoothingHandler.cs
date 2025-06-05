@@ -28,11 +28,6 @@ public class MotionSmoothingHandler : ToggleableFeature<MotionSmoothingHandler>
     private long _lastTicks;
     private bool _positionsWereUpdated;
 
-    public override void Load()
-    {
-        base.Load();
-    }
-
     public override void Enable()
     {
         base.Enable();
