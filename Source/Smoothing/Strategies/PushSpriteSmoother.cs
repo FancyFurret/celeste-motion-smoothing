@@ -71,7 +71,6 @@ public class PushSpriteSmoother : SmoothingStrategy<PushSpriteSmoother>
         position += obj switch
         {
             GraphicsComponent graphicsComponent => GetOffset(graphicsComponent) + GetOffset(graphicsComponent.Entity),
-            PlayerHair hair => GetHairOffset(hair),
             Component component => GetOffset(component.Entity),
             _ => GetOffset(obj)
         };
@@ -114,7 +113,8 @@ public class PushSpriteSmoother : SmoothingStrategy<PushSpriteSmoother>
         var c = new ILCursor(il);
         while (c.TryGotoNext(MoveType.Before, i => i.MatchCallvirt<Component>(nameof(Component.Render))))
         {
-            c.Emit(OpCodes.Ldloc_1);
+            // Use Dup to copy the instance about to call Render so we always pass the correct object
+            c.Emit(OpCodes.Dup);
             c.EmitDelegate(PreObjectRender);
             c.Index++;
             c.EmitDelegate(PostObjectRender);
@@ -126,7 +126,8 @@ public class PushSpriteSmoother : SmoothingStrategy<PushSpriteSmoother>
         var c = new ILCursor(il);
         while (c.TryGotoNext(MoveType.Before, i => i.MatchCallvirt<Entity>(nameof(Entity.Render))))
         {
-            c.Emit(OpCodes.Ldloc_1);
+            // Use Dup to copy the instance about to call Render so we always pass the correct object
+            c.Emit(OpCodes.Dup);
             c.EmitDelegate(PreObjectRender);
             c.Index++;
             c.EmitDelegate(PostObjectRender);
