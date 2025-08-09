@@ -31,8 +31,6 @@ public class PushSpriteSmoother : SmoothingStrategy<PushSpriteSmoother>
         HookComponentRender<Sprite>();
         HookComponentRender<Image>();
         HookComponentRender<DustGraphic>(); // Components (that aren't GraphicsComponents) can be smoothed by looking at their Entity's position
-        // Use a dedicated hook for PlayerHair to apply offset directly during its Render
-        AddHook(new Hook(typeof(PlayerHair).GetMethod("Render")!, PlayerHairRenderHook));
 
         IL.Monocle.ComponentList.Render += ComponentListRenderHook;
         IL.Monocle.EntityList.Render += EntityListRenderHook;
@@ -146,28 +144,6 @@ public class PushSpriteSmoother : SmoothingStrategy<PushSpriteSmoother>
         PreObjectRender(self);
         orig(self);
         PostObjectRender();
-    }
-
-    private static void PlayerHairRenderHook(On.Celeste.PlayerHair.orig_Render orig, PlayerHair self)
-    {
-        var offset = Instance.GetHairOffset(self);
-        if (offset != Vector2.Zero)
-        {
-            for (var i = 0; i < self.Nodes.Count; i++)
-                self.Nodes[i] += offset;
-            try
-            {
-                orig(self);
-            }
-            finally
-            {
-                for (var i = 0; i < self.Nodes.Count; i++)
-                    self.Nodes[i] -= offset;
-            }
-            return;
-        }
-
-        orig(self);
     }
 
     // ReSharper disable once InconsistentNaming

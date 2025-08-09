@@ -23,6 +23,7 @@ public class MotionSmoothingHandler : ToggleableFeature<MotionSmoothingHandler>
 
     public ValueSmoother ValueSmoother { get; } = new();
     public PushSpriteSmoother PushSpriteSmoother { get; } = new();
+    public HairSmoother HairSmoother { get; } = new();
 
     private readonly Stopwatch _timer = Stopwatch.StartNew();
     private long _lastTicks;
@@ -40,6 +41,7 @@ public class MotionSmoothingHandler : ToggleableFeature<MotionSmoothingHandler>
         base.Enable();
         ValueSmoother.Enable();
         PushSpriteSmoother.Enable();
+        HairSmoother.Enable();
 
         SmoothAllObjects();
     }
@@ -49,6 +51,7 @@ public class MotionSmoothingHandler : ToggleableFeature<MotionSmoothingHandler>
         base.Disable();
         ValueSmoother.Disable();
         PushSpriteSmoother.Disable();
+        HairSmoother.Disable();
 
         ValueSmoother.ClearStates();
         PushSpriteSmoother.ClearStates();
