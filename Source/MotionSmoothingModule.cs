@@ -97,6 +97,12 @@ public class MotionSmoothingModule : EverestModule
         Everest.Events.Level.OnUnpause -= LevelUnpause;
     }
 
+    public override void LoadContent(bool firstLoad)
+    {
+        base.LoadContent(firstLoad);
+        if (firstLoad) Smoothing.Targets.SmoothParallaxRenderer.Load();
+    }
+
     public void ApplySettings()
     {
         if (MotionSmoothing == null) return;

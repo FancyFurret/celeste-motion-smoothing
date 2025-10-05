@@ -1,8 +1,11 @@
+using System;
+using Celeste.Mod.Entities;
 using Celeste.Mod.MotionSmoothing.Interop;
 using Celeste.Mod.MotionSmoothing.Smoothing.States;
 using Celeste.Mod.MotionSmoothing.Utilities;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
+using System.Collections.Generic;
 using Monocle;
 using MonoMod.Cil;
 
@@ -14,29 +17,56 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
     private const int HiresPixelSize = 1080 / 180;
     private const int BorderOffset = HiresPixelSize / 2;
 
+    private static Matrix OldForegroundMatrix;
+
     protected override void Hook()
     {
         base.Hook();
 
+        //On.Celeste.Level.Render += Level_Render;
         IL.Celeste.Level.Render += LevelRenderHook;
+        On.Celeste.BloomRenderer.Apply += BloomRenderer_Apply;
+        //On.Celeste.BackdropRenderer.Render += BackdropRenderer_Render;
+
         IL.Celeste.HiresRenderer.BeginRender += HiresRendererBeginRenderHook;
         IL.Celeste.TalkComponent.TalkComponentUI.Render += TalkComponentUiRenderHook;
         IL.Celeste.Lookout.Hud.Render += LookoutHudRenderHook;
-        On.Monocle.Camera.CameraToScreen += CameraToScreenHook;
+        On.Monocle.Scene.Begin += Scene_Begin;
     }
 
     protected override void Unhook()
     {
         base.Unhook();
 
+        //On.Celeste.Level.Render -= Level_Render;
         IL.Celeste.Level.Render -= LevelRenderHook;
+        On.Celeste.BloomRenderer.Apply -= BloomRenderer_Apply;
+        //On.Celeste.BackdropRenderer.Render -= BackdropRenderer_Render;
+
         IL.Celeste.HiresRenderer.BeginRender -= HiresRendererBeginRenderHook;
         IL.Celeste.TalkComponent.TalkComponentUI.Render -= TalkComponentUiRenderHook;
         IL.Celeste.Lookout.Hud.Render -= LookoutHudRenderHook;
-        On.Monocle.Camera.CameraToScreen -= CameraToScreenHook;
+        On.Monocle.Scene.Begin -= Scene_Begin;
+    }
+
+    private static void Scene_Begin(On.Monocle.Scene.orig_Begin orig, Scene self)
+    {
+        // we hook Scene.Begin rather than Level.Begin to ensure it runs
+        // after GameplayBuffers.Create, but before any calls to Entity.SceneBegin
+        if (self is Level level)
+        {
+            level.Add(SmoothParallaxRenderer.Create());
+        }
+
+        orig(self);
     }
 
     private static Vector2 GetCameraOffset()
+    {
+        return Vector2.Zero;
+    }
+
+    private static Vector2 GetCameraOffsetInternal()
     {
         if (CelesteTasInterop.CenterCamera)
             return Vector2.Zero;
@@ -54,6 +84,7 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
     public static Matrix GetScreenCameraMatrix()
     {
         var offset = GetCameraOffset() * HiresPixelSize;
+        GetCameraOffsetInternal();
 
         if (MotionSmoothingModule.Settings.UnlockCameraMode == UnlockCameraMode.Border ||
             MotionSmoothingModule.Settings.UnlockCameraMode == UnlockCameraMode.Extend)
@@ -83,6 +114,421 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
 
         return Vector2.Zero;
     }
+
+
+
+    private static void LevelRenderHook(ILContext il)
+    {
+        var cursor = new ILCursor(il);
+
+        // 0. Render Gameplay to large buffer.
+        // Go right after the Lighting.Render call
+        if (cursor.TryGotoNext(MoveType.Before, instr => instr.MatchLdfld<Level>("Lighting")))
+        {
+            // Now move forward to find the next Renderer.Render call
+            if (cursor.TryGotoNext(MoveType.After,
+                instr => instr.MatchCallvirt<Renderer>("Render")))
+            {
+                // Insert your delegate call here
+                cursor.EmitDelegate(RenderGameplayToLargeBuffer);
+            }
+        }
+
+
+
+
+        // 1. Add delegate before Clear(BackgroundColor)
+        if (cursor.TryGotoNext(MoveType.Before,
+            instr => instr.MatchLdfld<Level>("BackgroundColor")))
+        {
+            cursor.EmitDelegate(BeforeBackgroundClear);
+        }
+
+        // 2. Add delegate after Background.Render
+        if (cursor.TryGotoNext(MoveType.Before,
+            instr => instr.MatchLdfld<Level>("Background")))
+        {
+            // Move to after the Render call
+            if (cursor.TryGotoNext(MoveType.After,
+                instr => instr.MatchCallvirt<Renderer>("Render")))
+            {
+                cursor.EmitDelegate(AfterBackgroundRender);
+            }
+        }
+
+        // 3.Replace both first two arguments of Distort.Render
+        // First, find where GameplayBuffers.Gameplay is loaded for Distort.Render
+        cursor.Index = 0; // Reset cursor
+                          // First find Distort.Render
+        if (cursor.TryGotoNext(MoveType.Before,
+            instr => instr.MatchCall(typeof(Distort), "Render")))
+        {
+            // Save position at Distort.Render
+            var distortRenderIndex = cursor.Index;
+
+            // Search backwards for GameplayBuffers.Displacement (it's the second parameter, so closer to the call)
+            if (cursor.TryGotoPrev(MoveType.After,
+                instr => instr.MatchLdsfld(typeof(GameplayBuffers), "Displacement")))
+            {
+                cursor.EmitPop();
+                cursor.EmitDelegate(GetLargeBuffer2); // Should return VirtualRenderTarget
+
+                // Now search backwards for GameplayBuffers.Gameplay (it's the first parameter)
+                if (cursor.TryGotoPrev(MoveType.After,
+                    instr => instr.MatchLdsfld(typeof(GameplayBuffers), "Gameplay")))
+                {
+                    cursor.EmitPop();
+                    cursor.EmitDelegate(GetLargeBuffer1); // Should return VirtualRenderTarget
+                }
+            }
+
+            // Move cursor back to after Distort.Render for any subsequent operations
+            cursor.Index = distortRenderIndex;
+        }
+
+        // 4. Replace first argument of Bloom.Apply
+        cursor.Index = 0; // Reset cursor
+        // Find the Level buffer load that comes before Bloom.Apply
+        if (cursor.TryGotoNext(MoveType.Before,
+            instr => instr.MatchLdfld<Level>("Bloom")))
+        {
+            // Move forward to find the GameplayBuffers.Level load
+            if (cursor.TryGotoNext(MoveType.After,
+                instr => instr.MatchLdsfld(typeof(GameplayBuffers), "Level")))
+            {
+                // Verify this is the one before Bloom.Apply
+                var savedIndex = cursor.Index;
+                if (cursor.TryGotoNext(MoveType.Before,
+                    instr => instr.MatchCallvirt<BloomRenderer>("Apply")))
+                {
+                    cursor.Index = savedIndex;
+                    cursor.EmitPop();
+                    cursor.EmitDelegate(GetLargeBuffer3); // Should return VirtualRenderTarget
+                }
+            }
+        }
+
+        // 5. Insert delegates before and after Foreground.Render
+        cursor.Index = 0; // Reset cursor
+        if (cursor.TryGotoNext(MoveType.Before,
+            instr => instr.MatchLdfld<Level>("Foreground")))
+        {
+            // Emit delegate before Foreground.Render
+            cursor.EmitLdarg(0); // Load "this"
+            cursor.EmitDelegate<Action<Level>>(BeforeForegroundRender);
+
+            // Find the Render call after this
+            if (cursor.TryGotoNext(MoveType.After,
+                instr => instr.MatchCallvirt<Renderer>("Render")))
+            {
+                // Emit delegate after Foreground.Render
+                cursor.EmitLdarg(0); // Load "this"
+                cursor.EmitDelegate<Action<Level>>(AfterForegroundRender);
+            }
+        }
+
+        // 6. Replace first argument of Glitch.Apply
+        cursor.Index = 0; // Reset cursor
+                          // Find the Level buffer load that comes before Glitch.Apply
+        if (cursor.TryGotoNext(MoveType.After,
+            instr => instr.MatchLdsfld(typeof(GameplayBuffers), "Level")))
+        {
+            // Look ahead to verify this is the one before Glitch.Apply
+            var savedIndex = cursor.Index;
+            if (cursor.TryGotoNext(MoveType.Before,
+                instr => instr.MatchCall(typeof(Glitch), "Apply")))
+            {
+                cursor.Index = savedIndex;
+                cursor.EmitPop();
+                cursor.EmitDelegate(GetLargeBuffer3); // Should return VirtualRenderTarget
+            }
+        }
+
+        // 8. Ditch the 6x scale
+        // First find the viewport assignment to ensure we're at the right location
+        if (cursor.TryGotoNext(MoveType.After,
+            instr => instr.MatchCallvirt<GraphicsDevice>("set_Viewport")))
+        {
+            // Find the matrix multiplication
+            if (cursor.TryGotoNext(MoveType.After,
+                instr => instr.MatchLdcR4(6f)))
+            {
+                cursor.EmitPop();
+                cursor.EmitLdcR4(1f);
+            }
+        }
+
+        // 9. Find the final SpriteBatch.Draw call and replace GameplayBuffers.Level references
+        // First, find and replace the texture parameter (first Level load)
+        if (cursor.TryGotoNext(MoveType.Before,
+            instr => instr.MatchCall(typeof(Draw), "get_SpriteBatch")))
+        {
+            // Move to after SpriteBatch is loaded
+            cursor.Index++;
+
+            // Now find the first GameplayBuffers.Level load (for texture)
+            if (cursor.TryGotoNext(MoveType.After,
+                instr => instr.MatchLdsfld(typeof(GameplayBuffers), "Level")))
+            {
+                // Replace with your buffer
+                cursor.EmitPop();
+                cursor.EmitDelegate(GetLargeBuffer3); // Should return VirtualRenderTarget
+                                                      // The existing op_Implicit will handle conversion to RenderTarget2D
+
+                // Now find the second GameplayBuffers.Level load (for bounds)
+                if (cursor.TryGotoNext(MoveType.After,
+                    instr => instr.MatchLdsfld(typeof(GameplayBuffers), "Level")))
+                {
+                    // Replace with your buffer
+                    cursor.EmitPop();
+                    cursor.EmitDelegate(GetLargeBuffer3); // Should return VirtualRenderTarget
+                                                          // The existing get_Bounds() call will work with the new buffer
+                }
+            }
+        }
+    }
+
+    private static void RenderGameplayToLargeBuffer()
+    {
+        // Take the 320x180 gameplay in GameplayBuffers.Gameplay and draw it at 6x into LargeBuffer1,
+        // offset by the fractional camera position.
+        if (SmoothParallaxRenderer.Instance is not { } renderer) return;
+
+        Vector2 offset = GetCameraOffsetInternal() + new Vector2(0.5f, 0.5f);
+
+        Engine.Instance.GraphicsDevice.SetRenderTarget(renderer.LargeBuffer1);
+        Engine.Instance.GraphicsDevice.Clear(Color.Transparent);
+        Draw.SpriteBatch.Begin(SpriteSortMode.Immediate, BlendState.AlphaBlend, SamplerState.PointClamp, DepthStencilState.None, RasterizerState.CullNone, null, renderer.ScaleMatrix);
+        Draw.SpriteBatch.Draw(GameplayBuffers.Gameplay, offset, Color.White);
+
+        //Draw the boundary again
+        Draw.SpriteBatch.Draw(
+            GameplayBuffers.Gameplay,
+            new Vector2(-1f, 0f) + offset,
+            new Rectangle(0, 0, 1, 180),
+            Color.White
+        );
+        Draw.SpriteBatch.Draw(
+            GameplayBuffers.Gameplay,
+            new Vector2(320f, 0f) + offset,
+            new Rectangle(319, 0, 1, 180),
+            Color.White
+        );
+
+        Draw.SpriteBatch.Draw(
+            GameplayBuffers.Gameplay,
+            new Vector2(0f, -1f) + offset,
+            new Rectangle(0, 0, 320, 1),
+            Color.White
+        );
+        Draw.SpriteBatch.Draw(
+            GameplayBuffers.Gameplay,
+            new Vector2(0f, 180f) + offset,
+            new Rectangle(0, 179, 320, 1),
+            Color.White
+        );
+
+
+        Draw.SpriteBatch.End();
+
+        // Scale up the distort map to Large 2
+        Engine.Instance.GraphicsDevice.SetRenderTarget(renderer.LargeBuffer2);
+        Engine.Instance.GraphicsDevice.Clear(Color.Transparent);
+        Draw.SpriteBatch.Begin(SpriteSortMode.Immediate, BlendState.AlphaBlend, SamplerState.PointClamp, DepthStencilState.None, RasterizerState.CullNone, null, renderer.ScaleMatrix);
+        Draw.SpriteBatch.Draw(GameplayBuffers.Displacement, new Vector2(0, 0), Color.White);
+        Draw.SpriteBatch.End();
+    }
+
+    private static void BeforeBackgroundClear()
+    {
+        if (SmoothParallaxRenderer.Instance is not { } renderer) return;
+
+       // Swap the buffer to Small 1.
+       Engine.Instance.GraphicsDevice.SetRenderTarget(renderer.SmallBuffer1);
+    }
+
+    private static void AfterBackgroundRender()
+    {
+        if (SmoothParallaxRenderer.Instance is not { } renderer) return;
+
+        // Go to Large3 for compositing time.
+        Engine.Instance.GraphicsDevice.SetRenderTarget(renderer.LargeBuffer3);
+        Engine.Instance.GraphicsDevice.Clear(Color.Transparent);
+
+        // Draw the background upscaled out of Small 1
+        Draw.SpriteBatch.Begin(SpriteSortMode.Immediate, BlendState.Opaque, SamplerState.PointClamp, DepthStencilState.None, RasterizerState.CullNone, null, renderer.ScaleMatrix);
+        Draw.SpriteBatch.Draw(renderer.SmallBuffer1, Vector2.Zero, Color.White);
+        Draw.SpriteBatch.End();
+    }
+
+    private static VirtualRenderTarget GetLargeBuffer1()
+    {
+        if (SmoothParallaxRenderer.Instance is not { } renderer) return GameplayBuffers.Gameplay;
+
+        return renderer.LargeBuffer1;
+    }
+
+    private static VirtualRenderTarget GetLargeBuffer2()
+    {
+        if (SmoothParallaxRenderer.Instance is not { } renderer) return GameplayBuffers.Displacement;
+
+        return renderer.LargeBuffer2;
+    }
+
+    private static VirtualRenderTarget GetLargeBuffer3()
+    {
+        if (SmoothParallaxRenderer.Instance is not { } renderer) return GameplayBuffers.Level;
+
+        return renderer.LargeBuffer3;
+    }
+
+    private static void BeforeForegroundRender(Level level)
+    {
+        if (SmoothParallaxRenderer.Instance is not { } renderer) return;
+
+        OldForegroundMatrix = level.Foreground.Matrix;
+        level.Foreground.Matrix *= renderer.ScaleMatrix;
+    }
+
+    private static void AfterForegroundRender(Level level)
+    {
+        level.Foreground.Matrix = OldForegroundMatrix;
+    }
+
+    private static Matrix ModifyScreenMatrix(Matrix originalMatrix)
+    {
+        // originalMatrix is CreateScale(6f) * Engine.ScreenMatrix
+        return originalMatrix * Matrix.CreateScale(1f / 6f);
+    }
+
+
+
+    private static void BloomRenderer_Apply(On.Celeste.BloomRenderer.orig_Apply orig, BloomRenderer self, VirtualRenderTarget target, Scene scene)
+    {
+        if (SmoothParallaxRenderer.Instance is not { } renderer) return;
+
+        if (!(self.Strength > 0f))
+        {
+            return;
+        }
+
+        VirtualRenderTarget tempA = renderer.LargeTempA;
+        Texture2D texture = GaussianBlur.Blur((RenderTarget2D)target, renderer.LargeTempA, renderer.LargeTempB);
+        List<Component> components = scene.Tracker.GetComponents<BloomPoint>();
+        List<Component> components2 = scene.Tracker.GetComponents<EffectCutout>();
+        Engine.Instance.GraphicsDevice.SetRenderTarget(tempA);
+        Engine.Instance.GraphicsDevice.Clear(Color.Transparent);
+        if (self.Base < 1f)
+        {
+            Camera camera = (scene as Level).Camera;
+            Draw.SpriteBatch.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend, SamplerState.PointClamp, DepthStencilState.None, RasterizerState.CullNone, null, camera.Matrix * renderer.ScaleMatrix);
+            float num = 1f / (float)self.gradient.Width;
+            foreach (Component item in components)
+            {
+                BloomPoint bloomPoint = item as BloomPoint;
+                if (bloomPoint.Visible && !(bloomPoint.Radius <= 0f) && !(bloomPoint.Alpha <= 0f))
+                {
+                    self.gradient.DrawCentered(bloomPoint.Entity.Position + bloomPoint.Position, Color.White * bloomPoint.Alpha, bloomPoint.Radius * 2f * num);
+                }
+            }
+
+            foreach (CustomBloom component in scene.Tracker.GetComponents<CustomBloom>())
+            {
+                if (component.Visible && component.OnRenderBloom != null)
+                {
+                    component.OnRenderBloom();
+                }
+            }
+
+            foreach (Entity entity in scene.Tracker.GetEntities<SeekerBarrier>())
+            {
+                Draw.Rect(entity.Collider, Color.White);
+            }
+
+            Draw.SpriteBatch.End();
+            if (components2.Count > 0)
+            {
+                Draw.SpriteBatch.Begin(SpriteSortMode.Deferred, BloomRenderer.CutoutBlendstate, SamplerState.PointClamp, null, null, null, camera.Matrix * renderer.ScaleMatrix);
+                foreach (Component item2 in components2)
+                {
+                    EffectCutout effectCutout = item2 as EffectCutout;
+                    if (effectCutout.Visible)
+                    {
+                        Draw.Rect(effectCutout.Left, effectCutout.Top, effectCutout.Right - effectCutout.Left, effectCutout.Bottom - effectCutout.Top, Color.White * (1f - effectCutout.Alpha));
+                    }
+                }
+
+                Draw.SpriteBatch.End();
+            }
+        }
+
+        Draw.SpriteBatch.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend);
+        Draw.Rect(-10f * 6f, -10f * 6f, 340f * 6f, 200f * 6f, Color.White * self.Base);
+        Draw.SpriteBatch.End();
+        Draw.SpriteBatch.Begin(SpriteSortMode.Deferred, BloomRenderer.BlurredScreenToMask);
+        Draw.SpriteBatch.Draw(texture, Vector2.Zero, Color.White);
+        Draw.SpriteBatch.End();
+        Engine.Instance.GraphicsDevice.SetRenderTarget(target);
+        Draw.SpriteBatch.Begin(SpriteSortMode.Deferred, BloomRenderer.AdditiveMaskToScreen);
+        for (int i = 0; (float)i < self.Strength; i++)
+        {
+            float num2 = (((float)i < self.Strength - 1f) ? 1f : (self.Strength - (float)i));
+            Draw.SpriteBatch.Draw((RenderTarget2D)tempA, Vector2.Zero, Color.White * num2);
+        }
+
+        Draw.SpriteBatch.End();
+    }
+
+
+
+    //private static void BackdropRenderer_Render(On.Celeste.BackdropRenderer.orig_Render orig, BackdropRenderer self, Scene scene)
+    //{
+    //    BlendState blendState = BlendState.AlphaBlend;
+    //    foreach (Backdrop backdrop in self.Backdrops)
+    //    {
+    //        if (!backdrop.Visible)
+    //        {
+    //            continue;
+    //        }
+
+    //        if (backdrop is Parallax parallax && (!self.usingLoopingSpritebatch || parallax.BlendState != blendState))
+    //        {
+    //            self.EndSpritebatch();
+    //            blendState = parallax.BlendState;
+    //        }
+
+    //        if (!(backdrop is Parallax) && backdrop.UseSpritebatch && self.usingLoopingSpritebatch)
+    //        {
+    //            self.EndSpritebatch();
+    //        }
+
+    //        if (backdrop.UseSpritebatch && !self.usingSpritebatch)
+    //        {
+    //            if (backdrop is Parallax)
+    //            {
+    //                self.StartSpritebatchLooping(blendState);
+    //            }
+    //            else
+    //            {
+    //                self.StartSpritebatch(blendState);
+    //            }
+    //        }
+
+    //        if (!backdrop.UseSpritebatch && self.usingSpritebatch)
+    //        {
+    //            self.EndSpritebatch();
+    //        }
+
+    //        backdrop.Render(scene);
+    //    }
+
+    //    if (self.Fade > 0f)
+    //    {
+    //        Draw.Rect(-10f * 6f, -10f * 6f, 340f * 6f, 200f * 6f, self.FadeColor * self.Fade);
+    //    }
+
+    //    self.EndSpritebatch();
+    //}
 
     private static void RenderExtend(Vector2 origin, Vector2 offset, float scale)
     {
@@ -130,43 +576,6 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
         Draw.SpriteBatch.End();
     }
 
-    private static void LevelRenderHook(ILContext il)
-    {
-        var cursor = new ILCursor(il);
-
-        // Offset the camera *after* it is resized larger
-        if (cursor.TryGotoNext(MoveType.Before,
-                instr => instr.MatchLdsfld(typeof(Engine).GetField(nameof(Engine.ScreenMatrix))!)))
-        {
-            cursor.EmitDelegate(GetScreenCameraMatrix);
-            cursor.EmitCall(typeof(Matrix).GetMethod("op_Multiply", new[] { typeof(Matrix), typeof(Matrix) })!);
-        }
-
-        // (For the zoom mode) Slightly scale up the level to hide the empty pixels on the right/bottom
-        if (cursor.TryGotoNext(MoveType.After, instr => instr.MatchCallvirt<SpriteBatch>(nameof(SpriteBatch.Begin))))
-        {
-            cursor.EmitLdloc(8); // scale
-            cursor.EmitDelegate(GetCameraScale);
-            cursor.EmitMul();
-            cursor.EmitStloc(8);
-        }
-
-        // (For the extend mode) Extend the level to the edges
-        cursor.GotoNext(MoveType.After, instr => instr.MatchCallvirt<SpriteBatch>(nameof(SpriteBatch.Draw)));
-        {
-            cursor.EmitLdloc(5); // origin
-            cursor.EmitLdloc(9); // offset
-            cursor.EmitLdloc(8); // scale
-            cursor.EmitDelegate(RenderExtend);
-        }
-
-        // (For the border mode) Draw the black border around the level
-        if (cursor.TryGotoNext(MoveType.After, instr => instr.MatchCallvirt<Renderer>("Render")))
-        {
-            cursor.EmitDelegate(RenderBorder);
-        }
-    }
-
     private static void HiresRendererBeginRenderHook(ILContext il)
     {
         var cursor = new ILCursor(il);
@@ -207,11 +616,5 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
             cursor.EmitLdcI4(HiresPixelSize);
             cursor.EmitAdd();
         }
-    }
-
-    private static Vector2 CameraToScreenHook(On.Monocle.Camera.orig_CameraToScreen orig, Camera camera,
-        Vector2 position)
-    {
-        return orig(camera, position + GetCameraOffset());
     }
 }
