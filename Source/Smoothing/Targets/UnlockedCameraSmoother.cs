@@ -122,7 +122,7 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
     {
         var cursor = new ILCursor(il);
 
-        // 0. Render Gameplay to large buffer.
+        // Render Gameplay to large buffer.
         // Go right after the Lighting.Render call
         if (cursor.TryGotoNext(MoveType.Before, instr => instr.MatchLdfld<Level>("Lighting")))
         {
@@ -138,14 +138,14 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
 
 
 
-        // 1. Add delegate before Clear(BackgroundColor)
+        // Add delegate before Clear(BackgroundColor)
         if (cursor.TryGotoNext(MoveType.Before,
             instr => instr.MatchLdfld<Level>("BackgroundColor")))
         {
             cursor.EmitDelegate(BeforeBackgroundClear);
         }
 
-        // 2. Add delegate after Background.Render
+        // Add delegate after Background.Render
         if (cursor.TryGotoNext(MoveType.Before,
             instr => instr.MatchLdfld<Level>("Background")))
         {
@@ -157,7 +157,7 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
             }
         }
 
-        // 3.Replace both first two arguments of Distort.Render
+        // Replace both first two arguments of Distort.Render
         // First, find where GameplayBuffers.Gameplay is loaded for Distort.Render
         cursor.Index = 0; // Reset cursor
                           // First find Distort.Render
@@ -187,7 +187,7 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
             cursor.Index = distortRenderIndex;
         }
 
-        // 4. Replace first argument of Bloom.Apply
+        // Replace first argument of Bloom.Apply
         cursor.Index = 0; // Reset cursor
         // Find the Level buffer load that comes before Bloom.Apply
         if (cursor.TryGotoNext(MoveType.Before,
@@ -209,7 +209,7 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
             }
         }
 
-        // 5. Insert delegates before and after Foreground.Render
+        // Insert delegates before and after Foreground.Render
         cursor.Index = 0; // Reset cursor
         if (cursor.TryGotoNext(MoveType.Before,
             instr => instr.MatchLdfld<Level>("Foreground")))
@@ -228,7 +228,7 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
             }
         }
 
-        // 6. Replace first argument of Glitch.Apply
+        // Replace first argument of Glitch.Apply
         cursor.Index = 0; // Reset cursor
                           // Find the Level buffer load that comes before Glitch.Apply
         if (cursor.TryGotoNext(MoveType.After,
@@ -245,7 +245,53 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
             }
         }
 
-        // 8. Ditch the 6x scale
+
+
+        // Fix flash
+        // First find when flash is loaded
+        if (cursor.TryGotoNext(MoveType.After,
+            instr => instr.MatchLdfld<Level>("flash")))
+        {
+            Logger.Log(nameof(MotionSmoothingModule), "found flash");
+            // Find the SpriteBatch.Begin and go just before
+            if (cursor.TryGotoNext(MoveType.Before,
+                instr => instr.MatchCallvirt(typeof(SpriteBatch), "Begin")))
+            {
+                Logger.Log(nameof(MotionSmoothingModule), "found begin");
+
+                // Emit the scale matrix
+                cursor.EmitDelegate(GetScaleMatrix);
+
+                // Modify the Begin call's operand to use the 7-parameter overload
+                cursor.Next.Operand = typeof(SpriteBatch).GetMethod("Begin",
+                    new[] { typeof(SpriteSortMode), typeof(BlendState), typeof(SamplerState),
+                    typeof(DepthStencilState), typeof(RasterizerState), typeof(Effect), typeof(Matrix) })!;
+
+                // Go past this begin call.
+                cursor.Index++;
+            }
+
+            // Go to the beginning of the next SpriteBatch.Begin
+            if (cursor.TryGotoNext(MoveType.Before,
+                instr => instr.MatchCall(typeof(Draw), "get_SpriteBatch")))
+            {
+                Logger.Log(nameof(MotionSmoothingModule), "found second begin");
+
+                // Go to the matrix parameter
+                if (cursor.TryGotoNext(MoveType.After,
+                    instr => instr.MatchCallvirt(typeof(Camera), "get_Matrix")))
+                {
+                    Logger.Log(nameof(MotionSmoothingModule), "found matrix");
+
+                    // Multiply by the scale matrix
+                    cursor.EmitDelegate(GetScaleMatrix);
+                    cursor.EmitCall(typeof(Matrix).GetMethod("op_Multiply", new[] { typeof(Matrix), typeof(Matrix) })!);
+                }
+            }
+        }
+
+
+        // Ditch the 6x scale
         // First find the viewport assignment to ensure we're at the right location
         if (cursor.TryGotoNext(MoveType.After,
             instr => instr.MatchCallvirt<GraphicsDevice>("set_Viewport")))
@@ -259,7 +305,7 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
             }
         }
 
-        // 9. Find the final SpriteBatch.Draw call and replace GameplayBuffers.Level references
+        // Find the final SpriteBatch.Draw call and replace GameplayBuffers.Level references
         // First, find and replace the texture parameter (first Level load)
         if (cursor.TryGotoNext(MoveType.Before,
             instr => instr.MatchCall(typeof(Draw), "get_SpriteBatch")))
@@ -278,7 +324,6 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
             if (cursor.TryGotoNext(MoveType.After,
                 instr => instr.MatchCall(typeof(Vector2), "op_Addition")))
             {
-                Logger.Log(nameof(MotionSmoothingModule), "found addition");
                 // Stack now has the result of vector3 + vector4
                 // Multiply it by 6
                 cursor.EmitLdcR4(6f);
@@ -300,7 +345,6 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
                 instr => instr.MatchLdcR4(0.0f),
                 instr => instr.OpCode == OpCodes.Ldloc_S))
             {
-                Logger.Log(nameof(MotionSmoothingModule), "found second vector");
                 // Stack now has vector3
                 // Multiply it by 6
                 cursor.EmitLdcR4(6f);
@@ -347,12 +391,12 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
         }
         if (self.flash > 0f)
         {
-            Draw.SpriteBatch.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend, SamplerState.PointClamp, DepthStencilState.Default, RasterizerState.CullNone, null, renderer.ScaleMatrix);
-            Draw.Rect(-1f, -1f, 1922f, 1082f, self.flashColor * self.flash); // Modified rectangle size
+            Draw.SpriteBatch.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend, SamplerState.PointClamp, DepthStencilState.Default, RasterizerState.CullNone, null, renderer.ScaleMatrix); // Added scale matrix
+            Draw.Rect(-1f, -1f, 322f, 182f, self.flashColor * self.flash);
             Draw.SpriteBatch.End();
             if (self.flashDrawPlayer)
             {
-                Draw.SpriteBatch.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend, SamplerState.PointClamp, DepthStencilState.Default, RasterizerState.CullNone, null, renderer.ScaleMatrix * self.Camera.Matrix);
+                Draw.SpriteBatch.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend, SamplerState.PointClamp, DepthStencilState.Default, RasterizerState.CullNone, null, renderer.ScaleMatrix * self.Camera.Matrix); // Added scale matrix
                 Player entity2 = self.Tracker.GetEntity<Player>();
                 if (entity2 != null && entity2.Visible)
                 {
@@ -481,6 +525,13 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
         Draw.SpriteBatch.Begin(SpriteSortMode.Immediate, BlendState.Opaque, SamplerState.PointClamp, DepthStencilState.None, RasterizerState.CullNone, null, renderer.ScaleMatrix);
         Draw.SpriteBatch.Draw(renderer.SmallBuffer1, Vector2.Zero, Color.White);
         Draw.SpriteBatch.End();
+    }
+
+    private static Matrix GetScaleMatrix()
+    {
+        if (SmoothParallaxRenderer.Instance is not { } renderer) return Matrix.Identity;
+
+        return renderer.ScaleMatrix;
     }
 
     private static VirtualRenderTarget GetLargeBuffer1()
