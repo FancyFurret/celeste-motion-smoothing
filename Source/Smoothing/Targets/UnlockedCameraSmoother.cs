@@ -8,6 +8,7 @@ using Microsoft.Xna.Framework.Graphics;
 using System.Collections.Generic;
 using Monocle;
 using MonoMod.Cil;
+using Mono.Cecil.Cil;
 
 namespace Celeste.Mod.MotionSmoothing.Smoothing.Targets;
 
@@ -23,8 +24,8 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
     {
         base.Hook();
 
-        On.Celeste.Level.Render += Level_Render;
-        //IL.Celeste.Level.Render += LevelRenderHook;
+        //On.Celeste.Level.Render += Level_Render;
+        IL.Celeste.Level.Render += LevelRenderHook;
         On.Celeste.BloomRenderer.Apply += BloomRenderer_Apply;
         //On.Celeste.BackdropRenderer.Render += BackdropRenderer_Render;
 
@@ -38,8 +39,8 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
     {
         base.Unhook();
 
-        On.Celeste.Level.Render -= Level_Render;
-        //IL.Celeste.Level.Render -= LevelRenderHook;
+        //On.Celeste.Level.Render -= Level_Render;
+        IL.Celeste.Level.Render -= LevelRenderHook;
         On.Celeste.BloomRenderer.Apply -= BloomRenderer_Apply;
         //On.Celeste.BackdropRenderer.Render -= BackdropRenderer_Render;
 
@@ -263,27 +264,47 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
         if (cursor.TryGotoNext(MoveType.Before,
             instr => instr.MatchCall(typeof(Draw), "get_SpriteBatch")))
         {
-            // Move to after SpriteBatch is loaded
             cursor.Index++;
 
-            // Now find the first GameplayBuffers.Level load (for texture)
+            // Replace the two buffer references
             if (cursor.TryGotoNext(MoveType.After,
                 instr => instr.MatchLdsfld(typeof(GameplayBuffers), "Level")))
             {
-                // Replace with your buffer
                 cursor.EmitPop();
-                cursor.EmitDelegate(GetLargeBuffer3); // Should return VirtualRenderTarget
-                                                      // The existing op_Implicit will handle conversion to RenderTarget2D
+                cursor.EmitDelegate(GetLargeBuffer3);
+            }
 
-                // Now find the second GameplayBuffers.Level load (for bounds)
-                if (cursor.TryGotoNext(MoveType.After,
+            // Now find and modify the vector3 + vector4 addition
+            if (cursor.TryGotoNext(MoveType.After,
+                instr => instr.MatchCall(typeof(Vector2), "op_Addition")))
+            {
+                Logger.Log(nameof(MotionSmoothingModule), "found addition");
+                // Stack now has the result of vector3 + vector4
+                // Multiply it by 6
+                cursor.EmitLdcR4(6f);
+                cursor.EmitCall(typeof(Vector2).GetMethod("op_Multiply", new[] { typeof(Vector2), typeof(float) })!);
+            }
+
+            // Change the next buffer
+            if (cursor.TryGotoNext(MoveType.After,
                     instr => instr.MatchLdsfld(typeof(GameplayBuffers), "Level")))
-                {
-                    // Replace with your buffer
-                    cursor.EmitPop();
-                    cursor.EmitDelegate(GetLargeBuffer3); // Should return VirtualRenderTarget
-                                                          // The existing get_Bounds() call will work with the new buffer
-                }
+            {
+                cursor.EmitPop();
+                cursor.EmitDelegate(GetLargeBuffer3);
+            }
+
+            // Find the next vector3 load (for origin parameter)
+            // This is the ldloc.s 5 that comes after the Color.White and ldc.r4 0.0
+            if (cursor.TryGotoNext(MoveType.After,
+                instr => instr.MatchCall(typeof(Color), "get_White"),
+                instr => instr.MatchLdcR4(0.0f),
+                instr => instr.OpCode == OpCodes.Ldloc_S))
+            {
+                Logger.Log(nameof(MotionSmoothingModule), "found second vector");
+                // Stack now has vector3
+                // Multiply it by 6
+                cursor.EmitLdcR4(6f);
+                cursor.EmitCall(typeof(Vector2).GetMethod("op_Multiply", new[] { typeof(Vector2), typeof(float) })!);
             }
         }
     }
@@ -319,19 +340,19 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
             PlayerDashAssist entity = self.Tracker.GetEntity<PlayerDashAssist>();
             if (entity != null)
             {
-                Draw.SpriteBatch.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend, SamplerState.PointClamp, DepthStencilState.Default, RasterizerState.CullNone, null, self.Camera.Matrix);
+                Draw.SpriteBatch.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend, SamplerState.PointClamp, DepthStencilState.Default, RasterizerState.CullNone, null, renderer.ScaleMatrix * self.Camera.Matrix);
                 entity.Render();
                 Draw.SpriteBatch.End();
             }
         }
         if (self.flash > 0f)
         {
-            Draw.SpriteBatch.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend, SamplerState.PointClamp, DepthStencilState.Default, RasterizerState.CullNone, null);
-            Draw.Rect(-1f, -1f, 322f, 182f, self.flashColor * self.flash);
+            Draw.SpriteBatch.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend, SamplerState.PointClamp, DepthStencilState.Default, RasterizerState.CullNone, null, renderer.ScaleMatrix);
+            Draw.Rect(-1f, -1f, 1922f, 1082f, self.flashColor * self.flash); // Modified rectangle size
             Draw.SpriteBatch.End();
             if (self.flashDrawPlayer)
             {
-                Draw.SpriteBatch.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend, SamplerState.PointClamp, DepthStencilState.Default, RasterizerState.CullNone, null, self.Camera.Matrix);
+                Draw.SpriteBatch.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend, SamplerState.PointClamp, DepthStencilState.Default, RasterizerState.CullNone, null, renderer.ScaleMatrix * self.Camera.Matrix);
                 Player entity2 = self.Tracker.GetEntity<Player>();
                 if (entity2 != null && entity2.Visible)
                 {
@@ -345,6 +366,7 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
         Engine.Instance.GraphicsDevice.Viewport = Engine.Viewport;
         Matrix matrix = Matrix.CreateScale(1f) * Engine.ScreenMatrix; // Matrix scale modified
         Vector2 vector = new Vector2(320f, 180f);
+
         Vector2 vector2 = vector / self.ZoomTarget;
         Vector2 vector3 = ((self.ZoomTarget != 1f) ? ((self.ZoomFocusPoint - vector2 / 2f) / (vector - vector2) * vector) : Vector2.Zero);
         MTexture orDefault = GFX.ColorGrades.GetOrDefault(self.lastColorGrade, GFX.ColorGrades["none"]);
@@ -365,11 +387,11 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
             vector3.X = 160f - (vector3.X - 160f);
         }
         Draw.SpriteBatch.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend, SamplerState.PointClamp, DepthStencilState.Default, RasterizerState.CullNone, ColorGrade.Effect, matrix);
-        Draw.SpriteBatch.Draw((RenderTarget2D)renderer.LargeBuffer3, vector3 + vector4, renderer.LargeBuffer3.Bounds, Color.White, 0f, vector3, scale, SaveData.Instance.Assists.MirrorMode ? SpriteEffects.FlipHorizontally : SpriteEffects.None, 0f); // Arguments modified
+        Draw.SpriteBatch.Draw((RenderTarget2D)renderer.LargeBuffer3, (vector3 + vector4) * 6f, renderer.LargeBuffer3.Bounds, Color.White, 0f, vector3 * 6f, scale, SaveData.Instance.Assists.MirrorMode ? SpriteEffects.FlipHorizontally : SpriteEffects.None, 0f); // Arguments modified
         Draw.SpriteBatch.End();
         if (self.Pathfinder != null && self.Pathfinder.DebugRenderEnabled)
         {
-            Draw.SpriteBatch.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend, SamplerState.PointClamp, DepthStencilState.Default, RasterizerState.CullNone, null, self.Camera.Matrix * matrix);
+            Draw.SpriteBatch.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend, SamplerState.PointClamp, DepthStencilState.Default, RasterizerState.CullNone, null, renderer.ScaleMatrix * self.Camera.Matrix * matrix);
             self.Pathfinder.Render();
             Draw.SpriteBatch.End();
         }
