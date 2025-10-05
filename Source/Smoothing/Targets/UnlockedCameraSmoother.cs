@@ -23,8 +23,8 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
     {
         base.Hook();
 
-        //On.Celeste.Level.Render += Level_Render;
-        IL.Celeste.Level.Render += LevelRenderHook;
+        On.Celeste.Level.Render += Level_Render;
+        //IL.Celeste.Level.Render += LevelRenderHook;
         On.Celeste.BloomRenderer.Apply += BloomRenderer_Apply;
         //On.Celeste.BackdropRenderer.Render += BackdropRenderer_Render;
 
@@ -38,8 +38,8 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
     {
         base.Unhook();
 
-        //On.Celeste.Level.Render -= Level_Render;
-        IL.Celeste.Level.Render -= LevelRenderHook;
+        On.Celeste.Level.Render -= Level_Render;
+        //IL.Celeste.Level.Render -= LevelRenderHook;
         On.Celeste.BloomRenderer.Apply -= BloomRenderer_Apply;
         //On.Celeste.BackdropRenderer.Render -= BackdropRenderer_Render;
 
@@ -291,56 +291,29 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
     private static void Level_Render(On.Celeste.Level.orig_Render orig, Level self)
     {
         if (SmoothParallaxRenderer.Instance is not { } renderer) return;
-
-        // Draw the gameplay small
         Engine.Instance.GraphicsDevice.SetRenderTarget(GameplayBuffers.Gameplay);
         Engine.Instance.GraphicsDevice.Clear(Color.Transparent);
         self.GameplayRenderer.Render(self);
         self.Lighting.Render(self);
+        RenderGameplayToLargeBuffer(); // Inserted
 
-        // Scale up the gameplay to Large 1
-        Engine.Instance.GraphicsDevice.SetRenderTarget(renderer.LargeBuffer1);
-        Engine.Instance.GraphicsDevice.Clear(Color.Transparent);
-        Draw.SpriteBatch.Begin(SpriteSortMode.Immediate, BlendState.AlphaBlend, SamplerState.PointClamp, DepthStencilState.None, RasterizerState.CullNone, null, renderer.ScaleMatrix);
-        Draw.SpriteBatch.Draw(GameplayBuffers.Gameplay, GetCameraOffsetInternal(), Color.White);
-        Draw.SpriteBatch.End();
+        Engine.Instance.GraphicsDevice.SetRenderTarget(GameplayBuffers.Level);
 
-
-
-        // Scale up the distort map to Large 2
-        Engine.Instance.GraphicsDevice.SetRenderTarget(renderer.LargeBuffer2);
-        Engine.Instance.GraphicsDevice.Clear(Color.Transparent);
-        Draw.SpriteBatch.Begin(SpriteSortMode.Immediate, BlendState.AlphaBlend, SamplerState.PointClamp, DepthStencilState.None, RasterizerState.CullNone, null, renderer.ScaleMatrix);
-        Draw.SpriteBatch.Draw(GameplayBuffers.Displacement, Vector2.Zero, Color.White);
-        Draw.SpriteBatch.End();
-
-
-
-        // Draw the background to Small 1
-        Engine.Instance.GraphicsDevice.SetRenderTarget(renderer.SmallBuffer1);
+        BeforeBackgroundClear(); // Inserted
         Engine.Instance.GraphicsDevice.Clear(self.BackgroundColor);
         self.Background.Render(self);
+        AfterBackgroundRender(); // Inserted
 
+        Distort.Render((RenderTarget2D)renderer.LargeBuffer1, (RenderTarget2D)renderer.LargeBuffer2, self.Displacement.HasDisplacement(self)); // Arguments modified
 
-        // Composite in Large 3
-        Engine.Instance.GraphicsDevice.SetRenderTarget(renderer.LargeBuffer3);
-        Engine.Instance.GraphicsDevice.Clear(self.BackgroundColor);
+        self.Bloom.Apply(renderer.LargeBuffer3, self); // Argument modified
 
-        // Draw the background upscaled out of Small 1
-        Draw.SpriteBatch.Begin(SpriteSortMode.Immediate, BlendState.Opaque, SamplerState.PointClamp, DepthStencilState.None, RasterizerState.CullNone, null, renderer.ScaleMatrix);
-        Draw.SpriteBatch.Draw(renderer.SmallBuffer1, Vector2.Zero, Color.White);
-        Draw.SpriteBatch.End();
-
-        Distort.Render((RenderTarget2D)renderer.LargeBuffer1, (RenderTarget2D)renderer.LargeBuffer2, self.Displacement.HasDisplacement(self));
-        self.Bloom.Apply(renderer.LargeBuffer3, self);
-
-        Matrix oldMatrixForeground = self.Foreground.Matrix;
-        self.Foreground.Matrix *= renderer.ScaleMatrix;
+        BeforeForegroundRender(self); // Inserted
         self.Foreground.Render(self);
-        self.Foreground.Matrix = oldMatrixForeground;
+        AfterForegroundRender(self); // Inserted
 
+        Glitch.Apply(renderer.LargeBuffer3, self.glitchTimer * 2f, self.glitchSeed, MathF.PI * 2f); // Argument modified
 
-        Glitch.Apply(renderer.LargeBuffer3, self.glitchTimer * 2f, self.glitchSeed, MathF.PI * 2f);
         if (Engine.DashAssistFreeze)
         {
             PlayerDashAssist entity = self.Tracker.GetEntity<PlayerDashAssist>();
@@ -370,8 +343,7 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
         Engine.Instance.GraphicsDevice.SetRenderTarget(null);
         Engine.Instance.GraphicsDevice.Clear(Color.Black);
         Engine.Instance.GraphicsDevice.Viewport = Engine.Viewport;
-        Matrix matrix = Matrix.CreateScale(6f) * Engine.ScreenMatrix * Matrix.CreateScale(1f / 6f);
-        //Matrix matrix = Engine.ScreenMatrix;
+        Matrix matrix = Matrix.CreateScale(1f) * Engine.ScreenMatrix; // Matrix scale modified
         Vector2 vector = new Vector2(320f, 180f);
         Vector2 vector2 = vector / self.ZoomTarget;
         Vector2 vector3 = ((self.ZoomTarget != 1f) ? ((self.ZoomFocusPoint - vector2 / 2f) / (vector - vector2) * vector) : Vector2.Zero);
@@ -393,7 +365,7 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
             vector3.X = 160f - (vector3.X - 160f);
         }
         Draw.SpriteBatch.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend, SamplerState.PointClamp, DepthStencilState.Default, RasterizerState.CullNone, ColorGrade.Effect, matrix);
-        Draw.SpriteBatch.Draw((RenderTarget2D)renderer.LargeBuffer3, vector3 + vector4, renderer.LargeBuffer3.Bounds, Color.White, 0f, vector3, scale, SaveData.Instance.Assists.MirrorMode ? SpriteEffects.FlipHorizontally : SpriteEffects.None, 0f);
+        Draw.SpriteBatch.Draw((RenderTarget2D)renderer.LargeBuffer3, vector3 + vector4, renderer.LargeBuffer3.Bounds, Color.White, 0f, vector3, scale, SaveData.Instance.Assists.MirrorMode ? SpriteEffects.FlipHorizontally : SpriteEffects.None, 0f); // Arguments modified
         Draw.SpriteBatch.End();
         if (self.Pathfinder != null && self.Pathfinder.DebugRenderEnabled)
         {
@@ -521,12 +493,6 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
     private static void AfterForegroundRender(Level level)
     {
         level.Foreground.Matrix = OldForegroundMatrix;
-    }
-
-    private static Matrix ModifyScreenMatrix(Matrix originalMatrix)
-    {
-        // originalMatrix is CreateScale(6f) * Engine.ScreenMatrix
-        return originalMatrix * Matrix.CreateScale(1f / 6f);
     }
 
 
