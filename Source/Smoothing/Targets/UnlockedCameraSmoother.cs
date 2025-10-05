@@ -288,6 +288,134 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
         }
     }
 
+    private static void Level_Render(On.Celeste.Level.orig_Render orig, Level self)
+    {
+        if (SmoothParallaxRenderer.Instance is not { } renderer) return;
+
+        // Draw the gameplay small
+        Engine.Instance.GraphicsDevice.SetRenderTarget(GameplayBuffers.Gameplay);
+        Engine.Instance.GraphicsDevice.Clear(Color.Transparent);
+        self.GameplayRenderer.Render(self);
+        self.Lighting.Render(self);
+
+        // Scale up the gameplay to Large 1
+        Engine.Instance.GraphicsDevice.SetRenderTarget(renderer.LargeBuffer1);
+        Engine.Instance.GraphicsDevice.Clear(Color.Transparent);
+        Draw.SpriteBatch.Begin(SpriteSortMode.Immediate, BlendState.AlphaBlend, SamplerState.PointClamp, DepthStencilState.None, RasterizerState.CullNone, null, renderer.ScaleMatrix);
+        Draw.SpriteBatch.Draw(GameplayBuffers.Gameplay, GetCameraOffsetInternal(), Color.White);
+        Draw.SpriteBatch.End();
+
+
+
+        // Scale up the distort map to Large 2
+        Engine.Instance.GraphicsDevice.SetRenderTarget(renderer.LargeBuffer2);
+        Engine.Instance.GraphicsDevice.Clear(Color.Transparent);
+        Draw.SpriteBatch.Begin(SpriteSortMode.Immediate, BlendState.AlphaBlend, SamplerState.PointClamp, DepthStencilState.None, RasterizerState.CullNone, null, renderer.ScaleMatrix);
+        Draw.SpriteBatch.Draw(GameplayBuffers.Displacement, Vector2.Zero, Color.White);
+        Draw.SpriteBatch.End();
+
+
+
+        // Draw the background to Small 1
+        Engine.Instance.GraphicsDevice.SetRenderTarget(renderer.SmallBuffer1);
+        Engine.Instance.GraphicsDevice.Clear(self.BackgroundColor);
+        self.Background.Render(self);
+
+
+        // Composite in Large 3
+        Engine.Instance.GraphicsDevice.SetRenderTarget(renderer.LargeBuffer3);
+        Engine.Instance.GraphicsDevice.Clear(self.BackgroundColor);
+
+        // Draw the background upscaled out of Small 1
+        Draw.SpriteBatch.Begin(SpriteSortMode.Immediate, BlendState.Opaque, SamplerState.PointClamp, DepthStencilState.None, RasterizerState.CullNone, null, renderer.ScaleMatrix);
+        Draw.SpriteBatch.Draw(renderer.SmallBuffer1, Vector2.Zero, Color.White);
+        Draw.SpriteBatch.End();
+
+        Distort.Render((RenderTarget2D)renderer.LargeBuffer1, (RenderTarget2D)renderer.LargeBuffer2, self.Displacement.HasDisplacement(self));
+        self.Bloom.Apply(renderer.LargeBuffer3, self);
+
+        Matrix oldMatrixForeground = self.Foreground.Matrix;
+        self.Foreground.Matrix *= renderer.ScaleMatrix;
+        self.Foreground.Render(self);
+        self.Foreground.Matrix = oldMatrixForeground;
+
+
+        Glitch.Apply(renderer.LargeBuffer3, self.glitchTimer * 2f, self.glitchSeed, MathF.PI * 2f);
+        if (Engine.DashAssistFreeze)
+        {
+            PlayerDashAssist entity = self.Tracker.GetEntity<PlayerDashAssist>();
+            if (entity != null)
+            {
+                Draw.SpriteBatch.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend, SamplerState.PointClamp, DepthStencilState.Default, RasterizerState.CullNone, null, self.Camera.Matrix);
+                entity.Render();
+                Draw.SpriteBatch.End();
+            }
+        }
+        if (self.flash > 0f)
+        {
+            Draw.SpriteBatch.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend, SamplerState.PointClamp, DepthStencilState.Default, RasterizerState.CullNone, null);
+            Draw.Rect(-1f, -1f, 322f, 182f, self.flashColor * self.flash);
+            Draw.SpriteBatch.End();
+            if (self.flashDrawPlayer)
+            {
+                Draw.SpriteBatch.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend, SamplerState.PointClamp, DepthStencilState.Default, RasterizerState.CullNone, null, self.Camera.Matrix);
+                Player entity2 = self.Tracker.GetEntity<Player>();
+                if (entity2 != null && entity2.Visible)
+                {
+                    entity2.Render();
+                }
+                Draw.SpriteBatch.End();
+            }
+        }
+        Engine.Instance.GraphicsDevice.SetRenderTarget(null);
+        Engine.Instance.GraphicsDevice.Clear(Color.Black);
+        Engine.Instance.GraphicsDevice.Viewport = Engine.Viewport;
+        Matrix matrix = Matrix.CreateScale(6f) * Engine.ScreenMatrix * Matrix.CreateScale(1f / 6f);
+        //Matrix matrix = Engine.ScreenMatrix;
+        Vector2 vector = new Vector2(320f, 180f);
+        Vector2 vector2 = vector / self.ZoomTarget;
+        Vector2 vector3 = ((self.ZoomTarget != 1f) ? ((self.ZoomFocusPoint - vector2 / 2f) / (vector - vector2) * vector) : Vector2.Zero);
+        MTexture orDefault = GFX.ColorGrades.GetOrDefault(self.lastColorGrade, GFX.ColorGrades["none"]);
+        MTexture orDefault2 = GFX.ColorGrades.GetOrDefault(self.Session.ColorGrade, GFX.ColorGrades["none"]);
+        if (self.colorGradeEase > 0f && orDefault != orDefault2)
+        {
+            ColorGrade.Set(orDefault, orDefault2, self.colorGradeEase);
+        }
+        else
+        {
+            ColorGrade.Set(orDefault2);
+        }
+        float scale = self.Zoom * ((320f - self.ScreenPadding * 2f) / 320f);
+        Vector2 vector4 = new Vector2(self.ScreenPadding, self.ScreenPadding * 0.5625f);
+        if (SaveData.Instance.Assists.MirrorMode)
+        {
+            vector4.X = 0f - vector4.X;
+            vector3.X = 160f - (vector3.X - 160f);
+        }
+        Draw.SpriteBatch.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend, SamplerState.PointClamp, DepthStencilState.Default, RasterizerState.CullNone, ColorGrade.Effect, matrix);
+        Draw.SpriteBatch.Draw((RenderTarget2D)renderer.LargeBuffer3, vector3 + vector4, renderer.LargeBuffer3.Bounds, Color.White, 0f, vector3, scale, SaveData.Instance.Assists.MirrorMode ? SpriteEffects.FlipHorizontally : SpriteEffects.None, 0f);
+        Draw.SpriteBatch.End();
+        if (self.Pathfinder != null && self.Pathfinder.DebugRenderEnabled)
+        {
+            Draw.SpriteBatch.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend, SamplerState.PointClamp, DepthStencilState.Default, RasterizerState.CullNone, null, self.Camera.Matrix * matrix);
+            self.Pathfinder.Render();
+            Draw.SpriteBatch.End();
+        }
+        self.SubHudRenderer.Render(self);
+        if (((!self.Paused || !self.PauseMainMenuOpen) && !(self.wasPausedTimer < 1f)) || !Input.MenuJournal.Check || !self.AllowHudHide)
+        {
+            self.HudRenderer.Render(self);
+        }
+        if (self.Wipe != null)
+        {
+            self.Wipe.Render(self);
+        }
+        if (self.HiresSnow != null)
+        {
+            self.HiresSnow.Render(self);
+        }
+    }
+
     private static void RenderGameplayToLargeBuffer()
     {
         // Take the 320x180 gameplay in GameplayBuffers.Gameplay and draw it at 6x into LargeBuffer1,
@@ -343,8 +471,8 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
     {
         if (SmoothParallaxRenderer.Instance is not { } renderer) return;
 
-       // Swap the buffer to Small 1.
-       Engine.Instance.GraphicsDevice.SetRenderTarget(renderer.SmallBuffer1);
+        // Swap the buffer to Small 1.
+        Engine.Instance.GraphicsDevice.SetRenderTarget(renderer.SmallBuffer1);
     }
 
     private static void AfterBackgroundRender()
