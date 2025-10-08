@@ -20,12 +20,27 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
 
     private static Matrix OldForegroundMatrix;
 
+    private static Effect _fxHiresDistort;
+
+    public override void Load()
+    {
+        base.Load();
+        On.Celeste.GFX.LoadEffects += GfxLoadEffectsHook;
+    }
+
+    public override void Unload()
+    {
+        base.Unload();
+        _fxHiresDistort.Dispose();
+        On.Celeste.GFX.LoadEffects -= GfxLoadEffectsHook;
+    }
+
     protected override void Hook()
     {
         base.Hook();
 
-        //On.Celeste.Level.Render += Level_Render;
-        IL.Celeste.Level.Render += LevelRenderHook;
+        On.Celeste.Level.Render += Level_Render;
+        //IL.Celeste.Level.Render += LevelRenderHook;
         On.Celeste.BloomRenderer.Apply += BloomRenderer_Apply;
         //On.Celeste.BackdropRenderer.Render += BackdropRenderer_Render;
 
@@ -39,8 +54,8 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
     {
         base.Unhook();
 
-        //On.Celeste.Level.Render -= Level_Render;
-        IL.Celeste.Level.Render -= LevelRenderHook;
+        On.Celeste.Level.Render -= Level_Render;
+        //IL.Celeste.Level.Render -= LevelRenderHook;
         On.Celeste.BloomRenderer.Apply -= BloomRenderer_Apply;
         //On.Celeste.BackdropRenderer.Render -= BackdropRenderer_Render;
 
@@ -48,6 +63,15 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
         IL.Celeste.TalkComponent.TalkComponentUI.Render -= TalkComponentUiRenderHook;
         IL.Celeste.Lookout.Hud.Render -= LookoutHudRenderHook;
         On.Monocle.Scene.Begin -= Scene_Begin;
+    }
+
+    private static void GfxLoadEffectsHook(On.Celeste.GFX.orig_LoadEffects orig)
+    {
+        orig();
+        _fxHiresDistort = new Effect(Engine.Graphics.GraphicsDevice,
+            Everest.Content.Get("MotionSmoothing:/Effects/HiresDistort.cso").Data);
+        Logger.Log(nameof(MotionSmoothingModule), Everest.Content.Get("MotionSmoothing:/Effects/HiresDistort.cso").Data.ToString());
+        GFX.FxDistort = _fxHiresDistort;
     }
 
     private static void Scene_Begin(On.Monocle.Scene.orig_Begin orig, Scene self)
@@ -369,6 +393,7 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
         self.Background.Render(self);
         AfterBackgroundRender(); // Inserted
 
+        _fxHiresDistort.Parameters["cameraOffset"].SetValue(GetCameraOffsetInternal());
         Distort.Render((RenderTarget2D)renderer.LargeBuffer1, (RenderTarget2D)renderer.LargeBuffer2, self.Displacement.HasDisplacement(self)); // Arguments modified
 
         self.Bloom.Apply(renderer.LargeBuffer3, self); // Argument modified
