@@ -497,6 +497,19 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
         Vector2 offset = GetCameraOffsetInternal() * 6f;
         Draw.SpriteBatch.Begin(SpriteSortMode.Immediate, BlendState.AlphaBlend, SamplerState.PointClamp, DepthStencilState.None, RasterizerState.CullNone, null, Matrix.Identity);
         Draw.SpriteBatch.Draw(renderer.LargeDisplacedGameplayBuffer, offset, Color.White);
+        ////Draw the boundary again
+        Draw.SpriteBatch.Draw(
+            renderer.LargeDisplacedGameplayBuffer,
+            offset + new Vector2(1920f, 0f),
+            new Rectangle(1920 - 6, 0, 6, 1080),
+            Color.White
+        );
+        Draw.SpriteBatch.Draw(
+            renderer.LargeDisplacedGameplayBuffer,
+            offset + new Vector2(0f, 1080f),
+            new Rectangle(0, 1080 - 6, 1920, 6),
+            Color.White
+        );
         Draw.SpriteBatch.End();
     }
 
