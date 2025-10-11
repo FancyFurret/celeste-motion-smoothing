@@ -9,32 +9,35 @@ public class SmoothParallaxRenderer : Renderer
 {
     public static SmoothParallaxRenderer Instance { get; private set; }
 
-    public VirtualRenderTarget LargeBuffer1 { get; }
-    public VirtualRenderTarget LargeBuffer2 { get; }
-    public VirtualRenderTarget LargeBuffer3 { get; }
-    public VirtualRenderTarget SmallBuffer1 { get; }
+    public VirtualRenderTarget LargeGameplayBuffer { get; }
+    public VirtualRenderTarget LargeDisplacementBuffer { get; }
+    public VirtualRenderTarget LargeDisplacedGameplayBuffer { get; }
+    public VirtualRenderTarget LargeLevelBuffer { get; }
+    public VirtualRenderTarget SmallBackgroundBuffer { get; }
 
-    public VirtualRenderTarget LargeTempA { get; }
-    public VirtualRenderTarget LargeTempB { get; }
+    public VirtualRenderTarget LargeTempABuffer { get; }
+    public VirtualRenderTarget LargeTempBBuffer { get; }
 
     public Matrix ScaleMatrix;
 
     public SmoothParallaxRenderer(
-        VirtualRenderTarget largeBuffer1,
-        VirtualRenderTarget largeBuffer2,
-        VirtualRenderTarget largeBuffer3,
-        VirtualRenderTarget smallBuffer1,
-        VirtualRenderTarget largeTempA,
-        VirtualRenderTarget largeTempB
+        VirtualRenderTarget largeGameplayBuffer,
+        VirtualRenderTarget largeDisplacementBuffer,
+        VirtualRenderTarget largeDisplacedGameplayBuffer,
+        VirtualRenderTarget largeLevelBuffer,
+        VirtualRenderTarget smallBackgroundBuffer,
+        VirtualRenderTarget largeTempABuffer,
+        VirtualRenderTarget largeTempBBuffer
     )
     {
-        LargeBuffer1 = largeBuffer1;
-        LargeBuffer2 = largeBuffer2;
-        LargeBuffer3 = largeBuffer3;
-        SmallBuffer1 = smallBuffer1;
+        LargeGameplayBuffer = largeGameplayBuffer;
+        LargeDisplacementBuffer = largeDisplacementBuffer;
+        LargeDisplacedGameplayBuffer = largeDisplacedGameplayBuffer;
+        LargeLevelBuffer = largeLevelBuffer;
+        SmallBackgroundBuffer = smallBackgroundBuffer;
 
-        LargeTempA = largeTempA;
-        LargeTempB = largeTempB;
+        LargeTempABuffer = largeTempABuffer;
+        LargeTempBBuffer = largeTempBBuffer;
 
         ScaleMatrix = Matrix.CreateScale(6f);
 
@@ -51,6 +54,7 @@ public class SmoothParallaxRenderer : Renderer
         Destroy();
 
         Instance = new SmoothParallaxRenderer(
+            GameplayBuffers.Create(1920, 1080),
             GameplayBuffers.Create(1920, 1080),
             GameplayBuffers.Create(1920, 1080),
             GameplayBuffers.Create(1920, 1080),
