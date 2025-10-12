@@ -101,8 +101,8 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
         if (Engine.Scene is Level level)
         {
             var cameraState = (MotionSmoothingHandler.Instance.GetState(level.Camera) as IPositionSmoothingState)!;
-            var pixelOffset = cameraState.SmoothedRealPosition.Floor() - cameraState.SmoothedRealPosition;
-            return pixelOffset;
+
+            return cameraState.SmoothedRealPosition.Floor() - cameraState.SmoothedRealPosition;
         }
 
         return Vector2.Zero;
@@ -235,6 +235,32 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
 
 
 
+        // Fix dash assist
+        // Find where DashAssistFreeze is loaded
+        if (cursor.TryGotoNext(MoveType.After,
+            instr => instr.MatchLdsfld(typeof(Engine), "DashAssistFreeze")))
+        {
+            // Now find the next SpriteBatch.Begin call
+            if (cursor.TryGotoNext(MoveType.Before,
+                instr => instr.MatchCallvirt<SpriteBatch>("Begin")))
+            {
+                // Save the Begin position
+                var beginIndex = cursor.Index;
+
+                // Go backwards to find Camera.get_Matrix()
+                if (cursor.TryGotoPrev(MoveType.After,
+                    instr => instr.MatchCallvirt<Camera>("get_Matrix")))
+                {
+                    // Pop the Camera.Matrix value and replace with delegate
+                    cursor.EmitPop();
+                    cursor.EmitLdarg(0); // Load "this"
+                    cursor.EmitDelegate(GetScaledCameraMatrix);
+                }
+            }
+        }
+
+
+
         // Fix flash
         // First find when flash is loaded
         if (cursor.TryGotoNext(MoveType.After,
@@ -264,9 +290,10 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
                 if (cursor.TryGotoNext(MoveType.After,
                     instr => instr.MatchCallvirt(typeof(Camera), "get_Matrix")))
                 {
-                    // Multiply by the scale matrix
-                    cursor.EmitDelegate(GetScaleMatrix);
-                    cursor.EmitCall(typeof(Matrix).GetMethod("op_Multiply", new[] { typeof(Matrix), typeof(Matrix) })!);
+                    // Pop the Camera.Matrix value and replace with delegate
+                    cursor.EmitPop();
+                    cursor.EmitLdarg(0); // Load "this"
+                    cursor.EmitDelegate(GetScaledCameraMatrix);
                 }
             }
         }
@@ -342,7 +369,6 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
         Engine.Instance.GraphicsDevice.Clear(Color.Transparent);
         self.GameplayRenderer.Render(self);
         self.Lighting.Render(self);
-        //RenderGameplayToLargeBuffer(self); // Inserted
 
         Engine.Instance.GraphicsDevice.SetRenderTarget(GameplayBuffers.Level);
 
@@ -367,7 +393,7 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
             PlayerDashAssist entity = self.Tracker.GetEntity<PlayerDashAssist>();
             if (entity != null)
             {
-                Draw.SpriteBatch.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend, SamplerState.PointClamp, DepthStencilState.Default, RasterizerState.CullNone, null, renderer.ScaleMatrix * self.Camera.Matrix);
+                Draw.SpriteBatch.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend, SamplerState.PointClamp, DepthStencilState.Default, RasterizerState.CullNone, null, GetScaledCameraMatrix(self)); // Changed matrix
                 entity.Render();
                 Draw.SpriteBatch.End();
             }
@@ -379,7 +405,7 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
             Draw.SpriteBatch.End();
             if (self.flashDrawPlayer)
             {
-                Draw.SpriteBatch.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend, SamplerState.PointClamp, DepthStencilState.Default, RasterizerState.CullNone, null, renderer.ScaleMatrix * self.Camera.Matrix); // Added scale matrix
+                Draw.SpriteBatch.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend, SamplerState.PointClamp, DepthStencilState.Default, RasterizerState.CullNone, null, GetScaledCameraMatrix(self)); // Changed matrix
                 Player entity2 = self.Tracker.GetEntity<Player>();
                 if (entity2 != null && entity2.Visible)
                 {
@@ -418,7 +444,7 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
         Draw.SpriteBatch.End();
         if (self.Pathfinder != null && self.Pathfinder.DebugRenderEnabled)
         {
-            Draw.SpriteBatch.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend, SamplerState.PointClamp, DepthStencilState.Default, RasterizerState.CullNone, null, renderer.ScaleMatrix * self.Camera.Matrix * matrix);
+            Draw.SpriteBatch.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend, SamplerState.PointClamp, DepthStencilState.Default, RasterizerState.CullNone, null, self.Camera.Matrix * matrix * renderer.ScaleMatrix);
             self.Pathfinder.Render();
             Draw.SpriteBatch.End();
         }
@@ -477,21 +503,14 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
         Engine.Instance.GraphicsDevice.SetRenderTarget(renderer.LargeLevelBuffer);
 
         Vector2 offset = GetCameraOffsetInternal() * 6f;
+
+        if (SaveData.Instance.Assists.MirrorMode)
+        {
+            offset.X = -offset.X;
+        }
+
         Draw.SpriteBatch.Begin(SpriteSortMode.Immediate, BlendState.AlphaBlend, SamplerState.PointClamp, DepthStencilState.None, RasterizerState.CullNone, null, Matrix.Identity);
         Draw.SpriteBatch.Draw(renderer.LargeDisplacedGameplayBuffer, offset, Color.White);
-        ////Draw the boundary again
-        //Draw.SpriteBatch.Draw(
-        //    renderer.LargeDisplacedGameplayBuffer,
-        //    offset + new Vector2(1920f, 0f),
-        //    new Rectangle(1920 - 6, 0, 6, 1080),
-        //    Color.White
-        //);
-        //Draw.SpriteBatch.Draw(
-        //    renderer.LargeDisplacedGameplayBuffer,
-        //    offset + new Vector2(0f, 1080f),
-        //    new Rectangle(0, 1080 - 6, 1920, 6),
-        //    Color.White
-        //);
         Draw.SpriteBatch.End();
     }
 
@@ -510,6 +529,15 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
 
         return Matrix.CreateTranslation(offset.X, offset.Y, 0f) * renderer.ScaleMatrix;
     }
+
+    private static Matrix GetScaledCameraMatrix(Level level)
+    {
+        if (SmoothParallaxRenderer.Instance is not { } renderer) return Matrix.Identity;
+
+        return level.Camera.Matrix * renderer.ScaleMatrix;
+    }
+
+    
 
     private static VirtualRenderTarget GetLargeGameplayBuffer()
     {
