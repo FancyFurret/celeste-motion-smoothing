@@ -39,9 +39,10 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
     {
         base.Hook();
 
-        On.Celeste.Level.Render += Level_Render;
-        //IL.Celeste.Level.Render += LevelRenderHook;
-        On.Celeste.BloomRenderer.Apply += BloomRenderer_Apply;
+        //On.Celeste.Level.Render += Level_Render;
+        IL.Celeste.Level.Render += LevelRenderHook;
+        //On.Celeste.BloomRenderer.Apply += BloomRenderer_Apply;
+        IL.Celeste.BloomRenderer.Apply += BloomRendererApplyHook;
         //On.Celeste.BackdropRenderer.Render += BackdropRenderer_Render;
         On.Celeste.Godrays.Render += Godrays_Render;
 
@@ -55,9 +56,10 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
     {
         base.Unhook();
 
-        On.Celeste.Level.Render -= Level_Render;
-        //IL.Celeste.Level.Render -= LevelRenderHook;
-        On.Celeste.BloomRenderer.Apply -= BloomRenderer_Apply;
+        //On.Celeste.Level.Render -= Level_Render;
+        IL.Celeste.Level.Render -= LevelRenderHook;
+        //On.Celeste.BloomRenderer.Apply -= BloomRenderer_Apply;
+        IL.Celeste.BloomRenderer.Apply -= BloomRendererApplyHook;
         //On.Celeste.BackdropRenderer.Render -= BackdropRenderer_Render;
         On.Celeste.Godrays.Render -= Godrays_Render;
 
@@ -556,6 +558,88 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
 
 
 
+    private static void BloomRendererApplyHook(ILContext il)
+    {
+        var cursor = new ILCursor(il);
+
+        // Add delegate just before TempA is loaded
+        if (cursor.TryGotoNext(MoveType.Before,
+            instr => instr.MatchLdsfld(typeof(GameplayBuffers), "TempA")))
+        {
+            Logger.Log(nameof(MotionSmoothingModule), "found");
+            cursor.EmitDelegate(DownscaleLevelToBuffer);
+        }
+
+        // Repalce the argument in the GaussianBlur.Blur call
+        // Find Blur call
+        if (cursor.TryGotoNext(MoveType.Before,
+            instr => instr.MatchCall(typeof(GaussianBlur), "Blur")))
+        {
+            // Now search backwards for ldarg.1 (the target parameter) and swap it with GameplayBuffers.Level
+            if (cursor.TryGotoPrev(MoveType.After,
+                instr => instr.MatchLdarg(1)))
+            {
+                Logger.Log(nameof(MotionSmoothingModule), "found 2");
+
+                cursor.EmitPop();
+                cursor.EmitLdsfld(typeof(GameplayBuffers).GetField("Level"));
+            }
+        }
+
+        // Find the LAST SpriteBatch.Begin call in the method
+        int lastBeginIndex = -1;
+        while (cursor.TryGotoNext(MoveType.Before,
+            instr => instr.MatchCallvirt<SpriteBatch>("Begin")))
+        {
+            lastBeginIndex = cursor.Index;
+            cursor.Index++; // Move forward to continue searching
+        }
+
+        if (lastBeginIndex >= 0)
+        {
+            cursor.Index = lastBeginIndex;
+
+            // Add the additional parameters
+            cursor.EmitLdsfld(typeof(SamplerState).GetField("PointClamp"));
+            cursor.EmitLdsfld(typeof(DepthStencilState).GetField("Default"));
+            cursor.EmitLdsfld(typeof(RasterizerState).GetField("CullNone"));
+            cursor.EmitLdnull(); // null for Effect
+            cursor.EmitDelegate(GetScaleMatrix); // Matrix from delegate
+
+            // Now modify the saved instruction reference
+            cursor.Next.Operand = typeof(SpriteBatch).GetMethod("Begin",
+                    new[] { typeof(SpriteSortMode), typeof(BlendState), typeof(SamplerState),
+                    typeof(DepthStencilState), typeof(RasterizerState), typeof(Effect), typeof(Matrix) })!;
+        }
+    }
+
+    private static void DownscaleLevelToBuffer()
+    {
+        if (SmoothParallaxRenderer.Instance is not { } renderer) return;
+
+        // Render down the level to the old small buffer with linear scaling
+        Engine.Graphics.GraphicsDevice.SetRenderTarget(GameplayBuffers.Level);
+        Engine.Graphics.GraphicsDevice.Clear(Color.Transparent);
+
+        Draw.SpriteBatch.Begin(
+            SpriteSortMode.Deferred,
+            BlendState.Opaque,
+            SamplerState.LinearClamp,
+            DepthStencilState.None,
+            RasterizerState.CullNone
+        );
+
+        Draw.SpriteBatch.Draw(
+            renderer.LargeLevelBuffer,
+            new Rectangle(0, 0, 320, 180),
+            Color.White
+        );
+
+        Draw.SpriteBatch.End();
+    }
+
+
+
     private static void BloomRenderer_Apply(On.Celeste.BloomRenderer.orig_Apply orig, BloomRenderer self, VirtualRenderTarget target, Scene scene)
     {
         if (SmoothParallaxRenderer.Instance is not { } renderer) return;
@@ -565,31 +649,12 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
             return;
         }
 
-        // Set the small buffer as the render target
-        Engine.Graphics.GraphicsDevice.SetRenderTarget(GameplayBuffers.Level);
-        Engine.Graphics.GraphicsDevice.Clear(Color.Transparent);
-
-        // Draw the large level buffer into it with linear filtering
-        Draw.SpriteBatch.Begin(
-            SpriteSortMode.Deferred,
-            BlendState.Opaque,
-            SamplerState.LinearClamp,  // Linear filtering for smooth downscale
-            DepthStencilState.None,
-            RasterizerState.CullNone
-        );
-
-        Draw.SpriteBatch.Draw(
-            renderer.LargeLevelBuffer,
-            new Rectangle(0, 0, 320, 180),  // Destination size
-            Color.White
-        );
-
-        Draw.SpriteBatch.End();
+        DownscaleLevelToBuffer(); // Inserted
 
 
 
         VirtualRenderTarget tempA = GameplayBuffers.TempA;
-        Texture2D texture = GaussianBlur.Blur((RenderTarget2D)GameplayBuffers.Level, GameplayBuffers.TempA, GameplayBuffers.TempB);
+        Texture2D texture = GaussianBlur.Blur((RenderTarget2D)GameplayBuffers.Level, GameplayBuffers.TempA, GameplayBuffers.TempB); // First argument modified
         List<Component> components = scene.Tracker.GetComponents<BloomPoint>();
         List<Component> components2 = scene.Tracker.GetComponents<EffectCutout>();
         Engine.Instance.GraphicsDevice.SetRenderTarget(tempA);
@@ -645,7 +710,7 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
         Draw.SpriteBatch.Draw(texture, Vector2.Zero, Color.White);
         Draw.SpriteBatch.End();
         Engine.Instance.GraphicsDevice.SetRenderTarget(target);
-        Draw.SpriteBatch.Begin(SpriteSortMode.Deferred, BloomRenderer.AdditiveMaskToScreen, SamplerState.PointClamp, DepthStencilState.Default, RasterizerState.CullNone, null, renderer.ScaleMatrix);
+        Draw.SpriteBatch.Begin(SpriteSortMode.Deferred, BloomRenderer.AdditiveMaskToScreen, SamplerState.PointClamp, DepthStencilState.Default, RasterizerState.CullNone, null, renderer.ScaleMatrix); // Arguments modified
         for (int i = 0; (float)i < self.Strength; i++)
         {
             float num2 = (((float)i < self.Strength - 1f) ? 1f : (self.Strength - (float)i));
