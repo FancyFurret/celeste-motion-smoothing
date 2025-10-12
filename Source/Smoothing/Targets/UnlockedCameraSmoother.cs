@@ -20,8 +20,6 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
 
     private static Matrix OldForegroundMatrix;
 
-    private static Effect _fxHiresDistort;
-
     public override void Load()
     {
         base.Load();
@@ -44,7 +42,7 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
         //On.Celeste.BloomRenderer.Apply += BloomRenderer_Apply;
         IL.Celeste.BloomRenderer.Apply += BloomRendererApplyHook;
         //On.Celeste.BackdropRenderer.Render += BackdropRenderer_Render;
-        On.Celeste.Godrays.Render += Godrays_Render;
+        IL.Celeste.Godrays.Render += GodraysRenderHook;
 
         IL.Celeste.HiresRenderer.BeginRender += HiresRendererBeginRenderHook;
         IL.Celeste.TalkComponent.TalkComponentUI.Render += TalkComponentUiRenderHook;
@@ -61,7 +59,7 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
         //On.Celeste.BloomRenderer.Apply -= BloomRenderer_Apply;
         IL.Celeste.BloomRenderer.Apply -= BloomRendererApplyHook;
         //On.Celeste.BackdropRenderer.Render -= BackdropRenderer_Render;
-        On.Celeste.Godrays.Render -= Godrays_Render;
+        IL.Celeste.Godrays.Render -= GodraysRenderHook;
 
         IL.Celeste.HiresRenderer.BeginRender -= HiresRendererBeginRenderHook;
         IL.Celeste.TalkComponent.TalkComponentUI.Render -= TalkComponentUiRenderHook;
@@ -113,7 +111,6 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
     public static Matrix GetScreenCameraMatrix()
     {
         var offset = GetCameraOffset() * HiresPixelSize;
-        GetCameraOffsetInternal();
 
         if (MotionSmoothingModule.Settings.UnlockCameraMode == UnlockCameraMode.Border ||
             MotionSmoothingModule.Settings.UnlockCameraMode == UnlockCameraMode.Extend)
@@ -149,23 +146,6 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
     private static void LevelRenderHook(ILContext il)
     {
         var cursor = new ILCursor(il);
-
-        //// Render Gameplay to large buffer.
-        //// Go right after the Lighting.Render call
-        //if (cursor.TryGotoNext(MoveType.Before, instr => instr.MatchLdfld<Level>("Lighting")))
-        //{
-        //    // Now move forward to find the next Renderer.Render call
-        //    if (cursor.TryGotoNext(MoveType.After,
-        //        instr => instr.MatchCallvirt<Renderer>("Render")))
-        //    {
-        //        // Insert your delegate call here
-        //        cursor.EmitLdarg(0); // Load "this"
-        //        cursor.EmitDelegate(RenderGameplayToLargeBuffer);
-        //    }
-        //}
-
-
-
 
         // Add delegate before Clear(BackgroundColor)
         if (cursor.TryGotoNext(MoveType.Before,
@@ -292,7 +272,7 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
         }
 
 
-        // Ditch the 6x scale
+        // Ditch the 6x scale and replace it with 181/180 to zoom
         // First find the viewport assignment to ensure we're at the right location
         if (cursor.TryGotoNext(MoveType.After,
             instr => instr.MatchCallvirt<GraphicsDevice>("set_Viewport")))
@@ -302,7 +282,7 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
                 instr => instr.MatchLdcR4(6f)))
             {
                 cursor.EmitPop();
-                cursor.EmitLdcR4(1f);
+                cursor.EmitLdcR4(181f / 180f);
             }
         }
 
@@ -411,7 +391,7 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
         Engine.Instance.GraphicsDevice.SetRenderTarget(null);
         Engine.Instance.GraphicsDevice.Clear(Color.Black);
         Engine.Instance.GraphicsDevice.Viewport = Engine.Viewport;
-        Matrix matrix = Matrix.CreateScale(1f) * Engine.ScreenMatrix; // Matrix scale modified
+        Matrix matrix = Matrix.CreateScale(181 / 180f) * Engine.ScreenMatrix; // Matrix scale modified
         Vector2 vector = new Vector2(320f, 180f);
 
         Vector2 vector2 = vector / self.ZoomTarget;
@@ -500,18 +480,18 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
         Draw.SpriteBatch.Begin(SpriteSortMode.Immediate, BlendState.AlphaBlend, SamplerState.PointClamp, DepthStencilState.None, RasterizerState.CullNone, null, Matrix.Identity);
         Draw.SpriteBatch.Draw(renderer.LargeDisplacedGameplayBuffer, offset, Color.White);
         ////Draw the boundary again
-        Draw.SpriteBatch.Draw(
-            renderer.LargeDisplacedGameplayBuffer,
-            offset + new Vector2(1920f, 0f),
-            new Rectangle(1920 - 6, 0, 6, 1080),
-            Color.White
-        );
-        Draw.SpriteBatch.Draw(
-            renderer.LargeDisplacedGameplayBuffer,
-            offset + new Vector2(0f, 1080f),
-            new Rectangle(0, 1080 - 6, 1920, 6),
-            Color.White
-        );
+        //Draw.SpriteBatch.Draw(
+        //    renderer.LargeDisplacedGameplayBuffer,
+        //    offset + new Vector2(1920f, 0f),
+        //    new Rectangle(1920 - 6, 0, 6, 1080),
+        //    Color.White
+        //);
+        //Draw.SpriteBatch.Draw(
+        //    renderer.LargeDisplacedGameplayBuffer,
+        //    offset + new Vector2(0f, 1080f),
+        //    new Rectangle(0, 1080 - 6, 1920, 6),
+        //    Color.White
+        //);
         Draw.SpriteBatch.End();
     }
 
@@ -547,8 +527,10 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
     {
         if (SmoothParallaxRenderer.Instance is not { } renderer) return;
 
+        Vector2 offset = GetCameraOffsetInternal();
+
         OldForegroundMatrix = level.Foreground.Matrix;
-        level.Foreground.Matrix *= renderer.ScaleMatrix;
+        level.Foreground.Matrix = Matrix.CreateTranslation(offset.X, offset.Y, 0f) * renderer.ScaleMatrix * level.Foreground.Matrix;
     }
 
     private static void AfterForegroundRender(Level level)
@@ -868,6 +850,19 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
         if (self.vertexCount > 0 && self.fade > 0f)
         {
             GFX.DrawVertices(renderer.ScaleMatrix, self.vertices, self.vertexCount);
+        }
+    }
+
+    private static void GodraysRenderHook(ILContext il)
+    {
+        var cursor = new ILCursor(il);
+
+        // Replace the ideneity matrix with the scale one
+        if (cursor.TryGotoNext(MoveType.After,
+            instr => instr.MatchCall(typeof(Matrix), "get_Identity")))
+        {
+            cursor.EmitPop();
+            cursor.EmitDelegate(GetScaleMatrix);
         }
     }
 }
