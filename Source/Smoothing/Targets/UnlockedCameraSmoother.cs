@@ -39,8 +39,8 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
     {
         base.Hook();
 
-        //On.Celeste.Level.Render += Level_Render;
-        IL.Celeste.Level.Render += LevelRenderHook;
+        On.Celeste.Level.Render += Level_Render;
+        //IL.Celeste.Level.Render += LevelRenderHook;
         On.Celeste.BloomRenderer.Apply += BloomRenderer_Apply;
         //On.Celeste.BackdropRenderer.Render += BackdropRenderer_Render;
         On.Celeste.Godrays.Render += Godrays_Render;
@@ -55,8 +55,8 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
     {
         base.Unhook();
 
-        //On.Celeste.Level.Render -= Level_Render;
-        IL.Celeste.Level.Render -= LevelRenderHook;
+        On.Celeste.Level.Render -= Level_Render;
+        //IL.Celeste.Level.Render -= LevelRenderHook;
         On.Celeste.BloomRenderer.Apply -= BloomRenderer_Apply;
         //On.Celeste.BackdropRenderer.Render -= BackdropRenderer_Render;
         On.Celeste.Godrays.Render -= Godrays_Render;
@@ -565,8 +565,31 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
             return;
         }
 
-        VirtualRenderTarget tempA = renderer.LargeTempABuffer;
-        Texture2D texture = GaussianBlur.Blur((RenderTarget2D)target, renderer.LargeTempABuffer, renderer.LargeTempBBuffer);
+        // Set the small buffer as the render target
+        Engine.Graphics.GraphicsDevice.SetRenderTarget(GameplayBuffers.Level);
+        Engine.Graphics.GraphicsDevice.Clear(Color.Transparent);
+
+        // Draw the large level buffer into it with linear filtering
+        Draw.SpriteBatch.Begin(
+            SpriteSortMode.Deferred,
+            BlendState.Opaque,
+            SamplerState.LinearClamp,  // Linear filtering for smooth downscale
+            DepthStencilState.None,
+            RasterizerState.CullNone
+        );
+
+        Draw.SpriteBatch.Draw(
+            renderer.LargeLevelBuffer,
+            new Rectangle(0, 0, 320, 180),  // Destination size
+            Color.White
+        );
+
+        Draw.SpriteBatch.End();
+
+
+
+        VirtualRenderTarget tempA = GameplayBuffers.TempA;
+        Texture2D texture = GaussianBlur.Blur((RenderTarget2D)GameplayBuffers.Level, GameplayBuffers.TempA, GameplayBuffers.TempB);
         List<Component> components = scene.Tracker.GetComponents<BloomPoint>();
         List<Component> components2 = scene.Tracker.GetComponents<EffectCutout>();
         Engine.Instance.GraphicsDevice.SetRenderTarget(tempA);
@@ -574,7 +597,7 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
         if (self.Base < 1f)
         {
             Camera camera = (scene as Level).Camera;
-            Draw.SpriteBatch.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend, SamplerState.PointClamp, DepthStencilState.None, RasterizerState.CullNone, null, camera.Matrix * renderer.ScaleMatrix);
+            Draw.SpriteBatch.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend, SamplerState.PointClamp, DepthStencilState.None, RasterizerState.CullNone, null, camera.Matrix);
             float num = 1f / (float)self.gradient.Width;
             foreach (Component item in components)
             {
@@ -601,7 +624,7 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
             Draw.SpriteBatch.End();
             if (components2.Count > 0)
             {
-                Draw.SpriteBatch.Begin(SpriteSortMode.Deferred, BloomRenderer.CutoutBlendstate, SamplerState.PointClamp, null, null, null, camera.Matrix * renderer.ScaleMatrix);
+                Draw.SpriteBatch.Begin(SpriteSortMode.Deferred, BloomRenderer.CutoutBlendstate, SamplerState.PointClamp, null, null, null, camera.Matrix);
                 foreach (Component item2 in components2)
                 {
                     EffectCutout effectCutout = item2 as EffectCutout;
@@ -615,14 +638,14 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
             }
         }
 
-        Draw.SpriteBatch.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend);
-        Draw.Rect(-10f * 6f, -10f * 6f, 340f * 6f, 200f * 6f, Color.White * self.Base);
+        Draw.SpriteBatch.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend, SamplerState.PointClamp, DepthStencilState.Default, RasterizerState.CullNone, null);
+        Draw.Rect(-10f, -10f, 340f, 200f, Color.White * self.Base);
         Draw.SpriteBatch.End();
         Draw.SpriteBatch.Begin(SpriteSortMode.Deferred, BloomRenderer.BlurredScreenToMask);
         Draw.SpriteBatch.Draw(texture, Vector2.Zero, Color.White);
         Draw.SpriteBatch.End();
         Engine.Instance.GraphicsDevice.SetRenderTarget(target);
-        Draw.SpriteBatch.Begin(SpriteSortMode.Deferred, BloomRenderer.AdditiveMaskToScreen);
+        Draw.SpriteBatch.Begin(SpriteSortMode.Deferred, BloomRenderer.AdditiveMaskToScreen, SamplerState.PointClamp, DepthStencilState.Default, RasterizerState.CullNone, null, renderer.ScaleMatrix);
         for (int i = 0; (float)i < self.Strength; i++)
         {
             float num2 = (((float)i < self.Strength - 1f) ? 1f : (self.Strength - (float)i));
