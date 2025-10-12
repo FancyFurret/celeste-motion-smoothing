@@ -502,6 +502,15 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
         return renderer.ScaleMatrix;
     }
 
+    private static Matrix GetOffsetScaleMatrix()
+    {
+        if (SmoothParallaxRenderer.Instance is not { } renderer) return Matrix.Identity;
+
+        Vector2 offset = GetCameraOffsetInternal();
+
+        return Matrix.CreateTranslation(offset.X, offset.Y, 0f) * renderer.ScaleMatrix;
+    }
+
     private static VirtualRenderTarget GetLargeGameplayBuffer()
     {
         if (SmoothParallaxRenderer.Instance is not { } renderer) return GameplayBuffers.Gameplay;
@@ -586,7 +595,7 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
             cursor.EmitLdsfld(typeof(DepthStencilState).GetField("Default"));
             cursor.EmitLdsfld(typeof(RasterizerState).GetField("CullNone"));
             cursor.EmitLdnull(); // null for Effect
-            cursor.EmitDelegate(GetScaleMatrix); // Matrix from delegate
+            cursor.EmitDelegate(GetOffsetScaleMatrix); // Matrix from delegate
 
             // Now modify the saved instruction reference
             cursor.Next.Operand = typeof(SpriteBatch).GetMethod("Begin",
@@ -692,7 +701,7 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
         Draw.SpriteBatch.Draw(texture, Vector2.Zero, Color.White);
         Draw.SpriteBatch.End();
         Engine.Instance.GraphicsDevice.SetRenderTarget(target);
-        Draw.SpriteBatch.Begin(SpriteSortMode.Deferred, BloomRenderer.AdditiveMaskToScreen, SamplerState.PointClamp, DepthStencilState.Default, RasterizerState.CullNone, null, renderer.ScaleMatrix); // Arguments modified
+        Draw.SpriteBatch.Begin(SpriteSortMode.Deferred, BloomRenderer.AdditiveMaskToScreen, SamplerState.PointClamp, DepthStencilState.Default, RasterizerState.CullNone, null, GetOffsetScaleMatrix()); // Arguments modified
         for (int i = 0; (float)i < self.Strength; i++)
         {
             float num2 = (((float)i < self.Strength - 1f) ? 1f : (self.Strength - (float)i));
