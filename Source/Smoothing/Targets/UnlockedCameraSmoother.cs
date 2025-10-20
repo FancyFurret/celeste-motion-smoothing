@@ -1,14 +1,14 @@
-using System;
 using Celeste.Mod.Entities;
 using Celeste.Mod.MotionSmoothing.Interop;
 using Celeste.Mod.MotionSmoothing.Smoothing.States;
 using Celeste.Mod.MotionSmoothing.Utilities;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
-using System.Collections.Generic;
+using Mono.Cecil.Cil;
 using Monocle;
 using MonoMod.Cil;
-using Mono.Cecil.Cil;
+using System;
+using System.Collections.Generic;
 
 namespace Celeste.Mod.MotionSmoothing.Smoothing.Targets;
 
@@ -16,21 +16,22 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
 {
     private const float ZoomScaleMultiplier = 181f / 180f;
     private const int HiresPixelSize = 1080 / 180;
-    private const int BorderOffset = HiresPixelSize / 2;
+
+    private static Effect _fxHiresGaussianBlur;
 
     private static Matrix OldForegroundMatrix;
 
     public override void Load()
     {
         base.Load();
-        //On.Celeste.GFX.LoadEffects += GfxLoadEffectsHook;
+        On.Celeste.GFX.LoadEffects += GfxLoadEffectsHook;
     }
 
     public override void Unload()
     {
         base.Unload();
-        //_fxHiresDistort.Dispose();
-        //On.Celeste.GFX.LoadEffects -= GfxLoadEffectsHook;
+        _fxHiresGaussianBlur.Dispose();
+        On.Celeste.GFX.LoadEffects -= GfxLoadEffectsHook;
     }
 
     protected override void Hook()
@@ -39,9 +40,8 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
 
         //On.Celeste.Level.Render += Level_Render;
         IL.Celeste.Level.Render += LevelRenderHook;
-        //On.Celeste.BloomRenderer.Apply += BloomRenderer_Apply;
-        IL.Celeste.BloomRenderer.Apply += BloomRendererApplyHook;
-        //On.Celeste.BackdropRenderer.Render += BackdropRenderer_Render;
+        On.Celeste.BloomRenderer.Apply += BloomRenderer_Apply;
+        //IL.Celeste.BloomRenderer.Apply += BloomRendererApplyHook;
         IL.Celeste.Godrays.Render += GodraysRenderHook;
 
         IL.Celeste.HiresRenderer.BeginRender += HiresRendererBeginRenderHook;
@@ -56,9 +56,8 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
 
         //On.Celeste.Level.Render -= Level_Render;
         IL.Celeste.Level.Render -= LevelRenderHook;
-        //On.Celeste.BloomRenderer.Apply -= BloomRenderer_Apply;
-        IL.Celeste.BloomRenderer.Apply -= BloomRendererApplyHook;
-        //On.Celeste.BackdropRenderer.Render -= BackdropRenderer_Render;
+        On.Celeste.BloomRenderer.Apply -= BloomRenderer_Apply;
+        //IL.Celeste.BloomRenderer.Apply -= BloomRendererApplyHook;
         IL.Celeste.Godrays.Render -= GodraysRenderHook;
 
         IL.Celeste.HiresRenderer.BeginRender -= HiresRendererBeginRenderHook;
@@ -70,10 +69,8 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
     private static void GfxLoadEffectsHook(On.Celeste.GFX.orig_LoadEffects orig)
     {
         orig();
-        //_fxHiresDistort = new Effect(Engine.Graphics.GraphicsDevice,
-        //    Everest.Content.Get("MotionSmoothing:/Effects/HiresDistort.cso").Data);
-        //Logger.Log(nameof(MotionSmoothingModule), Everest.Content.Get("MotionSmoothing:/Effects/HiresDistort.cso").Data.ToString());
-        //GFX.FxDistort = _fxHiresDistort;
+        _fxHiresGaussianBlur = new Effect(Engine.Graphics.GraphicsDevice,
+            Everest.Content.Get("MotionSmoothing:/Effects/HiresGaussianBlur.cso").Data);
     }
 
     private static void Scene_Begin(On.Monocle.Scene.orig_Begin orig, Scene self)
@@ -112,18 +109,12 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
     {
         var offset = GetCameraOffset() * HiresPixelSize;
 
-        if (MotionSmoothingModule.Settings.UnlockCameraMode == UnlockCameraMode.Border ||
-            MotionSmoothingModule.Settings.UnlockCameraMode == UnlockCameraMode.Extend)
-            offset += new Vector2(BorderOffset, BorderOffset);
-
         return Matrix.CreateTranslation(offset.X, offset.Y, 0);
     }
 
     public static float GetCameraScale()
     {
-        if (MotionSmoothingModule.Settings.UnlockCameraMode == UnlockCameraMode.Zoom)
-            return ZoomScaleMultiplier;
-        return 1;
+        return ZoomScaleMultiplier;
     }
 
     public static Vector2 GetSmoothedCameraPosition()
@@ -131,11 +122,7 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
         if (Engine.Scene is Level level)
         {
             var cameraState = (MotionSmoothingHandler.Instance.GetState(level.Camera) as IPositionSmoothingState)!;
-            var pos = cameraState.SmoothedRealPosition;
-            if (MotionSmoothingModule.Settings.UnlockCameraMode == UnlockCameraMode.Border ||
-                MotionSmoothingModule.Settings.UnlockCameraMode == UnlockCameraMode.Extend)
-                pos -= new Vector2(.5f, .5f);
-            return pos;
+            return cameraState.SmoothedRealPosition;
         }
 
         return Vector2.Zero;
@@ -504,11 +491,6 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
 
         Vector2 offset = GetCameraOffsetInternal() * 6f;
 
-        if (SaveData.Instance.Assists.MirrorMode)
-        {
-            offset.X = -offset.X;
-        }
-
         Draw.SpriteBatch.Begin(SpriteSortMode.Immediate, BlendState.AlphaBlend, SamplerState.PointClamp, DepthStencilState.None, RasterizerState.CullNone, null, Matrix.Identity);
         Draw.SpriteBatch.Draw(renderer.LargeDisplacedGameplayBuffer, offset, Color.White);
         Draw.SpriteBatch.End();
@@ -668,12 +650,12 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
             return;
         }
 
-        DownscaleLevelToBuffer(); // Inserted
+        //DownscaleLevelToBuffer(); // Inserted
 
 
 
-        VirtualRenderTarget tempA = GameplayBuffers.TempA;
-        Texture2D texture = GaussianBlur.Blur((RenderTarget2D)GameplayBuffers.Level, GameplayBuffers.TempA, GameplayBuffers.TempB); // First argument modified
+        VirtualRenderTarget tempA = renderer.LargeTempABuffer;
+        Texture2D texture = ModifiedBlur((RenderTarget2D)target, renderer.LargeTempABuffer, renderer.LargeTempBBuffer); // First argument modified
         List<Component> components = scene.Tracker.GetComponents<BloomPoint>();
         List<Component> components2 = scene.Tracker.GetComponents<EffectCutout>();
         Engine.Instance.GraphicsDevice.SetRenderTarget(tempA);
@@ -681,7 +663,7 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
         if (self.Base < 1f)
         {
             Camera camera = (scene as Level).Camera;
-            Draw.SpriteBatch.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend, SamplerState.PointClamp, DepthStencilState.None, RasterizerState.CullNone, null, camera.Matrix);
+            Draw.SpriteBatch.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend, SamplerState.PointClamp, DepthStencilState.None, RasterizerState.CullNone, null, camera.Matrix * renderer.ScaleMatrix);
             float num = 1f / (float)self.gradient.Width;
             foreach (Component item in components)
             {
@@ -708,7 +690,7 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
             Draw.SpriteBatch.End();
             if (components2.Count > 0)
             {
-                Draw.SpriteBatch.Begin(SpriteSortMode.Deferred, BloomRenderer.CutoutBlendstate, SamplerState.PointClamp, null, null, null, camera.Matrix);
+                Draw.SpriteBatch.Begin(SpriteSortMode.Deferred, BloomRenderer.CutoutBlendstate, SamplerState.PointClamp, null, null, null, camera.Matrix * renderer.ScaleMatrix);
                 foreach (Component item2 in components2)
                 {
                     EffectCutout effectCutout = item2 as EffectCutout;
@@ -722,14 +704,16 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
             }
         }
 
-        Draw.SpriteBatch.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend, SamplerState.PointClamp, DepthStencilState.Default, RasterizerState.CullNone, null);
+        Draw.SpriteBatch.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend, SamplerState.PointClamp, DepthStencilState.Default, RasterizerState.CullNone, null, renderer.ScaleMatrix);
         Draw.Rect(-10f, -10f, 340f, 200f, Color.White * self.Base);
         Draw.SpriteBatch.End();
         Draw.SpriteBatch.Begin(SpriteSortMode.Deferred, BloomRenderer.BlurredScreenToMask);
         Draw.SpriteBatch.Draw(texture, Vector2.Zero, Color.White);
         Draw.SpriteBatch.End();
         Engine.Instance.GraphicsDevice.SetRenderTarget(target);
-        Draw.SpriteBatch.Begin(SpriteSortMode.Deferred, BloomRenderer.AdditiveMaskToScreen, SamplerState.PointClamp, DepthStencilState.Default, RasterizerState.CullNone, null, GetOffsetScaleMatrix()); // Arguments modified
+
+        //Vector2 offset = GetCameraOffsetInternal() * 6f;
+        Draw.SpriteBatch.Begin(SpriteSortMode.Deferred, BloomRenderer.AdditiveMaskToScreen);
         for (int i = 0; (float)i < self.Strength; i++)
         {
             float num2 = (((float)i < self.Strength - 1f) ? 1f : (self.Strength - (float)i));
@@ -739,101 +723,34 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
         Draw.SpriteBatch.End();
     }
 
-
-
-    //private static void BackdropRenderer_Render(On.Celeste.BackdropRenderer.orig_Render orig, BackdropRenderer self, Scene scene)
-    //{
-    //    BlendState blendState = BlendState.AlphaBlend;
-    //    foreach (Backdrop backdrop in self.Backdrops)
-    //    {
-    //        if (!backdrop.Visible)
-    //        {
-    //            continue;
-    //        }
-
-    //        if (backdrop is Parallax parallax && (!self.usingLoopingSpritebatch || parallax.BlendState != blendState))
-    //        {
-    //            self.EndSpritebatch();
-    //            blendState = parallax.BlendState;
-    //        }
-
-    //        if (!(backdrop is Parallax) && backdrop.UseSpritebatch && self.usingLoopingSpritebatch)
-    //        {
-    //            self.EndSpritebatch();
-    //        }
-
-    //        if (backdrop.UseSpritebatch && !self.usingSpritebatch)
-    //        {
-    //            if (backdrop is Parallax)
-    //            {
-    //                self.StartSpritebatchLooping(blendState);
-    //            }
-    //            else
-    //            {
-    //                self.StartSpritebatch(blendState);
-    //            }
-    //        }
-
-    //        if (!backdrop.UseSpritebatch && self.usingSpritebatch)
-    //        {
-    //            self.EndSpritebatch();
-    //        }
-
-    //        backdrop.Render(scene);
-    //    }
-
-    //    if (self.Fade > 0f)
-    //    {
-    //        Draw.Rect(-10f * 6f, -10f * 6f, 340f * 6f, 200f * 6f, self.FadeColor * self.Fade);
-    //    }
-
-    //    self.EndSpritebatch();
-    //}
-
-    private static void RenderExtend(Vector2 origin, Vector2 offset, float scale)
+    public static Texture2D ModifiedBlur(Texture2D texture, VirtualRenderTarget temp, VirtualRenderTarget output, float fade = 0f, bool clear = true, float sampleScale = 1f, float alpha = 1f)
     {
-        const int textureWidth = 320;
-        const int textureHeight = 180;
-
-        if (MotionSmoothingModule.Settings.UnlockCameraMode != UnlockCameraMode.Extend)
-            return;
-        if (((Level)Engine.Scene).ScreenPadding > 0)
-            return;
-
-        var effect = SaveData.Instance.Assists.MirrorMode ? SpriteEffects.FlipHorizontally : SpriteEffects.None;
-        var texture = GameplayBuffers.Level;
-
-        Draw.SpriteBatch.Draw(texture, origin + offset + new Vector2(0, textureHeight * scale),
-            new Rectangle(0, textureHeight - 1, textureWidth, 1), Color.White, 0.0f, origin, scale, effect, 0.0f);
-
-        Draw.SpriteBatch.Draw(texture, origin + offset + new Vector2(textureWidth * scale, 0),
-            new Rectangle(textureWidth - 1, 0, 1, textureHeight), Color.White, 0.0f, origin, scale, effect, 0.0f);
-
-        Draw.SpriteBatch.Draw(texture, origin + offset + new Vector2(0, -1 * scale),
-            new Rectangle(0, 0, textureWidth, 1), Color.White, 0.0f, origin, scale, effect, 0.0f);
-
-        Draw.SpriteBatch.Draw(texture, origin + offset + new Vector2(-1 * scale, 0),
-            new Rectangle(0, 0, 1, textureHeight), Color.White, 0.0f, origin, scale, effect, 0.0f);
-    }
-
-    private static void RenderBorder()
-    {
-        if (MotionSmoothingModule.Settings.UnlockCameraMode != UnlockCameraMode.Border)
-            return;
-
-        const int width = 1920;
-        const int height = 1080;
-        const int size = HiresPixelSize / 2;
-
-        Draw.SpriteBatch.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend, SamplerState.PointClamp,
-            DepthStencilState.None, RasterizerState.CullNone, null, Engine.ScreenMatrix);
-
-        Draw.Rect(0, 0, width, size, Color.Black);
-        Draw.Rect(0, 0, size, height, Color.Black);
-        Draw.Rect(width - size, 0, size, height, Color.Black);
-        Draw.Rect(0, height - size, width, size, Color.Black);
-
-        Draw.SpriteBatch.End();
+        Effect fxGaussianBlur = _fxHiresGaussianBlur;
+        if (fxGaussianBlur != null)
+        {
+            fxGaussianBlur.CurrentTechnique = fxGaussianBlur.Techniques["GaussianBlur9"];
+            fxGaussianBlur.Parameters["fade"].SetValue(fade);
+            fxGaussianBlur.Parameters["pixel"].SetValue(new Vector2(1f / (float)temp.Width, 0f) * sampleScale);
+            Engine.Instance.GraphicsDevice.SetRenderTarget(temp);
+            if (clear)
+            {
+                Engine.Instance.GraphicsDevice.Clear(Color.Transparent);
+            }
+            Draw.SpriteBatch.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend, SamplerState.PointClamp, DepthStencilState.Default, RasterizerState.CullNone, fxGaussianBlur);
+            Draw.SpriteBatch.Draw(texture, new Rectangle(0, 0, temp.Width, temp.Height), Color.White);
+            Draw.SpriteBatch.End();
+            fxGaussianBlur.Parameters["pixel"].SetValue(new Vector2(0f, 1f / (float)output.Height) * sampleScale);
+            Engine.Instance.GraphicsDevice.SetRenderTarget(output);
+            if (clear)
+            {
+                Engine.Instance.GraphicsDevice.Clear(Color.Transparent);
+            }
+            Draw.SpriteBatch.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend, SamplerState.PointClamp, DepthStencilState.Default, RasterizerState.CullNone, fxGaussianBlur);
+            Draw.SpriteBatch.Draw((RenderTarget2D)temp, new Rectangle(0, 0, output.Width, output.Height), Color.White);
+            Draw.SpriteBatch.End();
+            return (RenderTarget2D)output;
+        }
+        return texture;
     }
 
     private static void HiresRendererBeginRenderHook(ILContext il)
