@@ -40,8 +40,8 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
 
         //On.Celeste.Level.Render += Level_Render;
         IL.Celeste.Level.Render += LevelRenderHook;
-        On.Celeste.BloomRenderer.Apply += BloomRenderer_Apply;
-        //IL.Celeste.BloomRenderer.Apply += BloomRendererApplyHook;
+        //On.Celeste.BloomRenderer.Apply += BloomRenderer_Apply;
+        IL.Celeste.BloomRenderer.Apply += BloomRendererApplyHook;
         IL.Celeste.Godrays.Render += GodraysRenderHook;
 
         IL.Celeste.HiresRenderer.BeginRender += HiresRendererBeginRenderHook;
@@ -56,8 +56,8 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
 
         //On.Celeste.Level.Render -= Level_Render;
         IL.Celeste.Level.Render -= LevelRenderHook;
-        On.Celeste.BloomRenderer.Apply -= BloomRenderer_Apply;
-        //IL.Celeste.BloomRenderer.Apply -= BloomRendererApplyHook;
+        //On.Celeste.BloomRenderer.Apply -= BloomRenderer_Apply;
+        IL.Celeste.BloomRenderer.Apply -= BloomRendererApplyHook;
         IL.Celeste.Godrays.Render -= GodraysRenderHook;
 
         IL.Celeste.HiresRenderer.BeginRender -= HiresRendererBeginRenderHook;
@@ -542,6 +542,20 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
         return renderer.LargeLevelBuffer;
     }
 
+    private static VirtualRenderTarget GetLargeTempABuffer()
+    {
+        if (SmoothParallaxRenderer.Instance is not { } renderer) return GameplayBuffers.TempA;
+
+        return renderer.LargeTempABuffer;
+    }
+
+    private static VirtualRenderTarget GetLargeTempBBuffer()
+    {
+        if (SmoothParallaxRenderer.Instance is not { } renderer) return GameplayBuffers.TempB;
+
+        return renderer.LargeTempBBuffer;
+    }
+
     private static void BeforeForegroundRender(Level level)
     {
         if (SmoothParallaxRenderer.Instance is not { } renderer) return;
@@ -563,80 +577,136 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
     {
         var cursor = new ILCursor(il);
 
-        // Add delegate just before TempA is loaded
-        if (cursor.TryGotoNext(MoveType.Before,
+
+        if (cursor.TryGotoNext(MoveType.After,
             instr => instr.MatchLdsfld(typeof(GameplayBuffers), "TempA")))
         {
-            Logger.Log(nameof(MotionSmoothingModule), "found");
-            cursor.EmitDelegate(DownscaleLevelToBuffer);
+            cursor.EmitPop();
+            cursor.EmitDelegate(GetLargeTempABuffer);
         }
 
-        // Repalce the argument in the GaussianBlur.Blur call
-        // Find Blur call
+        // Find and replace the TempA in the Blur call parameters
+        if (cursor.TryGotoNext(MoveType.After,
+            instr => instr.MatchLdsfld(typeof(GameplayBuffers), "TempA")))
+        {
+            cursor.EmitPop();
+            cursor.EmitDelegate(GetLargeTempABuffer);
+        }
+
+        // Replace TempB
+        if (cursor.TryGotoNext(MoveType.After,
+            instr => instr.MatchLdsfld(typeof(GameplayBuffers), "TempB")))
+        {
+            cursor.EmitPop();
+            cursor.EmitDelegate(GetLargeTempBBuffer);
+        }
+
+        // Find and replace the Blur method call
         if (cursor.TryGotoNext(MoveType.Before,
             instr => instr.MatchCall(typeof(GaussianBlur), "Blur")))
         {
-            // Now search backwards for ldarg.1 (the target parameter) and swap it with GameplayBuffers.Level
-            if (cursor.TryGotoPrev(MoveType.After,
-                instr => instr.MatchLdarg(1)))
-            {
-                Logger.Log(nameof(MotionSmoothingModule), "found 2");
+            // Save reference to the instruction before modifying
+            var blurInstruction = cursor.Next;
 
-                cursor.EmitPop();
-                cursor.EmitLdsfld(typeof(GameplayBuffers).GetField("Level"));
-            }
+            // Replace with ModifiedBlur method
+            blurInstruction.Operand = typeof(UnlockedCameraSmoother).GetMethod("ModifiedBlur", new[] {
+                typeof(Texture2D),
+                typeof(VirtualRenderTarget),
+                typeof(VirtualRenderTarget),
+                typeof(float),
+                typeof(bool),
+                typeof(GaussianBlur.Samples),
+                typeof(float),
+                typeof(GaussianBlur.Direction),
+                typeof(float)
+            });
         }
 
-        // Find the LAST SpriteBatch.Begin call in the method
-        int lastBeginIndex = -1;
-        while (cursor.TryGotoNext(MoveType.Before,
+        // Now find the next SpriteBatch.Begin call
+        if (cursor.TryGotoNext(MoveType.Before,
             instr => instr.MatchCallvirt<SpriteBatch>("Begin")))
         {
-            lastBeginIndex = cursor.Index;
-            cursor.Index++; // Move forward to continue searching
+            int lastIndex = cursor.Index;
+
+            // Go backwards to find Camera.get_Matrix()
+            if (cursor.TryGotoPrev(MoveType.After,
+                instr => instr.MatchCallvirt<Camera>("get_Matrix")))
+            {
+                // Pop the Camera.Matrix value and replace with delegate
+                cursor.EmitPop();
+                cursor.EmitLdarg(2); // Load the second argument (the level)
+                cursor.EmitDelegate(GetScaledCameraMatrix);
+            }
+
+            cursor.Index = lastIndex + 2;
         }
 
-        if (lastBeginIndex >= 0)
+
+        // Do it again
+        if (cursor.TryGotoNext(MoveType.Before,
+            instr => instr.MatchCallvirt<SpriteBatch>("Begin")))
         {
-            cursor.Index = lastBeginIndex;
+            int lastIndex = cursor.Index;
 
-            // Add the additional parameters
-            cursor.EmitLdsfld(typeof(SamplerState).GetField("PointClamp"));
-            cursor.EmitLdsfld(typeof(DepthStencilState).GetField("Default"));
-            cursor.EmitLdsfld(typeof(RasterizerState).GetField("CullNone"));
-            cursor.EmitLdnull(); // null for Effect
-            cursor.EmitDelegate(GetOffsetScaleMatrix); // Matrix from delegate
+            // Go backwards to find Camera.get_Matrix()
+            if (cursor.TryGotoPrev(MoveType.After,
+                instr => instr.MatchCallvirt<Camera>("get_Matrix")))
+            {
+                // Pop the Camera.Matrix value and replace with delegate
+                cursor.EmitPop();
+                cursor.EmitLdarg(2); // Load the second argument (the level)
+                cursor.EmitDelegate(GetScaledCameraMatrix);
+            }
 
-            // Now modify the saved instruction reference
-            cursor.Next.Operand = typeof(SpriteBatch).GetMethod("Begin",
-                    new[] { typeof(SpriteSortMode), typeof(BlendState), typeof(SamplerState),
-                    typeof(DepthStencilState), typeof(RasterizerState), typeof(Effect), typeof(Matrix) })!;
+            cursor.Index = lastIndex + 2;
         }
-    }
 
-    private static void DownscaleLevelToBuffer()
-    {
-        if (SmoothParallaxRenderer.Instance is not { } renderer) return;
 
-        // Render down the level to the old small buffer with linear scaling
-        Engine.Graphics.GraphicsDevice.SetRenderTarget(GameplayBuffers.Level);
-        Engine.Graphics.GraphicsDevice.Clear(Color.Transparent);
+        // Replace the ending rectangle dimensions
 
-        Draw.SpriteBatch.Begin(
-            SpriteSortMode.Deferred,
-            BlendState.Opaque,
-            SamplerState.LinearClamp,
-            DepthStencilState.None,
-            RasterizerState.CullNone
-        );
+        // Find all SpriteBatch.Begin calls and check what follows
+        while (cursor.TryGotoNext(MoveType.After,
+            instr => instr.MatchCallvirt<SpriteBatch>("Begin")))
+        {
+            // Save position right after Begin
+            var afterBeginIndex = cursor.Index;
 
-        Draw.SpriteBatch.Draw(
-            renderer.LargeLevelBuffer,
-            new Rectangle(0, 0, 320, 180),
-            Color.White
-        );
+            // Check if the next four instructions are the expected ldc.r4 values
+            bool matchFound = true;
+            float[] expectedValues = { -10f, -10f, 340f, 200f };
 
-        Draw.SpriteBatch.End();
+            for (int i = 0; i < 4; i++)
+            {
+                if (cursor.Index >= cursor.Instrs.Count ||
+                    !cursor.Next.MatchLdcR4(expectedValues[i]))
+                {
+                    matchFound = false;
+                    break;
+                }
+                cursor.Index++;
+            }
+
+            if (matchFound)
+            {
+                // Go back to right after Begin and replace the values
+                cursor.Index = afterBeginIndex;
+
+                float[] newValues = { -60f, -60f, 2040f, 1200f };
+                for (int i = 0; i < 4; i++)
+                {
+                    // Modify each ldc.r4 instruction directly
+                    cursor.Next.Operand = newValues[i];
+                    cursor.Index++;
+                }
+
+                break; // Found and replaced, exit the loop
+            }
+            else
+            {
+                // Not the pattern we're looking for, continue searching
+                cursor.Index = afterBeginIndex;
+            }
+        }
     }
 
 
@@ -650,11 +720,9 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
             return;
         }
 
-        //DownscaleLevelToBuffer(); // Inserted
 
 
-
-        VirtualRenderTarget tempA = renderer.LargeTempABuffer;
+        VirtualRenderTarget tempA = renderer.LargeTempABuffer; // Buffer replaced
         Texture2D texture = ModifiedBlur((RenderTarget2D)target, renderer.LargeTempABuffer, renderer.LargeTempBBuffer); // Arguments and method modified
         List<Component> components = scene.Tracker.GetComponents<BloomPoint>();
         List<Component> components2 = scene.Tracker.GetComponents<EffectCutout>();
@@ -721,7 +789,7 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
         Draw.SpriteBatch.End();
     }
 
-    public static Texture2D ModifiedBlur(Texture2D texture, VirtualRenderTarget temp, VirtualRenderTarget output, float fade = 0f, bool clear = true, float sampleScale = 1f, float alpha = 1f)
+    public static Texture2D ModifiedBlur(Texture2D texture, VirtualRenderTarget temp, VirtualRenderTarget output, float fade = 0f, bool clear = true, GaussianBlur.Samples samples = GaussianBlur.Samples.Nine, float sampleScale = 1f, GaussianBlur.Direction direction = GaussianBlur.Direction.Both, float alpha = 1f)
     {
         Effect fxGaussianBlur = _fxHiresGaussianBlur;
         if (fxGaussianBlur != null)
