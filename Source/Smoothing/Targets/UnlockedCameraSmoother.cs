@@ -296,7 +296,7 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
                 instr => instr.MatchLdcR4(6f)))
             {
                 cursor.EmitPop();
-                cursor.EmitLdcR4(181f / 180f);
+                cursor.EmitLdcR4(ZoomScaleMultiplier);
             }
         }
 
@@ -404,7 +404,7 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
         Engine.Instance.GraphicsDevice.SetRenderTarget(null);
         Engine.Instance.GraphicsDevice.Clear(Color.Black);
         Engine.Instance.GraphicsDevice.Viewport = Engine.Viewport;
-        Matrix matrix = Matrix.CreateScale(181 / 180f) * Engine.ScreenMatrix; // Matrix scale modified
+        Matrix matrix = Matrix.CreateScale(ZoomScaleMultiplier) * Engine.ScreenMatrix; // Matrix scale modified
         Vector2 vector = new Vector2(320f, 180f);
 
         Vector2 vector2 = vector / self.ZoomTarget;
@@ -493,6 +493,20 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
 
         Draw.SpriteBatch.Begin(SpriteSortMode.Immediate, BlendState.AlphaBlend, SamplerState.PointClamp, DepthStencilState.None, RasterizerState.CullNone, null, Matrix.Identity);
         Draw.SpriteBatch.Draw(renderer.LargeDisplacedGameplayBuffer, offset, Color.White);
+
+        Draw.SpriteBatch.Draw(
+           renderer.LargeDisplacedGameplayBuffer,
+           offset + new Vector2(1920f, 0f),
+           new Rectangle(1920 - 6, 0, 6, 1080),
+           Color.White
+       );
+        Draw.SpriteBatch.Draw(
+            renderer.LargeDisplacedGameplayBuffer,
+            offset + new Vector2(0f, 1080f),
+            new Rectangle(0, 1080 - 6, 1920, 6),
+            Color.White
+        );
+
         Draw.SpriteBatch.End();
     }
 
