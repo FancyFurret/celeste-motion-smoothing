@@ -1,3 +1,4 @@
+using Celeste.Mod.Core;
 using Celeste.Mod.Entities;
 using Celeste.Mod.MotionSmoothing.Interop;
 using Celeste.Mod.MotionSmoothing.Smoothing.States;
@@ -38,10 +39,11 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
     {
         base.Hook();
 
-        //On.Celeste.Level.Render += Level_Render;
-        IL.Celeste.Level.Render += LevelRenderHook;
+        On.Celeste.Level.Render += Level_Render;
+        //IL.Celeste.Level.Render += LevelRenderHook;
         //On.Celeste.BloomRenderer.Apply += BloomRenderer_Apply;
         IL.Celeste.BloomRenderer.Apply += BloomRendererApplyHook;
+        On.Celeste.Glitch.Apply += Glitch_Apply;
         IL.Celeste.Godrays.Render += GodraysRenderHook;
 
         IL.Celeste.HiresRenderer.BeginRender += HiresRendererBeginRenderHook;
@@ -54,10 +56,11 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
     {
         base.Unhook();
 
-        //On.Celeste.Level.Render -= Level_Render;
-        IL.Celeste.Level.Render -= LevelRenderHook;
+        On.Celeste.Level.Render -= Level_Render;
+        //IL.Celeste.Level.Render -= LevelRenderHook;
         //On.Celeste.BloomRenderer.Apply -= BloomRenderer_Apply;
         IL.Celeste.BloomRenderer.Apply -= BloomRendererApplyHook;
+        On.Celeste.Glitch.Apply -= Glitch_Apply;
         IL.Celeste.Godrays.Render -= GodraysRenderHook;
 
         IL.Celeste.HiresRenderer.BeginRender -= HiresRendererBeginRenderHook;
@@ -919,6 +922,36 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
         {
             cursor.EmitPop();
             cursor.EmitDelegate(GetScaleMatrix);
+        }
+    }
+
+
+
+    private static void Glitch_Apply(On.Celeste.Glitch.orig_Apply orig, VirtualRenderTarget source, float timer, float seed, float amplitude)
+    {
+        if (SmoothParallaxRenderer.Instance is not { } renderer) return;
+
+        if (Glitch.Value > 0f && CoreModule.Settings.AllowGlitch)
+        {
+            Effect fxGlitch = GFX.FxGlitch;
+            Vector2 value = new Vector2(Engine.Graphics.GraphicsDevice.Viewport.Width, Engine.Graphics.GraphicsDevice.Viewport.Height);
+            fxGlitch.Parameters["dimensions"].SetValue(value);
+            fxGlitch.Parameters["amplitude"].SetValue(amplitude);
+            fxGlitch.Parameters["minimum"].SetValue(-1f);
+            fxGlitch.Parameters["glitch"].SetValue(Glitch.Value);
+            fxGlitch.Parameters["timer"].SetValue(timer);
+            fxGlitch.Parameters["seed"].SetValue(seed);
+            VirtualRenderTarget tempA = renderer.LargeTempABuffer; // Buffer modified
+            Engine.Instance.GraphicsDevice.SetRenderTarget(tempA);
+            Engine.Instance.GraphicsDevice.Clear(Color.Transparent);
+            Draw.SpriteBatch.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend, SamplerState.PointClamp, DepthStencilState.Default, RasterizerState.CullNone, fxGlitch);
+            Draw.SpriteBatch.Draw((RenderTarget2D)source, Vector2.Zero, Color.White);
+            Draw.SpriteBatch.End();
+            Engine.Instance.GraphicsDevice.SetRenderTarget(source);
+            Engine.Instance.GraphicsDevice.Clear(Color.Transparent);
+            Draw.SpriteBatch.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend, SamplerState.PointClamp, DepthStencilState.Default, RasterizerState.CullNone, fxGlitch);
+            Draw.SpriteBatch.Draw((RenderTarget2D)tempA, Vector2.Zero, Color.White);
+            Draw.SpriteBatch.End();
         }
     }
 }
