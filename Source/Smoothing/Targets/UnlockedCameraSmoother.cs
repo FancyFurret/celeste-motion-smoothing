@@ -39,11 +39,12 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
     {
         base.Hook();
 
-        On.Celeste.Level.Render += Level_Render;
-        //IL.Celeste.Level.Render += LevelRenderHook;
+        //On.Celeste.Level.Render += Level_Render;
+        IL.Celeste.Level.Render += LevelRenderHook;
         //On.Celeste.BloomRenderer.Apply += BloomRenderer_Apply;
         IL.Celeste.BloomRenderer.Apply += BloomRendererApplyHook;
-        On.Celeste.Glitch.Apply += Glitch_Apply;
+        //On.Celeste.Glitch.Apply += Glitch_Apply;
+        IL.Celeste.Glitch.Apply += GlitchApplyHook;
         IL.Celeste.Godrays.Render += GodraysRenderHook;
 
         IL.Celeste.HiresRenderer.BeginRender += HiresRendererBeginRenderHook;
@@ -56,11 +57,12 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
     {
         base.Unhook();
 
-        On.Celeste.Level.Render -= Level_Render;
-        //IL.Celeste.Level.Render -= LevelRenderHook;
+        //On.Celeste.Level.Render -= Level_Render;
+        IL.Celeste.Level.Render -= LevelRenderHook;
         //On.Celeste.BloomRenderer.Apply -= BloomRenderer_Apply;
         IL.Celeste.BloomRenderer.Apply -= BloomRendererApplyHook;
-        On.Celeste.Glitch.Apply -= Glitch_Apply;
+        //On.Celeste.Glitch.Apply -= Glitch_Apply;
+        IL.Celeste.Glitch.Apply -= GlitchApplyHook;
         IL.Celeste.Godrays.Render -= GodraysRenderHook;
 
         IL.Celeste.HiresRenderer.BeginRender -= HiresRendererBeginRenderHook;
@@ -207,19 +209,15 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
         }
 
         // Replace first argument of Glitch.Apply
-        cursor.Index = 0; // Reset cursor
-                          // Find the Level buffer load that comes before Glitch.Apply
-        if (cursor.TryGotoNext(MoveType.After,
-            instr => instr.MatchLdsfld(typeof(GameplayBuffers), "Level")))
+        if (cursor.TryGotoNext(MoveType.Before,
+            instr => instr.MatchCall(typeof(Glitch), "Apply")))
         {
-            // Look ahead to verify this is the one before Glitch.Apply
-            var savedIndex = cursor.Index;
-            if (cursor.TryGotoNext(MoveType.Before,
-                instr => instr.MatchCall(typeof(Glitch), "Apply")))
+            // Go back to when GameplayBuffers.Level is loaded
+            if (cursor.TryGotoPrev(MoveType.After,
+            instr => instr.MatchLdsfld(typeof(GameplayBuffers), "Level")))
             {
-                cursor.Index = savedIndex;
                 cursor.EmitPop();
-                cursor.EmitDelegate(GetLargeLevelBuffer); // Should return VirtualRenderTarget
+                cursor.EmitDelegate(GetLargeLevelBuffer);
             }
         }
 
@@ -916,7 +914,7 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
     {
         var cursor = new ILCursor(il);
 
-        // Replace the ideneity matrix with the scale one
+        // Replace the identity matrix with the scale one
         if (cursor.TryGotoNext(MoveType.After,
             instr => instr.MatchCall(typeof(Matrix), "get_Identity")))
         {
@@ -952,6 +950,19 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
             Draw.SpriteBatch.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend, SamplerState.PointClamp, DepthStencilState.Default, RasterizerState.CullNone, fxGlitch);
             Draw.SpriteBatch.Draw((RenderTarget2D)tempA, Vector2.Zero, Color.White);
             Draw.SpriteBatch.End();
+        }
+    }
+
+    private static void GlitchApplyHook(ILContext il)
+    {
+        var cursor = new ILCursor(il);
+
+        // Replace GameplayBuffers.TempA with renderer.LargeLevelBuffer with the scale one
+        if (cursor.TryGotoNext(MoveType.After,
+            instr => instr.MatchLdsfld(typeof(GameplayBuffers), "TempA")))
+        {
+            cursor.EmitPop();
+            cursor.EmitDelegate(GetLargeTempABuffer);
         }
     }
 }
