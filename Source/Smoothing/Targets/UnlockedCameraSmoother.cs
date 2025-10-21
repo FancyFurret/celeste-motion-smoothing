@@ -291,12 +291,21 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
         if (cursor.TryGotoNext(MoveType.After,
             instr => instr.MatchCallvirt<GraphicsDevice>("set_Viewport")))
         {
-            // Find the matrix multiplication
-            if (cursor.TryGotoNext(MoveType.After,
-                instr => instr.MatchLdcR4(6f)))
+            // Find the pattern and position cursor right before stloc.2
+            if (cursor.TryGotoNext(MoveType.Before,
+                i => i.MatchLdcR4(6f)
+            ))
             {
-                cursor.EmitPop();
-                cursor.EmitLdcR4(ZoomScaleMultiplier);
+                if (cursor.TryGotoNext(MoveType.Before,
+                    i => i.MatchStloc(2)
+                ))
+                {
+                    // Pop the computed matrix off the stack
+                    cursor.Emit(OpCodes.Pop);
+
+                    // Push your delegate's return value instead
+                    cursor.EmitDelegate(GetHiresDisplayMatrix);
+                }
             }
         }
 
@@ -404,7 +413,7 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
         Engine.Instance.GraphicsDevice.SetRenderTarget(null);
         Engine.Instance.GraphicsDevice.Clear(Color.Black);
         Engine.Instance.GraphicsDevice.Viewport = Engine.Viewport;
-        Matrix matrix = Matrix.CreateScale(ZoomScaleMultiplier) * Engine.ScreenMatrix; // Matrix scale modified
+        Matrix matrix = GetHiresDisplayMatrix(); // Matrix scale modified
         Vector2 vector = new Vector2(320f, 180f);
 
         Vector2 vector2 = vector / self.ZoomTarget;
@@ -494,6 +503,7 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
         Draw.SpriteBatch.Begin(SpriteSortMode.Immediate, BlendState.AlphaBlend, SamplerState.PointClamp, DepthStencilState.None, RasterizerState.CullNone, null, Matrix.Identity);
         Draw.SpriteBatch.Draw(renderer.LargeDisplacedGameplayBuffer, offset, Color.White);
 
+        //These are necessary even with the zoom to ensure that the bloom doesn't show through from the background on the edges
         Draw.SpriteBatch.Draw(
            renderer.LargeDisplacedGameplayBuffer,
            offset + new Vector2(1920f, 0f),
@@ -533,7 +543,19 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
         return level.Camera.Matrix * renderer.ScaleMatrix;
     }
 
-    
+
+
+    private static Matrix GetHiresDisplayMatrix()
+    {
+        if (SaveData.Instance.Assists.MirrorMode)
+        {
+            return Matrix.CreateTranslation(-1920, 0, 0) * Matrix.CreateScale(ZoomScaleMultiplier) * Matrix.CreateTranslation(1920, 0, 0) * Engine.ScreenMatrix;
+        }
+
+        return Matrix.CreateScale(ZoomScaleMultiplier) * Engine.ScreenMatrix;
+    }
+
+
 
     private static VirtualRenderTarget GetLargeGameplayBuffer()
     {
