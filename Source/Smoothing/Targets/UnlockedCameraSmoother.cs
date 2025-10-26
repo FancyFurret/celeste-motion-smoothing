@@ -19,7 +19,6 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
     private const int HiresPixelSize = 1080 / 180;
 
     private static Effect _fxHiresGaussianBlur;
-    private static Effect _fxSubtract;
 
     private static Matrix OldForegroundMatrix;
 
@@ -33,7 +32,6 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
     {
         base.Unload();
         _fxHiresGaussianBlur.Dispose();
-        _fxSubtract.Dispose();
         On.Celeste.GFX.LoadEffects -= GfxLoadEffectsHook;
     }
 
@@ -41,13 +39,13 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
     {
         base.Hook();
 
-        On.Celeste.Level.Render += Level_Render;
-        //IL.Celeste.Level.Render += LevelRenderHook;
+        //On.Celeste.Level.Render += Level_Render;
+        IL.Celeste.Level.Render += LevelRenderHook;
         //On.Celeste.BloomRenderer.Apply += BloomRenderer_Apply;
         IL.Celeste.BloomRenderer.Apply += BloomRendererApplyHook;
         //On.Celeste.Glitch.Apply += Glitch_Apply;
         IL.Celeste.Glitch.Apply += GlitchApplyHook;
-        //IL.Celeste.Godrays.Render += GodraysRenderHook;
+        IL.Celeste.Godrays.Render += GodraysRenderHook;
 
         IL.Celeste.HiresRenderer.BeginRender += HiresRendererBeginRenderHook;
         IL.Celeste.TalkComponent.TalkComponentUI.Render += TalkComponentUiRenderHook;
@@ -59,13 +57,13 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
     {
         base.Unhook();
 
-        On.Celeste.Level.Render -= Level_Render;
-        //IL.Celeste.Level.Render -= LevelRenderHook;
+        //On.Celeste.Level.Render -= Level_Render;
+        IL.Celeste.Level.Render -= LevelRenderHook;
         //On.Celeste.BloomRenderer.Apply -= BloomRenderer_Apply;
         IL.Celeste.BloomRenderer.Apply -= BloomRendererApplyHook;
         //On.Celeste.Glitch.Apply -= Glitch_Apply;
         IL.Celeste.Glitch.Apply -= GlitchApplyHook;
-        //IL.Celeste.Godrays.Render -= GodraysRenderHook;
+        IL.Celeste.Godrays.Render -= GodraysRenderHook;
 
         IL.Celeste.HiresRenderer.BeginRender -= HiresRendererBeginRenderHook;
         IL.Celeste.TalkComponent.TalkComponentUI.Render -= TalkComponentUiRenderHook;
@@ -78,8 +76,6 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
         orig();
         _fxHiresGaussianBlur = new Effect(Engine.Graphics.GraphicsDevice,
             Everest.Content.Get("MotionSmoothing:/Effects/HiresGaussianBlur.cso").Data);
-        _fxSubtract = new Effect(Engine.Graphics.GraphicsDevice,
-            Everest.Content.Get("MotionSmoothing:/Effects/Subtract.cso").Data);
     }
 
     private static void Scene_Begin(On.Monocle.Scene.orig_Begin orig, Scene self)
@@ -601,69 +597,15 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
     {
         if (SmoothParallaxRenderer.Instance is not { } renderer) return;
 
-        //Vector2 offset = GetCameraOffsetInternal();
+        Vector2 offset = GetCameraOffsetInternal();
 
-        //OldForegroundMatrix = level.Foreground.Matrix;
-        //level.Foreground.Matrix = Matrix.CreateTranslation(offset.X, offset.Y, 0f) * renderer.ScaleMatrix * level.Foreground.Matrix;
-
-        // Render down the level to the old small buffer with linear scaling
-        Engine.Graphics.GraphicsDevice.SetRenderTarget(GameplayBuffers.Level);
-        Engine.Graphics.GraphicsDevice.Clear(Color.Transparent);
-
-        Draw.SpriteBatch.Begin(
-            SpriteSortMode.Deferred,
-            BlendState.Opaque,
-            SamplerState.LinearClamp,
-            DepthStencilState.None,
-            RasterizerState.CullNone
-        );
-
-        Draw.SpriteBatch.Draw(
-            renderer.LargeLevelBuffer,
-            new Rectangle(0, 0, 320, 180),
-            Color.White
-        );
-
-        Draw.SpriteBatch.End();
-
-        // Copy this into the small background buffer temporarily
-
-        Engine.Graphics.GraphicsDevice.SetRenderTarget(renderer.SmallBackgroundBuffer);
-        Engine.Graphics.GraphicsDevice.Clear(Color.Transparent);
-
-        Draw.SpriteBatch.Begin(
-            SpriteSortMode.Deferred,
-            BlendState.Opaque,
-            SamplerState.PointClamp,
-            DepthStencilState.None,
-            RasterizerState.CullNone
-        );
-
-        Draw.SpriteBatch.Draw(
-            GameplayBuffers.Level,
-            Vector2.Zero,
-            Color.White
-        );
-
-        Draw.SpriteBatch.End();
-
-        // Go back to the level buffer to draw the foreground and everything else
-
-        Engine.Graphics.GraphicsDevice.SetRenderTarget(GameplayBuffers.Level);
+        OldForegroundMatrix = level.Foreground.Matrix;
+        level.Foreground.Matrix = Matrix.CreateTranslation(offset.X, offset.Y, 0f) * renderer.ScaleMatrix * level.Foreground.Matrix;
     }
 
     private static void AfterForegroundRender(Level level)
     {
-        //level.Foreground.Matrix = OldForegroundMatrix;
-
-        if (SmoothParallaxRenderer.Instance is not { } renderer) return;
-
-        Texture2D texture = ApplyScaledDifference(renderer.LargeLevelBuffer, GameplayBuffers.Level, renderer.SmallBackgroundBuffer, renderer.LargeTempBBuffer);
-
-        Engine.Graphics.GraphicsDevice.SetRenderTarget(renderer.LargeLevelBuffer);
-        Draw.SpriteBatch.Begin(SpriteSortMode.Deferred, BlendState.Opaque, SamplerState.PointClamp, DepthStencilState.Default, RasterizerState.CullNone, null);
-        Draw.SpriteBatch.Draw(texture, Vector2.Zero, Color.White);
-        Draw.SpriteBatch.End();
+        level.Foreground.Matrix = OldForegroundMatrix;
     }
 
 
@@ -912,71 +854,6 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
             return (RenderTarget2D)output;
         }
         return texture;
-    }
-
-    public static Texture2D ApplyScaledDifference(Texture2D largeTexture, Texture2D smallBufferA, Texture2D smallBufferB, VirtualRenderTarget output, bool clear = true)
-    {
-        Effect fxDifference = _fxSubtract;  // Your loaded effect
-        if (fxDifference != null)
-        {
-            fxDifference.CurrentTechnique = fxDifference.Techniques["AddScaledDifference"];
-            fxDifference.Parameters["smallBufferA"].SetValue(smallBufferA);
-            fxDifference.Parameters["smallBufferB"].SetValue(smallBufferB);
-            Engine.Instance.GraphicsDevice.Textures[1] = smallBufferA;
-            Engine.Instance.GraphicsDevice.Textures[2] = smallBufferB;
-            fxDifference.CurrentTechnique.Passes[0].Apply();
-
-            Engine.Instance.GraphicsDevice.SetRenderTarget(output);
-            if (clear)
-            {
-                Engine.Instance.GraphicsDevice.Clear(Color.Transparent);
-            }
-
-            Draw.SpriteBatch.Begin(SpriteSortMode.Immediate, BlendState.Opaque, SamplerState.PointClamp, DepthStencilState.Default, RasterizerState.CullNone, fxDifference);
-            Draw.SpriteBatch.Draw(largeTexture, Vector2.Zero, Color.White);
-            Draw.SpriteBatch.End();
-
-            //Console.WriteLine($"Large texture format: {largeTexture.Format}");
-            //Console.WriteLine($"Output format: {((RenderTarget2D)output).Format}");
-
-            return (RenderTarget2D)output;
-        }
-
-        return largeTexture;
-    }
-
-    public static void DebugTextureContents(Texture2D texture, string name)
-    {
-        int width = texture.Width;
-        int height = texture.Height;
-
-        // Get the pixel data
-        Color[] data = new Color[width * height];
-        texture.GetData(data);
-
-        // Sample a few pixels to see what's in there
-        Console.WriteLine($"=== {name} ({width}x{height}) ===");
-        Console.WriteLine($"Top-left (0,0): {data[0]}");
-        Console.WriteLine($"Center ({width / 2},{height / 2}): {data[width / 2 + (height / 2) * width]}");
-        Console.WriteLine($"Bottom-right ({width - 1},{height - 1}): {data[data.Length - 1]}");
-
-        // Check if all pixels are the same
-        bool allSame = true;
-        Color first = data[0];
-        for (int i = 1; i < data.Length; i++)
-        {
-            if (data[i] != first)
-            {
-                allSame = false;
-                break;
-            }
-        }
-
-        Console.WriteLine($"All pixels identical: {allSame}");
-        if (allSame)
-        {
-            Console.WriteLine($"Constant value: {first}");
-        }
     }
 
     private static void HiresRendererBeginRenderHook(ILContext il)

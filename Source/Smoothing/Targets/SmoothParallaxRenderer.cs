@@ -28,7 +28,8 @@ public class SmoothParallaxRenderer : Renderer
         VirtualRenderTarget smallBackgroundBuffer,
         VirtualRenderTarget largeTempABuffer,
         VirtualRenderTarget largeTempBBuffer
-    ) {
+    )
+    {
         LargeGameplayBuffer = largeGameplayBuffer;
         LargeDisplacementBuffer = largeDisplacementBuffer;
         LargeDisplacedGameplayBuffer = largeDisplacedGameplayBuffer;
