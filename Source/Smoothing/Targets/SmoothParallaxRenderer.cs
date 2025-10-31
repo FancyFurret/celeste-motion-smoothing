@@ -13,19 +13,19 @@ public class SmoothParallaxRenderer : Renderer
     public VirtualRenderTarget LargeDisplacementBuffer { get; }
     public VirtualRenderTarget LargeDisplacedGameplayBuffer { get; }
     public VirtualRenderTarget LargeLevelBuffer { get; }
-    public VirtualRenderTarget SmallBackgroundBuffer { get; }
 
     public VirtualRenderTarget LargeTempABuffer { get; }
     public VirtualRenderTarget LargeTempBBuffer { get; }
 
     public Matrix ScaleMatrix;
 
+    public bool FixMatrices = true;
+
     public SmoothParallaxRenderer(
         VirtualRenderTarget largeGameplayBuffer,
         VirtualRenderTarget largeDisplacementBuffer,
         VirtualRenderTarget largeDisplacedGameplayBuffer,
         VirtualRenderTarget largeLevelBuffer,
-        VirtualRenderTarget smallBackgroundBuffer,
         VirtualRenderTarget largeTempABuffer,
         VirtualRenderTarget largeTempBBuffer
     )
@@ -34,7 +34,6 @@ public class SmoothParallaxRenderer : Renderer
         LargeDisplacementBuffer = largeDisplacementBuffer;
         LargeDisplacedGameplayBuffer = largeDisplacedGameplayBuffer;
         LargeLevelBuffer = largeLevelBuffer;
-        SmallBackgroundBuffer = smallBackgroundBuffer;
 
         LargeTempABuffer = largeTempABuffer;
         LargeTempBBuffer = largeTempBBuffer;
@@ -58,7 +57,6 @@ public class SmoothParallaxRenderer : Renderer
             GameplayBuffers.Create(1920, 1080),
             GameplayBuffers.Create(1920, 1080),
             GameplayBuffers.Create(1920, 1080),
-            GameplayBuffers.Create(320, 180),
             GameplayBuffers.Create(1920, 1080),
             GameplayBuffers.Create(1920, 1080)
         );

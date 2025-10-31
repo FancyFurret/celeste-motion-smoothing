@@ -8,7 +8,11 @@ using Microsoft.Xna.Framework.Graphics;
 using Mono.Cecil.Cil;
 using Monocle;
 using MonoMod.Cil;
+using MonoMod.Utils;
+using MonoMod.RuntimeDetour;
 using System;
+using System.IO;
+using System.Reflection;
 using System.Collections.Generic;
 
 namespace Celeste.Mod.MotionSmoothing.Smoothing.Targets;
@@ -20,7 +24,7 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
 
     private static Effect _fxHiresGaussianBlur;
 
-    private static Matrix OldForegroundMatrix;
+    private readonly HashSet<Hook> _hooks = new();
 
     public override void Load()
     {
@@ -34,6 +38,7 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
         _fxHiresGaussianBlur.Dispose();
         On.Celeste.GFX.LoadEffects -= GfxLoadEffectsHook;
     }
+    
 
     protected override void Hook()
     {
@@ -41,8 +46,8 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
 
         //On.Celeste.Level.Render += Level_Render;
         IL.Celeste.Level.Render += LevelRenderHook;
-        //On.Celeste.BloomRenderer.Apply += BloomRenderer_Apply;
-        IL.Celeste.BloomRenderer.Apply += BloomRendererApplyHook;
+        On.Celeste.BloomRenderer.Apply += BloomRenderer_Apply;
+        //IL.Celeste.BloomRenderer.Apply += BloomRendererApplyHook;
         //On.Celeste.Glitch.Apply += Glitch_Apply;
         IL.Celeste.Glitch.Apply += GlitchApplyHook;
         IL.Celeste.Godrays.Render += GodraysRenderHook;
@@ -51,6 +56,18 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
         IL.Celeste.TalkComponent.TalkComponentUI.Render += TalkComponentUiRenderHook;
         IL.Celeste.Lookout.Hud.Render += LookoutHudRenderHook;
         On.Monocle.Scene.Begin += Scene_Begin;
+
+        AddHook(new Hook(typeof(SpriteBatch).GetMethod("Begin",
+            new[]
+            {
+                typeof(SpriteSortMode), typeof(BlendState), typeof(SamplerState),
+                typeof(DepthStencilState), typeof(RasterizerState), typeof(Effect), typeof(Matrix)
+            })!, SpriteBatch_Begin));
+    }
+
+    protected void AddHook(Hook hook)
+    {
+        _hooks.Add(hook);
     }
 
     protected override void Unhook()
@@ -59,8 +76,8 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
 
         //On.Celeste.Level.Render -= Level_Render;
         IL.Celeste.Level.Render -= LevelRenderHook;
-        //On.Celeste.BloomRenderer.Apply -= BloomRenderer_Apply;
-        IL.Celeste.BloomRenderer.Apply -= BloomRendererApplyHook;
+        On.Celeste.BloomRenderer.Apply -= BloomRenderer_Apply;
+        //IL.Celeste.BloomRenderer.Apply -= BloomRendererApplyHook;
         //On.Celeste.Glitch.Apply -= Glitch_Apply;
         IL.Celeste.Glitch.Apply -= GlitchApplyHook;
         IL.Celeste.Godrays.Render -= GodraysRenderHook;
@@ -69,6 +86,9 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
         IL.Celeste.TalkComponent.TalkComponentUI.Render -= TalkComponentUiRenderHook;
         IL.Celeste.Lookout.Hud.Render -= LookoutHudRenderHook;
         On.Monocle.Scene.Begin -= Scene_Begin;
+
+        foreach (var hook in _hooks)
+            hook.Dispose();
     }
 
     private static void GfxLoadEffectsHook(On.Celeste.GFX.orig_LoadEffects orig)
@@ -139,28 +159,15 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
     {
         var cursor = new ILCursor(il);
 
-        // Add delegate before Clear(BackgroundColor)
+        // Add delegate befire Distort.Render
         if (cursor.TryGotoNext(MoveType.Before,
-            instr => instr.MatchLdfld<Level>("BackgroundColor")))
+            instr => instr.MatchCall(typeof(Distort), "Render")))
         {
-            cursor.EmitDelegate(BeforeBackgroundClear);
-        }
-
-        // Add delegate after Background.Render
-        if (cursor.TryGotoNext(MoveType.Before,
-            instr => instr.MatchLdfld<Level>("Background")))
-        {
-            // Move to after the Render call
-            if (cursor.TryGotoNext(MoveType.After,
-                instr => instr.MatchCallvirt<Renderer>("Render")))
-            {
-                cursor.EmitDelegate(AfterBackgroundRender);
-            }
+           cursor.EmitDelegate(BeforeDistortRender);
         }
 
         // Insert delegate after Distort.Render
         cursor.Index = 0; // Reset cursor
-                          // First find Distort.Render
         if (cursor.TryGotoNext(MoveType.After,
             instr => instr.MatchCall(typeof(Distort), "Render")))
         {
@@ -186,25 +193,6 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
                     cursor.EmitPop();
                     cursor.EmitDelegate(GetLargeLevelBuffer); // Should return VirtualRenderTarget
                 }
-            }
-        }
-
-        // Insert delegates before and after Foreground.Render
-        cursor.Index = 0; // Reset cursor
-        if (cursor.TryGotoNext(MoveType.Before,
-            instr => instr.MatchLdfld<Level>("Foreground")))
-        {
-            // Emit delegate before Foreground.Render
-            cursor.EmitLdarg(0); // Load "this"
-            cursor.EmitDelegate<Action<Level>>(BeforeForegroundRender);
-
-            // Find the Render call after this
-            if (cursor.TryGotoNext(MoveType.After,
-                instr => instr.MatchCallvirt<Renderer>("Render")))
-            {
-                // Emit delegate after Foreground.Render
-                cursor.EmitLdarg(0); // Load "this"
-                cursor.EmitDelegate<Action<Level>>(AfterForegroundRender);
             }
         }
 
@@ -301,10 +289,7 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
                     i => i.MatchStloc(2)
                 ))
                 {
-                    // Pop the computed matrix off the stack
                     cursor.Emit(OpCodes.Pop);
-
-                    // Push your delegate's return value instead
                     cursor.EmitDelegate(GetHiresDisplayMatrix);
                 }
             }
@@ -366,22 +351,17 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
         Engine.Instance.GraphicsDevice.Clear(Color.Transparent);
         self.GameplayRenderer.Render(self);
         self.Lighting.Render(self);
-
         Engine.Instance.GraphicsDevice.SetRenderTarget(GameplayBuffers.Level);
-
-        BeforeBackgroundClear(); // Inserted
         Engine.Instance.GraphicsDevice.Clear(self.BackgroundColor);
         self.Background.Render(self);
-        AfterBackgroundRender(); // Inserted
 
+        BeforeDistortRender(); // Inserted
         Distort.Render((RenderTarget2D)GameplayBuffers.Gameplay, (RenderTarget2D)GameplayBuffers.Displacement, self.Displacement.HasDisplacement(self));
         DrawDisplacedGameplayWithOffset(); //Inserted
 
         self.Bloom.Apply(renderer.LargeLevelBuffer, self); // Argument modified
 
-        BeforeForegroundRender(self); // Inserted
         self.Foreground.Render(self);
-        AfterForegroundRender(self); // Inserted
 
         Glitch.Apply(renderer.LargeLevelBuffer, self.glitchTimer * 2f, self.glitchSeed, MathF.PI * 2f); // Argument modified
 
@@ -436,9 +416,13 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
             vector4.X = 0f - vector4.X;
             vector3.X = 160f - (vector3.X - 160f);
         }
+
         Draw.SpriteBatch.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend, SamplerState.PointClamp, DepthStencilState.Default, RasterizerState.CullNone, ColorGrade.Effect, matrix);
+
         Draw.SpriteBatch.Draw((RenderTarget2D)renderer.LargeLevelBuffer, (vector3 + vector4) * 6f, renderer.LargeLevelBuffer.Bounds, Color.White, 0f, vector3 * 6f, scale, SaveData.Instance.Assists.MirrorMode ? SpriteEffects.FlipHorizontally : SpriteEffects.None, 0f); // Arguments modified
+
         Draw.SpriteBatch.End();
+
         if (self.Pathfinder != null && self.Pathfinder.DebugRenderEnabled)
         {
             Draw.SpriteBatch.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend, SamplerState.PointClamp, DepthStencilState.Default, RasterizerState.CullNone, null, self.Camera.Matrix * matrix * renderer.ScaleMatrix);
@@ -460,35 +444,33 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
         }
     }
 
-    private static void BeforeBackgroundClear()
+    private static void BeforeDistortRender()
     {
         if (SmoothParallaxRenderer.Instance is not { } renderer) return;
 
-        // Swap the buffer to Small 1.
-        Engine.Instance.GraphicsDevice.SetRenderTarget(renderer.SmallBackgroundBuffer);
-    }
-
-    private static void AfterBackgroundRender()
-    {
-        if (SmoothParallaxRenderer.Instance is not { } renderer) return;
+        renderer.FixMatrices = false;
 
         // Go to Large3 for compositing time.
         Engine.Instance.GraphicsDevice.SetRenderTarget(renderer.LargeLevelBuffer);
         Engine.Instance.GraphicsDevice.Clear(Color.Transparent);
 
-        // Draw the background upscaled out of Small 1
+        // Draw the background upscaled out of GameplayBuffers.Level
         Draw.SpriteBatch.Begin(SpriteSortMode.Immediate, BlendState.Opaque, SamplerState.PointClamp, DepthStencilState.None, RasterizerState.CullNone, null, renderer.ScaleMatrix);
-        Draw.SpriteBatch.Draw(renderer.SmallBackgroundBuffer, Vector2.Zero, Color.White);
+        Draw.SpriteBatch.Draw(GameplayBuffers.Level, Vector2.Zero, Color.White);
         Draw.SpriteBatch.End();
 
-        // Reset to the usual Level buffer so the Distort.Render call that comes after renders into it
+        // Reset to the usual Level buffer (but clear it) so the Distort.Render call that comes after renders into it
         Engine.Instance.GraphicsDevice.SetRenderTarget(GameplayBuffers.Level);
         Engine.Instance.GraphicsDevice.Clear(Color.Transparent);
+
+        renderer.FixMatrices = true;
     }
 
     private static void DrawDisplacedGameplayWithOffset()
     {
         if (SmoothParallaxRenderer.Instance is not { } renderer) return;
+
+        renderer.FixMatrices = false;
 
         Engine.Instance.GraphicsDevice.SetRenderTarget(renderer.LargeDisplacedGameplayBuffer);
         Engine.Instance.GraphicsDevice.Clear(Color.Transparent);
@@ -519,6 +501,8 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
         );
 
         Draw.SpriteBatch.End();
+
+        renderer.FixMatrices = true;
     }
 
     private static Matrix GetScaleMatrix()
@@ -591,21 +575,6 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
         if (SmoothParallaxRenderer.Instance is not { } renderer) return GameplayBuffers.TempB;
 
         return renderer.LargeTempBBuffer;
-    }
-
-    private static void BeforeForegroundRender(Level level)
-    {
-        if (SmoothParallaxRenderer.Instance is not { } renderer) return;
-
-        Vector2 offset = GetCameraOffsetInternal();
-
-        OldForegroundMatrix = level.Foreground.Matrix;
-        level.Foreground.Matrix = Matrix.CreateTranslation(offset.X, offset.Y, 0f) * renderer.ScaleMatrix * level.Foreground.Matrix;
-    }
-
-    private static void AfterForegroundRender(Level level)
-    {
-        level.Foreground.Matrix = OldForegroundMatrix;
     }
 
 
@@ -750,14 +719,18 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
 
     private static void BloomRenderer_Apply(On.Celeste.BloomRenderer.orig_Apply orig, BloomRenderer self, VirtualRenderTarget target, Scene scene)
     {
-        if (SmoothParallaxRenderer.Instance is not { } renderer) return;
+        if (SmoothParallaxRenderer.Instance is not { } renderer)
+        {
+            orig(self, target, scene);
+            return;
+        }
 
         if (!(self.Strength > 0f))
         {
             return;
         }
 
-
+        renderer.FixMatrices = false;
 
         VirtualRenderTarget tempA = renderer.LargeTempABuffer; // Buffer replaced
         Texture2D texture = ModifiedBlur((RenderTarget2D)target, renderer.LargeTempABuffer, renderer.LargeTempBBuffer); // Arguments and method modified
@@ -824,6 +797,8 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
         }
 
         Draw.SpriteBatch.End();
+
+        renderer.FixMatrices = true;
     }
 
     public static Texture2D ModifiedBlur(Texture2D texture, VirtualRenderTarget temp, VirtualRenderTarget output, float fade = 0f, bool clear = true, GaussianBlur.Samples samples = GaussianBlur.Samples.Nine, float sampleScale = 1f, GaussianBlur.Direction direction = GaussianBlur.Direction.Both, float alpha = 1f)
@@ -957,12 +932,58 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
     {
         var cursor = new ILCursor(il);
 
-        // Replace GameplayBuffers.TempA with renderer.LargeLevelBuffer with the scale one
+        // Replace GameplayBuffers.TempA with the large temp A one
         if (cursor.TryGotoNext(MoveType.After,
             instr => instr.MatchLdsfld(typeof(GameplayBuffers), "TempA")))
         {
             cursor.EmitPop();
             cursor.EmitDelegate(GetLargeTempABuffer);
         }
+    }
+
+
+
+    private static void SpriteBatch_Begin(Action<SpriteBatch, SpriteSortMode, BlendState, SamplerState, DepthStencilState, RasterizerState, Effect, Matrix> orig, SpriteBatch self, SpriteSortMode sortMode, BlendState blendState,
+        SamplerState samplerState, DepthStencilState depthStencilState, RasterizerState rasterizerState, Effect effect, Matrix transformMatrix)
+    {
+        if (SmoothParallaxRenderer.Instance is not { } renderer)
+        {
+            orig(self, sortMode, blendState, samplerState, depthStencilState, rasterizerState, effect, transformMatrix);
+            return;
+        }
+
+        if (!renderer.FixMatrices)
+        {
+            orig(self, sortMode, blendState, samplerState, depthStencilState, rasterizerState, effect, transformMatrix);
+            return;
+        }
+
+        var renderTargets = Draw.SpriteBatch.GraphicsDevice.GetRenderTargets();
+
+        if (renderTargets == null || renderTargets.Length == 0)
+        {
+            //transformMatrix = GetScaleMatrix() * transformMatrix;
+            orig(self, sortMode, blendState, samplerState, depthStencilState, rasterizerState, effect, transformMatrix);
+            return;
+        }
+
+        var currentRenderTarget = renderTargets[0].RenderTarget;
+
+        if (currentRenderTarget == renderer.LargeLevelBuffer.Target)
+        {
+            transformMatrix = GetScaleMatrix() * transformMatrix;
+        }
+
+        else if (
+            currentRenderTarget == renderer.LargeGameplayBuffer.Target
+            || currentRenderTarget == renderer.LargeDisplacementBuffer.Target
+            || currentRenderTarget == renderer.LargeDisplacedGameplayBuffer.Target
+        ) {
+            transformMatrix = GetOffsetScaleMatrix() * transformMatrix;
+        }
+
+
+
+        orig(self, sortMode, blendState, samplerState, depthStencilState, rasterizerState, effect, transformMatrix);
     }
 }
