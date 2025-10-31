@@ -2,6 +2,8 @@ using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using Monocle;
 using VanillaSaveData = Celeste.SaveData;
+using System;
+using System.IO;
 
 namespace Celeste.Mod.MotionSmoothing.Smoothing.Targets;
 
@@ -20,7 +22,7 @@ public class SmoothParallaxRenderer : Renderer
 
     public bool FixMatrices = false;
 
-    private static VirtualRenderTarget OriginalLevelBuffer;
+    private static VirtualRenderTarget OriginalLevelBuffer = null;
 
     public SmoothParallaxRenderer(
         VirtualRenderTarget largeGameplayBuffer,
@@ -61,7 +63,10 @@ public class SmoothParallaxRenderer : Renderer
 
     public static void DisableLargeLevelBuffer()
     {
+        if (OriginalLevelBuffer == null ) { return; }
+
         GameplayBuffers.Level = OriginalLevelBuffer;
+        OriginalLevelBuffer = null;
     }
 
     public static SmoothParallaxRenderer Create()
@@ -82,6 +87,17 @@ public class SmoothParallaxRenderer : Renderer
 
     public static void Destroy()
     {
-        Instance = null;
+        if (OriginalLevelBuffer != null)
+        {
+            GameplayBuffers.Level = OriginalLevelBuffer;
+            OriginalLevelBuffer = null;
+        }
+
+        if (Instance != null)
+        {
+            Instance.LargeLevelBuffer?.Dispose();
+
+            Instance = null;
+        }
     }
 }
