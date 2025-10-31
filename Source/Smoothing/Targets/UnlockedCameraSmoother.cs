@@ -44,8 +44,8 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
     {
         base.Hook();
 
-        On.Celeste.Level.Render += Level_Render;
-        //IL.Celeste.Level.Render += LevelRenderHook;
+        //On.Celeste.Level.Render += Level_Render;
+        IL.Celeste.Level.Render += LevelRenderHook;
         On.Celeste.BloomRenderer.Apply += BloomRenderer_Apply;
         //IL.Celeste.BloomRenderer.Apply += BloomRendererApplyHook;
         //On.Celeste.Glitch.Apply += Glitch_Apply;
@@ -76,8 +76,8 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
     {
         base.Unhook();
 
-        On.Celeste.Level.Render -= Level_Render;
-        //IL.Celeste.Level.Render -= LevelRenderHook;
+        //On.Celeste.Level.Render -= Level_Render;
+        IL.Celeste.Level.Render -= LevelRenderHook;
         On.Celeste.BloomRenderer.Apply -= BloomRenderer_Apply;
         //IL.Celeste.BloomRenderer.Apply -= BloomRendererApplyHook;
         //On.Celeste.Glitch.Apply -= Glitch_Apply;
@@ -190,7 +190,7 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
         if (cursor.TryGotoNext(MoveType.After,
             instr => instr.MatchCall(typeof(Distort), "Render")))
         {
-            cursor.EmitDelegate(DrawDisplacedGameplayWithOffset); // Should return VirtualRenderTarget
+            cursor.EmitDelegate(DrawDisplacedGameplayWithOffset);
         }
 
 
@@ -275,6 +275,7 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
                 {
                     cursor.Emit(OpCodes.Pop);
                     cursor.EmitDelegate(GetHiresDisplayMatrix);
+                    cursor.EmitDelegate(DisableFixMatrices);
                 }
             }
         }
@@ -284,8 +285,6 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
         if (cursor.TryGotoNext(MoveType.Before,
             instr => instr.MatchCall(typeof(Draw), "get_SpriteBatch")))
         {
-            cursor.EmitDelegate(DisableFixMatrices);
-
             cursor.Index++;
 
             // Now find and modify the vector3 + vector4 addition
@@ -315,7 +314,7 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
 
     private static void Level_Render(On.Celeste.Level.orig_Render orig, Level self)
     {
-        PrepareLevelRender();
+        PrepareLevelRender(); // Inserted
 
         if (SmoothParallaxRenderer.Instance is not { } renderer) return;
 
@@ -943,14 +942,14 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
             return;
         }
 
-        //var renderTargets = Draw.SpriteBatch.GraphicsDevice.GetRenderTargets();
+        var renderTargets = Draw.SpriteBatch.GraphicsDevice.GetRenderTargets();
 
-        //if (renderTargets == null || renderTargets.Length == 0)
-        //{
-        //    //transformMatrix = GetScaleMatrix() * transformMatrix;
-        //    orig(self, sortMode, blendState, samplerState, depthStencilState, rasterizerState, effect, transformMatrix);
-        //    return;
-        //}
+        if (renderTargets == null || renderTargets.Length == 0)
+        {
+            //transformMatrix = GetScaleMatrix() * transformMatrix;
+            orig(self, sortMode, blendState, samplerState, depthStencilState, rasterizerState, effect, transformMatrix);
+            return;
+        }
 
         //var currentRenderTarget = renderTargets[0].RenderTarget;
 
