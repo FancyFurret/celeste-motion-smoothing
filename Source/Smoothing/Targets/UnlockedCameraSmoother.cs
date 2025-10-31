@@ -44,8 +44,8 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
     {
         base.Hook();
 
-        //On.Celeste.Level.Render += Level_Render;
-        IL.Celeste.Level.Render += LevelRenderHook;
+        On.Celeste.Level.Render += Level_Render;
+        //IL.Celeste.Level.Render += LevelRenderHook;
         On.Celeste.BloomRenderer.Apply += BloomRenderer_Apply;
         //IL.Celeste.BloomRenderer.Apply += BloomRendererApplyHook;
         //On.Celeste.Glitch.Apply += Glitch_Apply;
@@ -74,8 +74,8 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
     {
         base.Unhook();
 
-        //On.Celeste.Level.Render -= Level_Render;
-        IL.Celeste.Level.Render -= LevelRenderHook;
+        On.Celeste.Level.Render -= Level_Render;
+        //IL.Celeste.Level.Render -= LevelRenderHook;
         On.Celeste.BloomRenderer.Apply -= BloomRenderer_Apply;
         //IL.Celeste.BloomRenderer.Apply -= BloomRendererApplyHook;
         //On.Celeste.Glitch.Apply -= Glitch_Apply;
@@ -351,6 +351,7 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
         Engine.Instance.GraphicsDevice.Clear(Color.Transparent);
         self.GameplayRenderer.Render(self);
         self.Lighting.Render(self);
+        Console.WriteLine(GameplayBuffers.Level.ToString());
         Engine.Instance.GraphicsDevice.SetRenderTarget(GameplayBuffers.Level);
         Engine.Instance.GraphicsDevice.Clear(self.BackgroundColor);
         self.Background.Render(self);
@@ -359,11 +360,11 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
         Distort.Render((RenderTarget2D)GameplayBuffers.Gameplay, (RenderTarget2D)GameplayBuffers.Displacement, self.Displacement.HasDisplacement(self));
         DrawDisplacedGameplayWithOffset(); //Inserted
 
-        self.Bloom.Apply(renderer.LargeLevelBuffer, self); // Argument modified
+        self.Bloom.Apply(GameplayBuffers.Level, self);
 
         self.Foreground.Render(self);
 
-        Glitch.Apply(renderer.LargeLevelBuffer, self.glitchTimer * 2f, self.glitchSeed, MathF.PI * 2f); // Argument modified
+        Glitch.Apply(GameplayBuffers.Level, self.glitchTimer * 2f, self.glitchSeed, MathF.PI * 2f);
 
         if (Engine.DashAssistFreeze)
         {
@@ -417,11 +418,13 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
             vector3.X = 160f - (vector3.X - 160f);
         }
 
+        renderer.FixMatrices = false;
         Draw.SpriteBatch.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend, SamplerState.PointClamp, DepthStencilState.Default, RasterizerState.CullNone, ColorGrade.Effect, matrix);
 
-        Draw.SpriteBatch.Draw((RenderTarget2D)renderer.LargeLevelBuffer, (vector3 + vector4) * 6f, renderer.LargeLevelBuffer.Bounds, Color.White, 0f, vector3 * 6f, scale, SaveData.Instance.Assists.MirrorMode ? SpriteEffects.FlipHorizontally : SpriteEffects.None, 0f); // Arguments modified
+        Draw.SpriteBatch.Draw((RenderTarget2D)GameplayBuffers.Level, (vector3 + vector4) * 6f, GameplayBuffers.Level.Bounds, Color.White, 0f, vector3 * 6f, scale, SaveData.Instance.Assists.MirrorMode ? SpriteEffects.FlipHorizontally : SpriteEffects.None, 0f); // Arguments modified
 
         Draw.SpriteBatch.End();
+        renderer.FixMatrices = true;
 
         if (self.Pathfinder != null && self.Pathfinder.DebugRenderEnabled)
         {
@@ -442,15 +445,16 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
         {
             self.HiresSnow.Render(self);
         }
+
+        renderer.FixMatrices = false; // Inserted
+        SmoothParallaxRenderer.DisableLargeLevelBuffer(); // Inserted
     }
 
     private static void BeforeDistortRender()
     {
         if (SmoothParallaxRenderer.Instance is not { } renderer) return;
 
-        renderer.FixMatrices = false;
-
-        // Go to Large3 for compositing time.
+        // Go to the large level buffer for compositing time.
         Engine.Instance.GraphicsDevice.SetRenderTarget(renderer.LargeLevelBuffer);
         Engine.Instance.GraphicsDevice.Clear(Color.Transparent);
 
@@ -462,15 +466,11 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
         // Reset to the usual Level buffer (but clear it) so the Distort.Render call that comes after renders into it
         Engine.Instance.GraphicsDevice.SetRenderTarget(GameplayBuffers.Level);
         Engine.Instance.GraphicsDevice.Clear(Color.Transparent);
-
-        renderer.FixMatrices = true;
     }
 
     private static void DrawDisplacedGameplayWithOffset()
     {
         if (SmoothParallaxRenderer.Instance is not { } renderer) return;
-
-        renderer.FixMatrices = false;
 
         Engine.Instance.GraphicsDevice.SetRenderTarget(renderer.LargeDisplacedGameplayBuffer);
         Engine.Instance.GraphicsDevice.Clear(Color.Transparent);
@@ -501,8 +501,6 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
         );
 
         Draw.SpriteBatch.End();
-
-        renderer.FixMatrices = true;
     }
 
     private static Matrix GetScaleMatrix()
@@ -730,8 +728,6 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
             return;
         }
 
-        renderer.FixMatrices = false;
-
         VirtualRenderTarget tempA = renderer.LargeTempABuffer; // Buffer replaced
         Texture2D texture = ModifiedBlur((RenderTarget2D)target, renderer.LargeTempABuffer, renderer.LargeTempBBuffer); // Arguments and method modified
         List<Component> components = scene.Tracker.GetComponents<BloomPoint>();
@@ -798,7 +794,8 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
 
         Draw.SpriteBatch.End();
 
-        renderer.FixMatrices = true;
+        renderer.FixMatrices = true; // From now on, all SpriteBatch.Begin calls will get hooked.
+        SmoothParallaxRenderer.EnableLargeLevelBuffer(); // Replace GameplayBuffers.Level with the big one.
     }
 
     public static Texture2D ModifiedBlur(Texture2D texture, VirtualRenderTarget temp, VirtualRenderTarget output, float fade = 0f, bool clear = true, GaussianBlur.Samples samples = GaussianBlur.Samples.Nine, float sampleScale = 1f, GaussianBlur.Direction direction = GaussianBlur.Direction.Both, float alpha = 1f)
@@ -958,29 +955,31 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
             return;
         }
 
-        var renderTargets = Draw.SpriteBatch.GraphicsDevice.GetRenderTargets();
+        //var renderTargets = Draw.SpriteBatch.GraphicsDevice.GetRenderTargets();
 
-        if (renderTargets == null || renderTargets.Length == 0)
-        {
-            //transformMatrix = GetScaleMatrix() * transformMatrix;
-            orig(self, sortMode, blendState, samplerState, depthStencilState, rasterizerState, effect, transformMatrix);
-            return;
-        }
+        //if (renderTargets == null || renderTargets.Length == 0)
+        //{
+        //    //transformMatrix = GetScaleMatrix() * transformMatrix;
+        //    orig(self, sortMode, blendState, samplerState, depthStencilState, rasterizerState, effect, transformMatrix);
+        //    return;
+        //}
 
-        var currentRenderTarget = renderTargets[0].RenderTarget;
+        //var currentRenderTarget = renderTargets[0].RenderTarget;
 
-        if (currentRenderTarget == renderer.LargeLevelBuffer.Target)
-        {
-            transformMatrix = GetScaleMatrix() * transformMatrix;
-        }
+        //if (currentRenderTarget == renderer.LargeLevelBuffer.Target)
+        //{
+        //    transformMatrix = GetScaleMatrix() * transformMatrix;
+        //}
 
-        else if (
-            currentRenderTarget == renderer.LargeGameplayBuffer.Target
-            || currentRenderTarget == renderer.LargeDisplacementBuffer.Target
-            || currentRenderTarget == renderer.LargeDisplacedGameplayBuffer.Target
-        ) {
-            transformMatrix = GetOffsetScaleMatrix() * transformMatrix;
-        }
+        //else if (
+        //    currentRenderTarget == renderer.LargeGameplayBuffer.Target
+        //    || currentRenderTarget == renderer.LargeDisplacementBuffer.Target
+        //    || currentRenderTarget == renderer.LargeDisplacedGameplayBuffer.Target
+        //) {
+        //    transformMatrix = GetOffsetScaleMatrix() * transformMatrix;
+        //}
+
+        transformMatrix = GetOffsetScaleMatrix() * transformMatrix;
 
 
 
