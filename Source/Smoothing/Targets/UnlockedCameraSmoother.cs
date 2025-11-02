@@ -44,8 +44,8 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
     {
         base.Hook();
 
-        On.Celeste.Level.Render += Level_Render;
-        //IL.Celeste.Level.Render += LevelRenderHook;
+        //On.Celeste.Level.Render += Level_Render;
+        IL.Celeste.Level.Render += LevelRenderHook;
         //On.Celeste.BloomRenderer.Apply += BloomRenderer_Apply;
         IL.Celeste.BloomRenderer.Apply += BloomRendererApplyHook;
         //On.Celeste.Glitch.Apply += Glitch_Apply;
@@ -76,8 +76,8 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
     {
         base.Unhook();
 
-        On.Celeste.Level.Render -= Level_Render;
-        //IL.Celeste.Level.Render -= LevelRenderHook;
+        //On.Celeste.Level.Render -= Level_Render;
+        IL.Celeste.Level.Render -= LevelRenderHook;
         //On.Celeste.BloomRenderer.Apply -= BloomRenderer_Apply;
         IL.Celeste.BloomRenderer.Apply -= BloomRendererApplyHook;
         //On.Celeste.Glitch.Apply -= Glitch_Apply;
@@ -268,33 +268,23 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
         }
 
 
-        // Ditch the 6x scale and replace it with 181/180 to zoom
-        // First find the viewport assignment to ensure we're at the right location
+
+        // Find SetRenderTarget(null)
         if (cursor.TryGotoNext(MoveType.After,
-            instr => instr.MatchCallvirt<GraphicsDevice>("set_Viewport")))
+            instr => instr.MatchLdnull(),
+            instr => instr.MatchCallvirt<GraphicsDevice>("SetRenderTarget")))
         {
-            // Find the pattern and position cursor right before stloc.2
+            // Find the first SpriteBatch.Begin after this
             if (cursor.TryGotoNext(MoveType.Before,
-                i => i.MatchLdcR4(6f)
-            ))
+                instr => instr.MatchCallvirt<SpriteBatch>("Begin")))
             {
-                if (cursor.TryGotoNext(MoveType.Before,
-                    i => i.MatchStloc(2)
-                ))
-                {
-                    cursor.Emit(OpCodes.Pop);
-                    cursor.EmitDelegate(GetHiresDisplayMatrix);
-                }
+                cursor.EmitDelegate(DisableFixMatrices);
+
+                // At this point, all 7 parameters are on the stack
+                // Matrix is on top - pop it and replace with ours
+                cursor.Emit(OpCodes.Pop);
+                cursor.EmitDelegate(GetHiresDisplayMatrix);
             }
-        }
-
-
-
-        // Go before the next SpriteBatch.Begin call
-        if (cursor.TryGotoNext(MoveType.Before,
-            instr => instr.MatchCallvirt<SpriteBatch>("Begin")))
-        {
-            cursor.EmitDelegate(DisableFixMatrices);
         }
 
         // Find the final SpriteBatch.Draw call and replace GameplayBuffers.Level references
@@ -328,7 +318,7 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
             }
         }
 
-        // Go after the next SpriteBatch.End call
+        ////Go after the next SpriteBatch.End call
         //if (cursor.TryGotoNext(MoveType.After,
         //    instr => instr.MatchCallvirt<SpriteBatch>("End")))
         //{
@@ -392,7 +382,7 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
         Engine.Instance.GraphicsDevice.SetRenderTarget(null);
         Engine.Instance.GraphicsDevice.Clear(Color.Black);
         Engine.Instance.GraphicsDevice.Viewport = Engine.Viewport;
-        Matrix matrix = GetHiresDisplayMatrix(); // Matrix scale modified
+        Matrix matrix = Matrix.CreateScale(6f) * Engine.ScreenMatrix;
         Vector2 vector = new Vector2(320f, 180f);
 
         Vector2 vector2 = vector / self.ZoomTarget;
@@ -416,7 +406,7 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
         }
 
         DisableFixMatrices(); // Inserted
-        Draw.SpriteBatch.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend, SamplerState.PointClamp, DepthStencilState.Default, RasterizerState.CullNone, ColorGrade.Effect, matrix);
+        Draw.SpriteBatch.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend, SamplerState.PointClamp, DepthStencilState.Default, RasterizerState.CullNone, ColorGrade.Effect, GetHiresDisplayMatrix()); // Matrix modified
         Draw.SpriteBatch.Draw((RenderTarget2D)GameplayBuffers.Level, (vector3 + vector4) * 6f, GameplayBuffers.Level.Bounds, Color.White, 0f, vector3 * 6f, scale, SaveData.Instance.Assists.MirrorMode ? SpriteEffects.FlipHorizontally : SpriteEffects.None, 0f); // Arguments modified
         Draw.SpriteBatch.End();
 
