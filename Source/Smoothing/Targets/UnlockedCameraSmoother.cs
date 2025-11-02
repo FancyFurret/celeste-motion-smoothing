@@ -44,10 +44,10 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
     {
         base.Hook();
 
-        //On.Celeste.Level.Render += Level_Render;
-        IL.Celeste.Level.Render += LevelRenderHook;
-        On.Celeste.BloomRenderer.Apply += BloomRenderer_Apply;
-        //IL.Celeste.BloomRenderer.Apply += BloomRendererApplyHook;
+        On.Celeste.Level.Render += Level_Render;
+        //IL.Celeste.Level.Render += LevelRenderHook;
+        //On.Celeste.BloomRenderer.Apply += BloomRenderer_Apply;
+        IL.Celeste.BloomRenderer.Apply += BloomRendererApplyHook;
         //On.Celeste.Glitch.Apply += Glitch_Apply;
         IL.Celeste.Glitch.Apply += GlitchApplyHook;
         IL.Celeste.Godrays.Render += GodraysRenderHook;
@@ -76,10 +76,10 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
     {
         base.Unhook();
 
-        //On.Celeste.Level.Render -= Level_Render;
-        IL.Celeste.Level.Render -= LevelRenderHook;
-        On.Celeste.BloomRenderer.Apply -= BloomRenderer_Apply;
-        //IL.Celeste.BloomRenderer.Apply -= BloomRendererApplyHook;
+        On.Celeste.Level.Render -= Level_Render;
+        //IL.Celeste.Level.Render -= LevelRenderHook;
+        //On.Celeste.BloomRenderer.Apply -= BloomRenderer_Apply;
+        IL.Celeste.BloomRenderer.Apply -= BloomRendererApplyHook;
         //On.Celeste.Glitch.Apply -= Glitch_Apply;
         IL.Celeste.Glitch.Apply -= GlitchApplyHook;
         IL.Celeste.Godrays.Render -= GodraysRenderHook;
@@ -195,6 +195,15 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
 
 
 
+        // Go after Bloom.Apply
+        if (cursor.TryGotoNext(MoveType.After,
+            instr => instr.MatchCallvirt<BloomRenderer>("Apply")))
+        {
+            cursor.EmitDelegate(EnableFixMatricesWithScale);
+        }
+
+
+
         // Fix dash assist
         // Find where DashAssistFreeze is loaded
         if (cursor.TryGotoNext(MoveType.After,
@@ -275,9 +284,17 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
                 {
                     cursor.Emit(OpCodes.Pop);
                     cursor.EmitDelegate(GetHiresDisplayMatrix);
-                    cursor.EmitDelegate(DisableFixMatrices);
                 }
             }
+        }
+
+
+
+        // Go before the next SpriteBatch.Begin call
+        if (cursor.TryGotoNext(MoveType.Before,
+            instr => instr.MatchCallvirt<SpriteBatch>("Begin")))
+        {
+            cursor.EmitDelegate(DisableFixMatrices);
         }
 
         // Find the final SpriteBatch.Draw call and replace GameplayBuffers.Level references
@@ -310,6 +327,13 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
                 cursor.EmitCall(typeof(Vector2).GetMethod("op_Multiply", new[] { typeof(Vector2), typeof(float) })!);
             }
         }
+
+        // Go after the next SpriteBatch.End call
+        //if (cursor.TryGotoNext(MoveType.After,
+        //    instr => instr.MatchCallvirt<SpriteBatch>("End")))
+        //{
+        //    cursor.EmitDelegate(EnableFixMatricesWithoutScale);
+        //}
     }
 
     private static void Level_Render(On.Celeste.Level.orig_Render orig, Level self)
@@ -331,10 +355,13 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
         DrawDisplacedGameplayWithOffset(); //Inserted
 
         self.Bloom.Apply(GameplayBuffers.Level, self);
+        EnableFixMatricesWithScale(); // Inserted
 
         self.Foreground.Render(self);
 
         Glitch.Apply(GameplayBuffers.Level, self.glitchTimer * 2f, self.glitchSeed, MathF.PI * 2f);
+
+        
 
         if (Engine.DashAssistFreeze)
         {
@@ -484,11 +511,20 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
         renderer.FixMatrices = false;
     }
 
-    private static void EnableFixMatrices()
+    private static void EnableFixMatricesWithScale()
     {
         if (SmoothParallaxRenderer.Instance is not { } renderer) return;
 
         renderer.FixMatrices = true;
+        renderer.ScaleMatrices = true;
+    }
+
+    private static void EnableFixMatricesWithoutScale()
+    {
+        if (SmoothParallaxRenderer.Instance is not { } renderer) return;
+
+        renderer.FixMatrices = true;
+        renderer.ScaleMatrices = false;
     }
 
     private static Matrix GetScaleMatrix()
@@ -507,11 +543,31 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
         return Matrix.CreateTranslation(offset.X, offset.Y, 0f) * renderer.ScaleMatrix;
     }
 
-    private static Matrix GetScaledCameraMatrix(Level level)
+    private static Matrix GetOffsetMatrix()
     {
         if (SmoothParallaxRenderer.Instance is not { } renderer) return Matrix.Identity;
 
-        return level.Camera.Matrix * renderer.ScaleMatrix;
+        Vector2 offset = GetCameraOffsetInternal();
+
+        return Matrix.CreateTranslation(offset.X, offset.Y, 0f);
+    }
+
+    private static Matrix GetScaledCameraMatrix(Level level)
+    {
+        if (SmoothParallaxRenderer.Instance is not { } renderer) return level.Camera.Matrix;
+
+        return renderer.ScaleMatrix * level.Camera.Matrix;
+    }
+
+
+    // This one needs the camera matrix out in front to work properly.
+    private static Matrix GetOffsetScaledCameraMatrixForBloom(Level level)
+    {
+        if (SmoothParallaxRenderer.Instance is not { } renderer) return level.Camera.Matrix;
+
+        Vector2 offset = GetCameraOffsetInternal();
+
+        return level.Camera.Matrix * Matrix.CreateTranslation(offset.X, offset.Y, 0f) * renderer.ScaleMatrix;
     }
 
 
@@ -627,7 +683,7 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
                 // Pop the Camera.Matrix value and replace with delegate
                 cursor.EmitPop();
                 cursor.EmitLdarg(2); // Load the second argument (the level)
-                cursor.EmitDelegate(GetScaledCameraMatrix);
+                cursor.EmitDelegate(GetOffsetScaledCameraMatrixForBloom);
             }
 
             cursor.Index = lastIndex + 2;
@@ -647,7 +703,7 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
                 // Pop the Camera.Matrix value and replace with delegate
                 cursor.EmitPop();
                 cursor.EmitLdarg(2); // Load the second argument (the level)
-                cursor.EmitDelegate(GetScaledCameraMatrix);
+                cursor.EmitDelegate(GetOffsetScaledCameraMatrixForBloom);
             }
 
             cursor.Index = lastIndex + 2;
@@ -716,6 +772,8 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
             return;
         }
 
+        Vector2 offset = GetCameraOffsetInternal();
+
         VirtualRenderTarget tempA = renderer.LargeTempABuffer; // Buffer replaced
         Texture2D texture = ModifiedBlur((RenderTarget2D)target, renderer.LargeTempABuffer, renderer.LargeTempBBuffer); // Arguments and method modified
         List<Component> components = scene.Tracker.GetComponents<BloomPoint>();
@@ -725,7 +783,7 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
         if (self.Base < 1f)
         {
             Camera camera = (scene as Level).Camera;
-            Draw.SpriteBatch.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend, SamplerState.PointClamp, DepthStencilState.None, RasterizerState.CullNone, null, camera.Matrix * renderer.ScaleMatrix); // Added scale matrix
+            Draw.SpriteBatch.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend, SamplerState.PointClamp, DepthStencilState.None, RasterizerState.CullNone, null, GetOffsetScaledCameraMatrixForBloom(scene as Level)); // Added scale matrix
             float num = 1f / (float)self.gradient.Width;
             foreach (Component item in components)
             {
@@ -752,7 +810,7 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
             Draw.SpriteBatch.End();
             if (components2.Count > 0)
             {
-                Draw.SpriteBatch.Begin(SpriteSortMode.Deferred, BloomRenderer.CutoutBlendstate, SamplerState.PointClamp, null, null, null, camera.Matrix * renderer.ScaleMatrix); // Added scale matrix
+                Draw.SpriteBatch.Begin(SpriteSortMode.Deferred, BloomRenderer.CutoutBlendstate, SamplerState.PointClamp, null, null, null, GetOffsetScaledCameraMatrixForBloom(scene as Level)); // Added scale matrix
                 foreach (Component item2 in components2)
                 {
                     EffectCutout effectCutout = item2 as EffectCutout;
@@ -766,8 +824,8 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
             }
         }
 
-        Draw.SpriteBatch.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend, SamplerState.PointClamp, DepthStencilState.Default, RasterizerState.CullNone, null, renderer.ScaleMatrix); // Added scale matrix
-        Draw.Rect(-10f, -10f, 340f, 200f, Color.White * self.Base);
+        Draw.SpriteBatch.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend);
+        Draw.Rect(-60f, -60f, 2040f, 1200f, Color.White * self.Base); // Changed values
         Draw.SpriteBatch.End();
         Draw.SpriteBatch.Begin(SpriteSortMode.Deferred, BloomRenderer.BlurredScreenToMask);
         Draw.SpriteBatch.Draw(texture, Vector2.Zero, Color.White);
@@ -781,8 +839,6 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
         }
 
         Draw.SpriteBatch.End();
-
-        EnableFixMatrices(); // From now on, all SpriteBatch.Begin calls will get hooked.
     }
 
     public static Texture2D ModifiedBlur(Texture2D texture, VirtualRenderTarget temp, VirtualRenderTarget output, float fade = 0f, bool clear = true, GaussianBlur.Samples samples = GaussianBlur.Samples.Nine, float sampleScale = 1f, GaussianBlur.Direction direction = GaussianBlur.Direction.Both, float alpha = 1f)
@@ -942,34 +998,14 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
             return;
         }
 
-        var renderTargets = Draw.SpriteBatch.GraphicsDevice.GetRenderTargets();
-
-        if (renderTargets == null || renderTargets.Length == 0)
+        if (!renderer.ScaleMatrices)
         {
-            //transformMatrix = GetScaleMatrix() * transformMatrix;
+            transformMatrix = GetOffsetMatrix() * transformMatrix;
             orig(self, sortMode, blendState, samplerState, depthStencilState, rasterizerState, effect, transformMatrix);
             return;
         }
 
-        //var currentRenderTarget = renderTargets[0].RenderTarget;
-
-        //if (currentRenderTarget == renderer.LargeLevelBuffer.Target)
-        //{
-        //    transformMatrix = GetScaleMatrix() * transformMatrix;
-        //}
-
-        //else if (
-        //    currentRenderTarget == renderer.LargeGameplayBuffer.Target
-        //    || currentRenderTarget == renderer.LargeDisplacementBuffer.Target
-        //    || currentRenderTarget == renderer.LargeDisplacedGameplayBuffer.Target
-        //) {
-        //    transformMatrix = GetOffsetScaleMatrix() * transformMatrix;
-        //}
-
         transformMatrix = GetOffsetScaleMatrix() * transformMatrix;
-
-
-
         orig(self, sortMode, blendState, samplerState, depthStencilState, rasterizerState, effect, transformMatrix);
     }
 }

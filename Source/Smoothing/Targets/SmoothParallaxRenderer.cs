@@ -21,6 +21,7 @@ public class SmoothParallaxRenderer : Renderer
     public Matrix ScaleMatrix;
 
     public bool FixMatrices = false;
+    public bool ScaleMatrices = true;
 
     private static VirtualRenderTarget OriginalLevelBuffer = null;
 
