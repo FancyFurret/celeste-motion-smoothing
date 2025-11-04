@@ -44,8 +44,8 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
     {
         base.Hook();
 
-        On.Celeste.Level.Render += Level_Render;
-        //IL.Celeste.Level.Render += LevelRenderHook;
+        //On.Celeste.Level.Render += Level_Render;
+        IL.Celeste.Level.Render += LevelRenderHook;
         //On.Celeste.BloomRenderer.Apply += BloomRenderer_Apply;
         IL.Celeste.BloomRenderer.Apply += BloomRendererApplyHook;
         //On.Celeste.Glitch.Apply += Glitch_Apply;
@@ -76,8 +76,8 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
     {
         base.Unhook();
 
-        On.Celeste.Level.Render -= Level_Render;
-        //IL.Celeste.Level.Render -= LevelRenderHook;
+        //On.Celeste.Level.Render -= Level_Render;
+        IL.Celeste.Level.Render -= LevelRenderHook;
         //On.Celeste.BloomRenderer.Apply -= BloomRenderer_Apply;
         IL.Celeste.BloomRenderer.Apply -= BloomRendererApplyHook;
         //On.Celeste.Glitch.Apply -= Glitch_Apply;
@@ -966,15 +966,28 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
             return;
         }
 
-        if (renderer.ScaleMatricesForBloom)
+        var renderTargets = Draw.SpriteBatch.GraphicsDevice.GetRenderTargets();
+
+        if (renderTargets == null || renderTargets.Length == 0)
         {
-            // Bloom needs this scale matrix precomposed.
-            transformMatrix = transformMatrix * GetOffsetScaleMatrix();
             orig(self, sortMode, blendState, samplerState, depthStencilState, rasterizerState, effect, transformMatrix);
             return;
         }
 
-        transformMatrix = GetOffsetScaleMatrix() * transformMatrix;
+        var currentRenderTarget = renderTargets[0].RenderTarget;
+
+        if (renderer.ScaleMatricesForBloom && currentRenderTarget == renderer.LargeTempABuffer.Target)
+        {
+            // Bloom needs this scale matrix precomposed.
+            transformMatrix = transformMatrix * GetOffsetScaleMatrix();
+        }
+
+        // Otherwise, only modify the matrix if we're rendering to the one buffer that's bigger than things expect.
+        else if (currentRenderTarget == renderer.LargeLevelBuffer.Target)
+        {
+            transformMatrix = GetOffsetScaleMatrix() * transformMatrix;
+        }
+            
         orig(self, sortMode, blendState, samplerState, depthStencilState, rasterizerState, effect, transformMatrix);
     }
 }
