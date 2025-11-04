@@ -46,8 +46,8 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
 
         //On.Celeste.Level.Render += Level_Render;
         IL.Celeste.Level.Render += LevelRenderHook;
-        //On.Celeste.BloomRenderer.Apply += BloomRenderer_Apply;
-        IL.Celeste.BloomRenderer.Apply += BloomRendererApplyHook;
+        On.Celeste.BloomRenderer.Apply += BloomRenderer_Apply;
+        //IL.Celeste.BloomRenderer.Apply += BloomRendererApplyHook;
         //On.Celeste.Glitch.Apply += Glitch_Apply;
         IL.Celeste.Glitch.Apply += GlitchApplyHook;
         IL.Celeste.Godrays.Render += GodraysRenderHook;
@@ -78,8 +78,8 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
 
         //On.Celeste.Level.Render -= Level_Render;
         IL.Celeste.Level.Render -= LevelRenderHook;
-        //On.Celeste.BloomRenderer.Apply -= BloomRenderer_Apply;
-        IL.Celeste.BloomRenderer.Apply -= BloomRendererApplyHook;
+        On.Celeste.BloomRenderer.Apply -= BloomRenderer_Apply;
+        //IL.Celeste.BloomRenderer.Apply -= BloomRendererApplyHook;
         //On.Celeste.Glitch.Apply -= Glitch_Apply;
         IL.Celeste.Glitch.Apply -= GlitchApplyHook;
         IL.Celeste.Godrays.Render -= GodraysRenderHook;
@@ -193,11 +193,7 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
             cursor.EmitDelegate(DrawDisplacedGameplayWithOffset);
         }
 
-        if (cursor.TryGotoNext(MoveType.Before,
-            instr => instr.MatchCallvirt<BloomRenderer>("Apply")))
-        {
-            cursor.EmitDelegate(DisableFixMatrices);
-        }
+
 
         if (cursor.TryGotoNext(MoveType.After,
             instr => instr.MatchCallvirt<BloomRenderer>("Apply")))
@@ -614,184 +610,109 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
 
 
 
-    //private static void BloomRendererApplyHook(ILContext il)
-    //{
-    //    var cursor = new ILCursor(il);
-
-
-    //    if (cursor.TryGotoNext(MoveType.After,
-    //        instr => instr.MatchLdsfld(typeof(GameplayBuffers), "TempA")))
-    //    {
-    //        cursor.EmitPop();
-    //        cursor.EmitDelegate(GetLargeTempABuffer);
-    //    }
-
-    //    // Find and replace the TempA in the Blur call parameters
-    //    if (cursor.TryGotoNext(MoveType.After,
-    //        instr => instr.MatchLdsfld(typeof(GameplayBuffers), "TempA")))
-    //    {
-    //        cursor.EmitPop();
-    //        cursor.EmitDelegate(GetLargeTempABuffer);
-    //    }
-
-    //    // Replace TempB
-    //    if (cursor.TryGotoNext(MoveType.After,
-    //        instr => instr.MatchLdsfld(typeof(GameplayBuffers), "TempB")))
-    //    {
-    //        cursor.EmitPop();
-    //        cursor.EmitDelegate(GetLargeTempBBuffer);
-    //    }
-
-
-
-    //    if (cursor.TryGotoNext(MoveType.After,
-    //        instr => instr.MatchCall(typeof(GaussianBlur), "Blur")))
-    //    {
-    //        cursor.EmitDelegate(EnableFixMatricesForBloom);
-    //    }
-
-    //    cursor.Index = 0;
-
-    //    // Find and replace the Blur method call
-    //    if (cursor.TryGotoNext(MoveType.Before,
-    //        instr => instr.MatchCall(typeof(GaussianBlur), "Blur")))
-    //    {
-    //        // Save reference to the instruction before modifying
-    //        var blurInstruction = cursor.Next;
-
-    //        // Replace with ModifiedBlur method
-    //        blurInstruction.Operand = typeof(UnlockedCameraSmoother).GetMethod("ModifiedBlur", new[] {
-    //            typeof(Texture2D),
-    //            typeof(VirtualRenderTarget),
-    //            typeof(VirtualRenderTarget),
-    //            typeof(float),
-    //            typeof(bool),
-    //            typeof(GaussianBlur.Samples),
-    //            typeof(float),
-    //            typeof(GaussianBlur.Direction),
-    //            typeof(float)
-    //        });
-    //    }
-
-    //    // Start from the end of the method
-    //    cursor.Index = cursor.Instrs.Count - 1;
-
-    //    // Search backwards
-    //    if (cursor.TryGotoPrev(MoveType.Before,
-    //        instr => instr.MatchLdsfld(typeof(BloomRenderer), "BlurredScreenToMask"),
-    //        instr => instr.MatchCallvirt<SpriteBatch>("Begin")))
-    //    {
-    //        if (cursor.TryGotoNext(MoveType.Before,
-    //            instr => instr.MatchCallvirt<SpriteBatch>("Begin")))
-    //        {
-    //            Console.WriteLine("found 1");
-    //            cursor.EmitDelegate(DisableFixMatrices);
-    //        }
-
-    //        if (cursor.TryGotoNext(MoveType.After,
-    //            instr => instr.MatchCallvirt<SpriteBatch>("Begin")))
-    //        {
-    //            Console.WriteLine("found 2");
-    //            cursor.EmitDelegate(EnableFixMatricesForBloom);
-    //        }
-    //    }
-
-    //    if (cursor.TryGotoNext(MoveType.Before,
-    //        instr => instr.MatchLdsfld(typeof(BloomRenderer), "AdditiveMaskToScreen"),
-    //        instr => instr.MatchCallvirt<SpriteBatch>("Begin")))
-    //    {
-    //        if (cursor.TryGotoNext(MoveType.Before,
-    //            instr => instr.MatchCallvirt<SpriteBatch>("Begin")))
-    //        {
-    //            Console.WriteLine("found 3");
-    //            cursor.EmitDelegate(DisableFixMatrices);
-    //        }
-
-    //        if (cursor.TryGotoNext(MoveType.After,
-    //            instr => instr.MatchCallvirt<SpriteBatch>("Begin")))
-    //        {
-    //            Console.WriteLine("found 4");
-    //            cursor.EmitDelegate(EnableFixMatricesForBloom);
-    //        }
-    //    }
-    //}
-
     private static void BloomRendererApplyHook(ILContext il)
     {
         var cursor = new ILCursor(il);
 
-        // Add delegate just before TempA is loaded
-        if (cursor.TryGotoNext(MoveType.Before,
+
+        if (cursor.TryGotoNext(MoveType.After,
             instr => instr.MatchLdsfld(typeof(GameplayBuffers), "TempA")))
         {
-            cursor.EmitDelegate(DownscaleLevelToBuffer);
+            cursor.EmitPop();
+            cursor.EmitDelegate(GetLargeTempABuffer);
         }
 
-        // Repalce the argument in the GaussianBlur.Blur call
-        // Find Blur call
+        // Find and replace the TempA in the Blur call parameters
+        if (cursor.TryGotoNext(MoveType.After,
+            instr => instr.MatchLdsfld(typeof(GameplayBuffers), "TempA")))
+        {
+            cursor.EmitPop();
+            cursor.EmitDelegate(GetLargeTempABuffer);
+        }
+
+        // Replace TempB
+        if (cursor.TryGotoNext(MoveType.After,
+            instr => instr.MatchLdsfld(typeof(GameplayBuffers), "TempB")))
+        {
+            cursor.EmitPop();
+            cursor.EmitDelegate(GetLargeTempBBuffer);
+        }
+
+
+
+        if (cursor.TryGotoNext(MoveType.After,
+            instr => instr.MatchCall(typeof(GaussianBlur), "Blur")))
+        {
+            cursor.EmitDelegate(EnableFixMatricesForBloom);
+        }
+
+        cursor.Index = 0;
+
+        // Find and replace the Blur method call
         if (cursor.TryGotoNext(MoveType.Before,
             instr => instr.MatchCall(typeof(GaussianBlur), "Blur")))
         {
-            // Now search backwards for ldarg.1 (the target parameter) and swap it with GameplayBuffers.Level
-            if (cursor.TryGotoPrev(MoveType.After,
-                instr => instr.MatchLdarg(1)))
+            // Save reference to the instruction before modifying
+            var blurInstruction = cursor.Next;
+
+            // Replace with ModifiedBlur method
+            blurInstruction.Operand = typeof(UnlockedCameraSmoother).GetMethod("ModifiedBlur", new[] {
+                typeof(Texture2D),
+                typeof(VirtualRenderTarget),
+                typeof(VirtualRenderTarget),
+                typeof(float),
+                typeof(bool),
+                typeof(GaussianBlur.Samples),
+                typeof(float),
+                typeof(GaussianBlur.Direction),
+                typeof(float)
+            });
+        }
+
+        // Start from the end of the method
+        cursor.Index = cursor.Instrs.Count - 1;
+
+        // Search backwards
+        if (cursor.TryGotoPrev(MoveType.Before,
+            instr => instr.MatchLdsfld(typeof(BloomRenderer), "BlurredScreenToMask"),
+            instr => instr.MatchCallvirt<SpriteBatch>("Begin")))
+        {
+            if (cursor.TryGotoNext(MoveType.Before,
+                instr => instr.MatchCallvirt<SpriteBatch>("Begin")))
             {
-                cursor.EmitPop();
-                cursor.EmitLdsfld(typeof(GameplayBuffers).GetField("Gameplay"));
+                Console.WriteLine("found 1");
+                cursor.EmitDelegate(DisableFixMatrices);
+            }
+
+            if (cursor.TryGotoNext(MoveType.After,
+                instr => instr.MatchCallvirt<SpriteBatch>("Begin")))
+            {
+                Console.WriteLine("found 2");
+                cursor.EmitDelegate(EnableFixMatricesForBloom);
             }
         }
 
-        // Find the LAST SpriteBatch.Begin call in the method
-        int lastBeginIndex = -1;
-        while (cursor.TryGotoNext(MoveType.Before,
+        if (cursor.TryGotoNext(MoveType.Before,
+            instr => instr.MatchLdsfld(typeof(BloomRenderer), "AdditiveMaskToScreen"),
             instr => instr.MatchCallvirt<SpriteBatch>("Begin")))
         {
-            lastBeginIndex = cursor.Index;
-            cursor.Index++; // Move forward to continue searching
-        }
+            if (cursor.TryGotoNext(MoveType.Before,
+                instr => instr.MatchCallvirt<SpriteBatch>("Begin")))
+            {
+                Console.WriteLine("found 3");
+                cursor.EmitDelegate(DisableFixMatrices);
+            }
 
-        if (lastBeginIndex >= 0)
-        {
-            cursor.Index = lastBeginIndex;
-
-            // Add the additional parameters
-            cursor.EmitLdsfld(typeof(SamplerState).GetField("PointClamp"));
-            cursor.EmitLdsfld(typeof(DepthStencilState).GetField("Default"));
-            cursor.EmitLdsfld(typeof(RasterizerState).GetField("CullNone"));
-            cursor.EmitLdnull(); // null for Effect
-            cursor.EmitDelegate(GetOffsetScaleMatrix); // Matrix from delegate
-
-            // Now modify the saved instruction reference
-            cursor.Next.Operand = typeof(SpriteBatch).GetMethod("Begin",
-                    new[] { typeof(SpriteSortMode), typeof(BlendState), typeof(SamplerState),
-                    typeof(DepthStencilState), typeof(RasterizerState), typeof(Effect), typeof(Matrix) })!;
+            if (cursor.TryGotoNext(MoveType.After,
+                instr => instr.MatchCallvirt<SpriteBatch>("Begin")))
+            {
+                Console.WriteLine("found 4");
+                cursor.EmitDelegate(EnableFixMatricesForBloom);
+            }
         }
     }
 
-    private static void DownscaleLevelToBuffer()
-    {
-        if (SmoothParallaxRenderer.Instance is not { } renderer) return;
 
-        // Render down the level to the old small Gameplay buffer with linear scaling
-        Engine.Graphics.GraphicsDevice.SetRenderTarget(GameplayBuffers.Gameplay);
-        Engine.Graphics.GraphicsDevice.Clear(Color.Transparent);
-
-        Draw.SpriteBatch.Begin(
-            SpriteSortMode.Deferred,
-            BlendState.Opaque,
-            SamplerState.LinearClamp,
-            DepthStencilState.None,
-            RasterizerState.CullNone
-        );
-
-        Draw.SpriteBatch.Draw(
-            renderer.LargeLevelBuffer,
-            new Rectangle(0, 0, 320, 180),
-            Color.White
-        );
-
-        Draw.SpriteBatch.End();
-    }
 
     private static void BloomRenderer_Apply(On.Celeste.BloomRenderer.orig_Apply orig, BloomRenderer self, VirtualRenderTarget target, Scene scene)
     {
