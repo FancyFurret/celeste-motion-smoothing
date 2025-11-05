@@ -274,24 +274,14 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
             cursor.EmitDelegate(DisableFixMatrices);
         }
 
-        // Ditch the 6x scale and replace it with 181/180 to zoom
+        // Ditch the 6x scale, but *only* when it's used to draw the level.
+        // We replace it with 181/180 to zoom.
         // First find the viewport assignment to ensure we're at the right location
-        if (cursor.TryGotoNext(MoveType.After,
-            instr => instr.MatchCallvirt<GraphicsDevice>("set_Viewport")))
+        if (cursor.TryGotoNext(MoveType.Before,
+            instr => instr.MatchCallvirt(typeof(SpriteBatch), "Begin")))
         {
-            // Find the pattern and position cursor right before stloc.2
-            if (cursor.TryGotoNext(MoveType.Before,
-                i => i.MatchLdcR4(6f)
-            ))
-            {
-                if (cursor.TryGotoNext(MoveType.Before,
-                    i => i.MatchStloc(2)
-                ))
-                {
-                    cursor.Emit(OpCodes.Pop);
-                    cursor.EmitDelegate(GetHiresDisplayMatrix);
-                }
-            }
+            cursor.Emit(OpCodes.Pop);
+            cursor.EmitDelegate(GetHiresDisplayMatrix);
         }
 
         // Find the final SpriteBatch.Draw call and replace GameplayBuffers.Level references
@@ -622,7 +612,6 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
     {
         var cursor = new ILCursor(il);
 
-
         if (cursor.TryGotoNext(MoveType.After,
             instr => instr.MatchLdsfld(typeof(GameplayBuffers), "TempA")))
         {
@@ -688,14 +677,12 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
             if (cursor.TryGotoNext(MoveType.Before,
                 instr => instr.MatchCallvirt<SpriteBatch>("Begin")))
             {
-                Console.WriteLine("found 1");
                 cursor.EmitDelegate(DisableFixMatrices);
             }
 
             if (cursor.TryGotoNext(MoveType.After,
                 instr => instr.MatchCallvirt<SpriteBatch>("Begin")))
             {
-                Console.WriteLine("found 2");
                 cursor.EmitDelegate(EnableFixMatricesForBloom);
             }
         }
@@ -707,14 +694,12 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
             if (cursor.TryGotoNext(MoveType.Before,
                 instr => instr.MatchCallvirt<SpriteBatch>("Begin")))
             {
-                Console.WriteLine("found 3");
                 cursor.EmitDelegate(DisableFixMatrices);
             }
 
             if (cursor.TryGotoNext(MoveType.After,
                 instr => instr.MatchCallvirt<SpriteBatch>("Begin")))
             {
-                Console.WriteLine("found 4");
                 cursor.EmitDelegate(EnableFixMatricesForBloom);
             }
         }
@@ -858,8 +843,8 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
 
         // Use the smoothed camera position
         if (cursor.TryGotoNext(MoveType.After,
-                instr => instr.MatchCallvirt<Camera>("get_Position"),
-                instr => instr.MatchCall(typeof(Calc).GetMethod(nameof(Calc.Floor))!)))
+            instr => instr.MatchCallvirt<Camera>("get_Position"),
+            instr => instr.MatchCall(typeof(Calc).GetMethod(nameof(Calc.Floor))!)))
         {
             // Ignore this value
             cursor.EmitPop();
