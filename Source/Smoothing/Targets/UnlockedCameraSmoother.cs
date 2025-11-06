@@ -275,13 +275,33 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
             cursor.EmitDelegate(DisableFixMatrices);
         }
 
-        // Ditch the 6x scale and replace it with the much milder 181/180.
-        if (cursor.TryGotoNext(MoveType.Before,
-            instr => instr.MatchCallvirt(typeof(SpriteBatch), "Begin")))
+        // Ditch the 6x scale and replace it with 181/180 to zoom
+        // First find the viewport assignment to ensure we're at the right location
+        if (cursor.TryGotoNext(MoveType.After,
+            instr => instr.MatchCallvirt<GraphicsDevice>("set_Viewport")))
         {
-            cursor.Emit(OpCodes.Pop);
-            cursor.EmitDelegate(GetHiresDisplayMatrix);
+            // Find the pattern and position cursor right before stloc.2
+            if (cursor.TryGotoNext(MoveType.Before,
+                i => i.MatchLdcR4(6f)
+            ))
+            {
+                if (cursor.TryGotoNext(MoveType.Before,
+                    i => i.MatchStloc(2)
+                ))
+                {
+                    cursor.Emit(OpCodes.Pop);
+                    cursor.EmitDelegate(GetHiresDisplayMatrix);
+                }
+            }
         }
+
+        //// Ditch the 6x scale and replace it with the much milder 181/180.
+        //if (cursor.TryGotoNext(MoveType.Before,
+        //    instr => instr.MatchCallvirt(typeof(SpriteBatch), "Begin")))
+        //{
+        //    cursor.Emit(OpCodes.Pop);
+        //    cursor.EmitDelegate(GetHiresDisplayMatrix);
+        //}
 
         if (cursor.TryGotoNext(MoveType.Before,
             instr => instr.MatchCall(typeof(Draw), "get_SpriteBatch")))
