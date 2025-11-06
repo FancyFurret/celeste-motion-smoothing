@@ -295,39 +295,40 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
             }
         }
 
-        //// Ditch the 6x scale and replace it with the much milder 181/180.
-        //if (cursor.TryGotoNext(MoveType.Before,
-        //    instr => instr.MatchCallvirt(typeof(SpriteBatch), "Begin")))
-        //{
-        //    cursor.Emit(OpCodes.Pop);
-        //    cursor.EmitDelegate(GetHiresDisplayMatrix);
-        //}
-
+        // Ditch the 6x scale and replace it with the much milder 181/180.
         if (cursor.TryGotoNext(MoveType.Before,
-            instr => instr.MatchCall(typeof(Draw), "get_SpriteBatch")))
+            instr => instr.MatchCallvirt(typeof(SpriteBatch), "Begin")))
         {
-            cursor.Index++;
-
-            // Now find and modify the vector3 + vector4 addition
-            if (cursor.TryGotoNext(MoveType.After,
-                instr => instr.MatchCall(typeof(Vector2), "op_Addition")))
-            {
-                // Stack now has the result of vector3 + vector4
-                // Multiply it by 6
-                cursor.EmitLdcR4(6f);
-                cursor.EmitCall(typeof(Vector2).GetMethod("op_Multiply", new[] { typeof(Vector2), typeof(float) })!);
-            }
-
-            // Find the next vector3 load (for origin parameter)
-            if (cursor.TryGotoNext(MoveType.After,
-                instr => instr.MatchLdloc(5))
-            ) {
-                // Stack now has vector3
-                // Multiply it by 6
-                cursor.EmitLdcR4(6f);
-                cursor.EmitCall(typeof(Vector2).GetMethod("op_Multiply", new[] { typeof(Vector2), typeof(float) })!);
-            }
+            cursor.EmitLdloca(5);
+            cursor.EmitLdloca(9);
+            cursor.EmitDelegate(MultiplyVectors);
         }
+
+        //if (cursor.TryGotoNext(MoveType.Before,
+        //    instr => instr.MatchCall(typeof(Draw), "get_SpriteBatch")))
+        //{
+        //    cursor.Index++;
+
+        //    // Now find and modify the vector3 + vector4 addition
+        //    if (cursor.TryGotoNext(MoveType.After,
+        //        instr => instr.MatchCall(typeof(Vector2), "op_Addition")))
+        //    {
+        //        // Stack now has the result of vector3 + vector4
+        //        // Multiply it by 6
+        //        cursor.EmitLdcR4(6f);
+        //        cursor.EmitCall(typeof(Vector2).GetMethod("op_Multiply", new[] { typeof(Vector2), typeof(float) })!);
+        //    }
+
+        //    // Find the next vector3 load (for origin parameter)
+        //    if (cursor.TryGotoNext(MoveType.After,
+        //        instr => instr.MatchLdloc(5))
+        //    ) {
+        //        // Stack now has vector3
+        //        // Multiply it by 6
+        //        cursor.EmitLdcR4(6f);
+        //        cursor.EmitCall(typeof(Vector2).GetMethod("op_Multiply", new[] { typeof(Vector2), typeof(float) })!);
+        //    }
+        //}
     }
 
     private static void Level_Render(On.Celeste.Level.orig_Render orig, Level self)
@@ -495,6 +496,14 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
         Draw.SpriteBatch.End();
 
         SmoothParallaxRenderer.EnableLargeLevelBuffer(); // Replace GameplayBuffers.Level with the big one.
+    }
+
+    private static void MultiplyVectors(ref Vector2 vector3, ref Vector2 vector4)
+    {
+        if (SmoothParallaxRenderer.Instance is not { } renderer) return;
+
+        vector3 *= 6f;
+        vector4 *= 6f;
     }
 
     private static void DisableFixMatrices()
