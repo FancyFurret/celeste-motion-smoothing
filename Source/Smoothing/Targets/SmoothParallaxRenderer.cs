@@ -24,6 +24,7 @@ public class SmoothParallaxRenderer : Renderer
     public bool ScaleMatricesForBloom = true;
 
     private static VirtualRenderTarget OriginalLevelBuffer = null;
+    private static VirtualRenderTarget OriginalTempABuffer = null;
 
     public SmoothParallaxRenderer(
         VirtualRenderTarget largeGameplayBuffer,
@@ -68,6 +69,25 @@ public class SmoothParallaxRenderer : Renderer
 
         GameplayBuffers.Level = OriginalLevelBuffer;
         OriginalLevelBuffer = null;
+    }
+
+    public static void EnableLargeTempABuffer()
+    {
+        if (Instance == null)
+        {
+            return;
+        }
+
+        OriginalTempABuffer = GameplayBuffers.TempA;
+        GameplayBuffers.TempA = Instance.LargeTempABuffer;
+    }
+
+    public static void DisableLargeTempABuffer()
+    {
+        if (OriginalTempABuffer == null) { return; }
+
+        GameplayBuffers.TempA = OriginalTempABuffer;
+        OriginalTempABuffer = null;
     }
 
     public static SmoothParallaxRenderer Create()

@@ -198,6 +198,7 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
         if (cursor.TryGotoNext(MoveType.After,
             instr => instr.MatchCallvirt<BloomRenderer>("Apply")))
         {
+            cursor.EmitDelegate(SmoothParallaxRenderer.DisableLargeTempABuffer);
             cursor.EmitDelegate(EnableFixMatricesWithScale);
         }
 
@@ -277,57 +278,46 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
 
         // Ditch the 6x scale and replace it with 181/180 to zoom
         // First find the viewport assignment to ensure we're at the right location
-        if (cursor.TryGotoNext(MoveType.After,
-            instr => instr.MatchCallvirt<GraphicsDevice>("set_Viewport")))
-        {
-            // Find the pattern and position cursor right before stloc.2
-            if (cursor.TryGotoNext(MoveType.Before,
-                i => i.MatchLdcR4(6f)
-            ))
-            {
-                if (cursor.TryGotoNext(MoveType.Before,
-                    i => i.MatchStloc(2)
-                ))
-                {
-                    cursor.Emit(OpCodes.Pop);
-                    cursor.EmitDelegate(GetHiresDisplayMatrix);
-                }
-            }
-        }
+        //if (cursor.TryGotoNext(MoveType.After,
+        //    instr => instr.MatchCallvirt<GraphicsDevice>("set_Viewport")))
+        //{
+        //    // Find the pattern and position cursor right before stloc.2
+        //    if (cursor.TryGotoNext(MoveType.Before,
+        //        i => i.MatchLdcR4(6f)
+        //    ))
+        //    {
+        //        if (cursor.TryGotoNext(MoveType.Before,
+        //            i => i.MatchStloc(2)
+        //        ))
+        //        {
+        //            cursor.Emit(OpCodes.Pop);
+        //            cursor.EmitDelegate(GetHiresDisplayMatrix);
+        //        }
+        //    }
+        //}
 
         // Ditch the 6x scale and replace it with the much milder 181/180.
         if (cursor.TryGotoNext(MoveType.Before,
             instr => instr.MatchCallvirt(typeof(SpriteBatch), "Begin")))
         {
+            cursor.Emit(OpCodes.Pop);
+            cursor.EmitDelegate(GetHiresDisplayMatrix);
             cursor.EmitLdloca(5);
             cursor.EmitLdloca(9);
             cursor.EmitDelegate(MultiplyVectors);
         }
 
-        //if (cursor.TryGotoNext(MoveType.Before,
-        //    instr => instr.MatchCall(typeof(Draw), "get_SpriteBatch")))
+        //if (cursor.TryGotoNext(MoveType.After,
+        //    instr => instr.MatchCallvirt("ColorGradeMask", "End")))
         //{
-        //    cursor.Index++;
+        //    Console.WriteLine("found");
+        //    cursor.Emit(OpCodes.Ret);
+        //}
 
-        //    // Now find and modify the vector3 + vector4 addition
-        //    if (cursor.TryGotoNext(MoveType.After,
-        //        instr => instr.MatchCall(typeof(Vector2), "op_Addition")))
-        //    {
-        //        // Stack now has the result of vector3 + vector4
-        //        // Multiply it by 6
-        //        cursor.EmitLdcR4(6f);
-        //        cursor.EmitCall(typeof(Vector2).GetMethod("op_Multiply", new[] { typeof(Vector2), typeof(float) })!);
-        //    }
-
-        //    // Find the next vector3 load (for origin parameter)
-        //    if (cursor.TryGotoNext(MoveType.After,
-        //        instr => instr.MatchLdloc(5))
-        //    ) {
-        //        // Stack now has vector3
-        //        // Multiply it by 6
-        //        cursor.EmitLdcR4(6f);
-        //        cursor.EmitCall(typeof(Vector2).GetMethod("op_Multiply", new[] { typeof(Vector2), typeof(float) })!);
-        //    }
+        //if (cursor.TryGotoNext(MoveType.After,
+        //    instr => instr.MatchCallvirt(typeof(SpriteBatch), "End")))
+        //{
+        //    cursor.Emit(OpCodes.Ret);
         //}
     }
 
@@ -441,6 +431,7 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
 
         renderer.FixMatrices = false;
         SmoothParallaxRenderer.DisableLargeLevelBuffer();
+        Console.WriteLine("Prepared");
     }
 
     private static void BeforeDistortRender()
@@ -627,20 +618,22 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
     {
         var cursor = new ILCursor(il);
 
-        if (cursor.TryGotoNext(MoveType.After,
-            instr => instr.MatchLdsfld(typeof(GameplayBuffers), "TempA")))
-        {
-            cursor.EmitPop();
-            cursor.EmitDelegate(GetLargeTempABuffer);
-        }
+        cursor.EmitDelegate(SmoothParallaxRenderer.EnableLargeTempABuffer);
 
-        // Find and replace the TempA in the Blur call parameters
-        if (cursor.TryGotoNext(MoveType.After,
-            instr => instr.MatchLdsfld(typeof(GameplayBuffers), "TempA")))
-        {
-            cursor.EmitPop();
-            cursor.EmitDelegate(GetLargeTempABuffer);
-        }
+        //if (cursor.TryGotoNext(MoveType.After,
+        //    instr => instr.MatchLdsfld(typeof(GameplayBuffers), "TempA")))
+        //{
+        //    cursor.EmitPop();
+        //    cursor.EmitDelegate(GetLargeTempABuffer);
+        //}
+
+        //// Find and replace the TempA in the Blur call parameters
+        //if (cursor.TryGotoNext(MoveType.After,
+        //    instr => instr.MatchLdsfld(typeof(GameplayBuffers), "TempA")))
+        //{
+        //    cursor.EmitPop();
+        //    cursor.EmitDelegate(GetLargeTempABuffer);
+        //}
 
         // Replace TempB
         if (cursor.TryGotoNext(MoveType.After,
