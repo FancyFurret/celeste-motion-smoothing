@@ -17,6 +17,20 @@ public enum UpdateMode
     Dynamic
 }
 
+public enum UnlockCameraStrategy
+{
+    Hires,
+    Unlock,
+    Off
+}
+
+public enum UnlockCameraMode
+{
+    Extend,
+    Zoom,
+    Border
+}
+
 public class MotionSmoothingSettings : EverestModuleSettings
 {
     // Defaults
@@ -24,7 +38,8 @@ public class MotionSmoothingSettings : EverestModuleSettings
     private bool _tasMode = false;
     private int _frameRate = 120;
     private int _preferredFrameRate = 120;
-    private bool _unlockCamera = true;
+    private UnlockCameraStrategy _unlockCameraStrategy = UnlockCameraStrategy.Hires;
+    private UnlockCameraMode _unlockCameraMode = UnlockCameraMode.Extend;
     private SmoothingMode _smoothingMode = SmoothingMode.Extrapolate;
     private UpdateMode _updateMode = UpdateMode.Interval;
 
@@ -40,9 +55,6 @@ public class MotionSmoothingSettings : EverestModuleSettings
         set
         {
             _enabled = value;
-
-            _frameRate = _enabled ? _preferredFrameRate : 60;
-
             MotionSmoothingModule.Instance.ApplySettings();
             MotionSmoothingModule.Instance.EnabledActions.ForEach(action => action(value));
         }
@@ -60,6 +72,15 @@ public class MotionSmoothingSettings : EverestModuleSettings
         set
         {
             _frameRate = value;
+            MotionSmoothingModule.Instance.ApplySettings();
+        }
+    }
+
+    public int PreferredFrameRate
+    {
+        get => _preferredFrameRate;
+        set
+        {
             _preferredFrameRate = value;
             MotionSmoothingModule.Instance.ApplySettings();
         }
@@ -74,18 +95,35 @@ public class MotionSmoothingSettings : EverestModuleSettings
     }
 
     [SettingSubText(
-        "This setting makes it so the camera is no longer\n" +
-        "restricted to full pixel increments. Ie, half a pixel\n" +
-        "could be shown on the side of the screen. This makes\n" +
-        "slow camera movements look *MUCH* smoother.")]
-    public bool UnlockCamera
+        "Allows the camera to move by fractions of a pixel, i.e.\n" +
+        "half a pixel could be shown on the side of the screen.\n" +
+        "This makes slow camera movements look *MUCH* smoother.\n" +
+        "High Res: Changes level rendering to be at a higher internal\n" +
+        "resolution. Usually has the fewest visual glitches but may\n" +
+        "not work in modded maps that use a large number of helpers\n" +
+        "Unlock: lets the camera move without changing the rendering.\n" +
+        "Has the highest compatibility but makes the entire background\n" +
+        "jitter when moving.")]
+    public UnlockCameraStrategy UnlockCameraStrategy
     {
-        get => _unlockCamera;
+        get => _unlockCameraStrategy;
         set
         {
-            _unlockCamera = value;
+            _unlockCameraStrategy = value;
             MotionSmoothingModule.Instance.ApplySettings();
         }
+    }
+
+    [SettingSubText(
+        "Only applies if Smooth Camera is set to Unlock. Determines\n" +
+        "how unrendered portions of the level are hidden.\n" +
+        "Zoom: Zooms the camera in slightly\n" +
+        "Extend: Extends the level to the edge of the window\n" +
+        "Border: Adds a small black border around the level")]
+    public UnlockCameraMode UnlockCameraMode
+    {
+        get => _unlockCameraMode;
+        set => _unlockCameraMode = value;
     }
 
     [SettingSubText(

@@ -46,8 +46,17 @@ public class MotionSmoothingInputHandler : ToggleableFeature<MotionSmoothingInpu
             }
             if (MotionSmoothingModule.Settings.ButtonToggleUnlockedCamera.Pressed)
             {
-                Logger.Log(LogLevel.Info, "MotionSmoothingInputHandler", "Toggling unlocked camera");
-                MotionSmoothingModule.Settings.UnlockCamera = !MotionSmoothingModule.Settings.UnlockCamera;
+                Logger.Log(LogLevel.Info, "MotionSmoothingInputHandler", "Toggling unlocked camera strategy");
+
+                if (MotionSmoothingModule.Settings.UnlockCameraStrategy == UnlockCameraStrategy.Hires)
+                {
+                    MotionSmoothingModule.Settings.UnlockCameraStrategy = UnlockCameraStrategy.Unlock;
+                }
+
+                else
+                {
+                    MotionSmoothingModule.Settings.UnlockCameraStrategy = UnlockCameraStrategy.Hires;
+                }
             }
         }
     }

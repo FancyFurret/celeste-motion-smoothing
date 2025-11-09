@@ -50,6 +50,7 @@ public class MotionSmoothingModule : EverestModule
 
     private MotionSmoothingHandler MotionSmoothing { get; } = new();
     private UnlockedCameraSmoother UnlockedCameraSmoother { get; } = new();
+    private UnlockedCameraSmootherHires UnlockedCameraSmootherHires { get; } = new();
     private ActorPushTracker ActorPushTracker { get; } = new();
     private UpdateAtDraw UpdateAtDraw { get; } = new();
     private MotionSmoothingInputHandler InputHandler { get; } = new();
@@ -114,12 +115,14 @@ public class MotionSmoothingModule : EverestModule
 
             MotionSmoothing.Disable();
             UnlockedCameraSmoother.Disable();
+            UnlockedCameraSmootherHires.Disable();
             ActorPushTracker.Disable();
             UpdateAtDraw.Disable();
             DebugRenderFix.Disable();
             DeltaTimeFix.Disable();
             return;
         }
+
 
 
         // If the game speed is modified, then we have to use dynamic mode
@@ -151,10 +154,23 @@ public class MotionSmoothingModule : EverestModule
         DebugRenderFix.Enable();
         DeltaTimeFix.Enable();
 
-        if (Settings.UnlockCamera)
-            UnlockedCameraSmoother.Enable();
-        else
+        if (Settings.UnlockCameraStrategy == UnlockCameraStrategy.Hires)
+        {
             UnlockedCameraSmoother.Disable();
+            UnlockedCameraSmootherHires.Enable();
+        }
+
+        else if (Settings.UnlockCameraStrategy == UnlockCameraStrategy.Unlock)
+        {
+            UnlockedCameraSmootherHires.Disable();
+            UnlockedCameraSmoother.Enable();
+        }
+        
+        else
+        {
+            UnlockedCameraSmoother.Disable();
+            UnlockedCameraSmootherHires.Disable();
+        }
     }
 
     private void ApplyFramerate()
