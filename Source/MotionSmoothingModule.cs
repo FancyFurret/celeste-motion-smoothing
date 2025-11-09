@@ -67,6 +67,7 @@ public class MotionSmoothingModule : EverestModule
         UpdateEveryNTicks.Load();
         MotionSmoothing.Load();
         UnlockedCameraSmoother.Load();
+        UnlockedCameraSmootherHires.Load();
         ActorPushTracker.Load();
         UpdateAtDraw.Load();
         InputHandler.Load();
@@ -87,6 +88,7 @@ public class MotionSmoothingModule : EverestModule
         UpdateEveryNTicks.Unload();
         MotionSmoothing.Unload();
         UnlockedCameraSmoother.Unload();
+        UnlockedCameraSmootherHires.Unload();
         ActorPushTracker.Unload();
         UpdateAtDraw.Unload();
         InputHandler.Unload();
@@ -145,6 +147,7 @@ public class MotionSmoothingModule : EverestModule
             ActorPushTracker.Disable();
             UpdateAtDraw.Disable();
             UnlockedCameraSmoother.Disable();
+            UnlockedCameraSmootherHires.Disable();
             return;
         }
 

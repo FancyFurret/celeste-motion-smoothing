@@ -59,6 +59,12 @@ public class UnlockedCameraSmootherHires : ToggleableFeature<UnlockedCameraSmoot
         On.Monocle.Scene.Begin += Scene_Begin;
         On.Celeste.Level.End += Level_End;
 
+        if (Engine.Scene is Level)
+        {
+            SmoothParallaxRenderer.Destroy();
+            SmoothParallaxRenderer.Create();
+        }
+
         AddHook(new Hook(typeof(SpriteBatch).GetMethod("Begin",
             new[]
             {

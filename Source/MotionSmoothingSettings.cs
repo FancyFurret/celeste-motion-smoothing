@@ -1,5 +1,6 @@
 using System;
 using Celeste.Mod.MotionSmoothing.Utilities;
+using Celeste.Mod.UI;
 using Microsoft.Xna.Framework.Input;
 using YamlDotNet.Serialization;
 
@@ -48,6 +49,7 @@ public class MotionSmoothingSettings : EverestModuleSettings
     private bool _gameSpeedInLevelOnly = true;
 
     private FrameRateTextMenuItem _frameRateMenuItem;
+    private TextMenu.Item _unlockCameraModeItem;
 
     public bool Enabled
     {
@@ -59,6 +61,14 @@ public class MotionSmoothingSettings : EverestModuleSettings
             if (!_enabled)
             {
                 _frameRate = 60;
+
+                if (_frameRateMenuItem != null)
+                {
+                    _frameRateMenuItem.Index = 60;
+                    _frameRateMenuItem.Disabled = true;
+                    _frameRateMenuItem.Selectable = false;
+                }
+
                 _enabled = true;
                 MotionSmoothingModule.Instance.ApplySettings();
                 _enabled = false;
@@ -67,6 +77,13 @@ public class MotionSmoothingSettings : EverestModuleSettings
             else
             {
                 _frameRate = _preferredFrameRate;
+
+                if (_frameRateMenuItem != null)
+                {
+                    _frameRateMenuItem.Index = _preferredFrameRate;
+                    _frameRateMenuItem.Disabled = false;
+                    _frameRateMenuItem.Selectable = true;
+                }
             }
 
             MotionSmoothingModule.Instance.ApplySettings();
@@ -76,9 +93,6 @@ public class MotionSmoothingSettings : EverestModuleSettings
 
     [DefaultButtonBinding(new Buttons(), Keys.F8)]
     public ButtonBinding ButtonToggleSmoothing { get; set; }
-
-    [DefaultButtonBinding(new Buttons(), Keys.F9)]
-    public ButtonBinding ButtonToggleUnlockedCamera { get; set; }
 
     public int FrameRate
     {
@@ -101,19 +115,17 @@ public class MotionSmoothingSettings : EverestModuleSettings
     {
         _frameRateMenuItem = new FrameRateTextMenuItem("Frame Rate", 60, 480, FrameRate);
         _frameRateMenuItem.Change(fps => FrameRate = fps);
+       
+        if (!_enabled)
+        {
+            _frameRate = 60;
+            _frameRateMenuItem.Disabled = true;
+            _frameRateMenuItem.Selectable = false;
+        }
+
         menu.Add(_frameRateMenuItem);
     }
 
-    [SettingSubText(
-        "Allows the camera to move by fractions of a pixel, i.e.\n" +
-        "half a pixel could be shown on the side of the screen.\n" +
-        "This makes slow camera movements look *MUCH* smoother.\n\n" +
-        "HiRes: Changes level rendering to be at a higher internal\n" +
-        "resolution. Usually has the fewest visual glitches but may\n" +
-        "not work in modded maps that use a large number of helpers\n\n" +
-        "Unlock: lets the camera move without changing the rendering.\n" +
-        "process. Has the highest compatibility, but makes the entire\n" +
-        "background jitter when moving.")]
     public UnlockCameraStrategy UnlockCameraStrategy
     {
         get => _unlockCameraStrategy;
@@ -124,16 +136,84 @@ public class MotionSmoothingSettings : EverestModuleSettings
         }
     }
 
-    [SettingSubText(
-        "Only applies if Smooth Camera is set to Unlock. Determines\n" +
-        "how unrendered portions of the level are hidden.\n" +
-        "Zoom: Zooms the camera in slightly\n" +
-        "Extend: Extends the level to the edge of the window\n" +
-        "Border: Adds a small black border around the level")]
+    public void CreateUnlockCameraStrategyEntry(TextMenu menu, bool inGame)
+    {
+        var strategySlider = new TextMenu.Slider(
+            "Unlock Camera Strategy",
+            index => ((UnlockCameraStrategy)index).ToString(),
+            0,
+            Enum.GetValues(typeof(UnlockCameraStrategy)).Length - 1,
+            (int)UnlockCameraStrategy
+        );
+
+        strategySlider.Change(index =>
+        {
+            UnlockCameraStrategy = (UnlockCameraStrategy)index;
+            UpdateUnlockCameraModeState();
+        });
+
+        menu.Add(strategySlider);
+
+        strategySlider.AddDescription(
+            menu,
+            "Allows the camera to move by fractions of a pixel, i.e.\n" +
+            "half a pixel could be shown on the side of the screen.\n" +
+            "This makes slow camera movements look *MUCH* smoother.\n\n" +
+            "Hires: Changes level rendering to be at a higher internal\n" +
+            "resolution. Usually has the fewest visual glitches but may\n" +
+            "not work in modded maps that use a large number of helpers\n\n" +
+            "Unlock: lets the camera move without changing the rendering.\n" +
+            "process. Has the highest compatibility, but makes the entire\n" +
+            "background jitter when moving."
+        );
+    }
+
     public UnlockCameraMode UnlockCameraMode
     {
         get => _unlockCameraMode;
         set => _unlockCameraMode = value;
+    }
+
+    public void CreateUnlockCameraModeEntry(TextMenu menu, bool inGame)
+    {
+        _unlockCameraModeItem = new TextMenu.Slider(
+            "Unlock Camera Mode",
+            index => ((UnlockCameraMode)index).ToString(),
+            0,
+            Enum.GetValues(typeof(UnlockCameraMode)).Length - 1,
+            (int)UnlockCameraMode
+        );
+
+        (_unlockCameraModeItem as TextMenu.Slider).Change(index =>
+        {
+            UnlockCameraMode = (UnlockCameraMode)index;
+        });
+
+        // Set initial state based on UnlockCameraStrategy
+        bool shouldDisable = UnlockCameraStrategy == UnlockCameraStrategy.Hires;
+        _unlockCameraModeItem.Disabled = shouldDisable;
+        _unlockCameraModeItem.Selectable = !shouldDisable;
+
+        menu.Add(_unlockCameraModeItem);
+
+        _unlockCameraModeItem.AddDescription(
+            menu,
+            "Only applies if Smooth Camera is set to Unlock. Determines\n" +
+            "how unrendered portions of the level are hidden.\n" +
+            "Zoom: Zooms the camera in slightly\n" +
+            "Extend: Extends the level to the edge of the window\n" +
+            "Border: Adds a small black border around the level"
+        );
+    }
+
+    private void UpdateUnlockCameraModeState()
+    {
+        if (_unlockCameraModeItem != null)
+        {
+            bool shouldDisable = UnlockCameraStrategy == UnlockCameraStrategy.Hires;
+            _unlockCameraModeItem.Disabled = shouldDisable;
+            _unlockCameraModeItem.Selectable = !shouldDisable;
+        }
     }
 
     [SettingSubText(
