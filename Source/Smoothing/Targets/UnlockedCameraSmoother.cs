@@ -65,6 +65,14 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
                 typeof(SpriteSortMode), typeof(BlendState), typeof(SamplerState),
                 typeof(DepthStencilState), typeof(RasterizerState), typeof(Effect), typeof(Matrix)
             })!, SpriteBatch_Begin));
+
+        //AddHook(new Hook(
+        //    typeof(SpriteBatch).GetMethod("Draw", new Type[] {
+        //        typeof(Texture2D), typeof(Vector2), typeof(Rectangle?), typeof(Color),
+        //        typeof(float), typeof(Vector2), typeof(Vector2), typeof(SpriteEffects), typeof(float)
+        //    }),
+        //    SpriteBatch_Draw
+        //));
     }
 
     protected void AddHook(Hook hook)
@@ -200,6 +208,9 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
         {
             cursor.EmitDelegate(SmoothParallaxRenderer.DisableLargeTempABuffer);
             cursor.EmitDelegate(EnableFixMatricesWithScale);
+            //cursor.EmitLdarg(0);
+            //cursor.EmitDelegate(ShortCircuit);
+            //cursor.Emit(OpCodes.Ret);
         }
 
 
@@ -276,25 +287,25 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
             cursor.EmitDelegate(DisableFixMatrices);
         }
 
-        // Ditch the 6x scale and replace it with 181/180 to zoom
+        //Ditch the 6x scale and replace it with 181 / 180 to zoom
         // First find the viewport assignment to ensure we're at the right location
-        //if (cursor.TryGotoNext(MoveType.After,
-        //    instr => instr.MatchCallvirt<GraphicsDevice>("set_Viewport")))
-        //{
-        //    // Find the pattern and position cursor right before stloc.2
-        //    if (cursor.TryGotoNext(MoveType.Before,
-        //        i => i.MatchLdcR4(6f)
-        //    ))
-        //    {
-        //        if (cursor.TryGotoNext(MoveType.Before,
-        //            i => i.MatchStloc(2)
-        //        ))
-        //        {
-        //            cursor.Emit(OpCodes.Pop);
-        //            cursor.EmitDelegate(GetHiresDisplayMatrix);
-        //        }
-        //    }
-        //}
+        if (cursor.TryGotoNext(MoveType.After,
+            instr => instr.MatchCallvirt<GraphicsDevice>("set_Viewport")))
+        {
+            // Find the pattern and position cursor right before stloc.2
+            if (cursor.TryGotoNext(MoveType.Before,
+                i => i.MatchLdcR4(6f)
+            ))
+            {
+                if (cursor.TryGotoNext(MoveType.Before,
+                    i => i.MatchStloc(2)
+                ))
+                {
+                    cursor.Emit(OpCodes.Pop);
+                    cursor.EmitDelegate(GetHiresDisplayMatrix);
+                }
+            }
+        }
 
         // Ditch the 6x scale and replace it with the much milder 181/180.
         if (cursor.TryGotoNext(MoveType.Before,
@@ -308,7 +319,7 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
         }
 
         //if (cursor.TryGotoNext(MoveType.After,
-        //    instr => instr.MatchCallvirt("ColorGradeMask", "End")))
+        //    instr => instr.MatchCallvirt("TimeController", "PostDrawHook")))
         //{
         //    Console.WriteLine("found");
         //    cursor.Emit(OpCodes.Ret);
@@ -425,13 +436,44 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
         }
     }
 
+    private static void ShortCircuit(Level self)
+    {
+        Engine.Instance.GraphicsDevice.SetRenderTarget(null);
+        Engine.Instance.GraphicsDevice.Clear(Color.Black);
+        Engine.Instance.GraphicsDevice.Viewport = Engine.Viewport;
+        Matrix matrix = Matrix.CreateScale(6f) * Engine.ScreenMatrix;
+        Vector2 vector = new Vector2(1920f, 1080f); // Vector multiplied by 6
+        Vector2 vector2 = vector / (self.ZoomTarget * 6f); // zoom multiplied by 6
+        Vector2 vector3 = ((self.ZoomTarget != 1f) ? (((self.ZoomFocusPoint * 6f) - vector2 / 2f) / (vector - vector2) * vector) : Vector2.Zero); // Zoom focus point multiplied by 6
+        MTexture orDefault = GFX.ColorGrades.GetOrDefault(self.lastColorGrade, GFX.ColorGrades["none"]);
+        MTexture orDefault2 = GFX.ColorGrades.GetOrDefault(self.Session.ColorGrade, GFX.ColorGrades["none"]);
+        if (self.colorGradeEase > 0f && orDefault != orDefault2)
+        {
+            ColorGrade.Set(orDefault, orDefault2, self.colorGradeEase);
+        }
+        else
+        {
+            ColorGrade.Set(orDefault2);
+        }
+        float scale = self.Zoom * ((320f - self.ScreenPadding * 2f) / 320f);
+        Vector2 vector4 = new Vector2(self.ScreenPadding, self.ScreenPadding * 0.5625f);
+        if (SaveData.Instance.Assists.MirrorMode)
+        {
+            vector4.X = 0f - vector4.X;
+            vector3.X = 160f - (vector3.X - 160f);
+        }
+
+        Draw.SpriteBatch.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend, SamplerState.PointClamp, DepthStencilState.Default, RasterizerState.CullNone, ColorGrade.Effect, GetHiresDisplayMatrix()); // Matrix modified
+        Draw.SpriteBatch.Draw((RenderTarget2D)GameplayBuffers.Level, vector3 + vector4, GameplayBuffers.Level.Bounds, Color.White, 0f, vector3, scale, SaveData.Instance.Assists.MirrorMode ? SpriteEffects.FlipHorizontally : SpriteEffects.None, 0f);
+        Draw.SpriteBatch.End();
+    }
+
     private static void PrepareLevelRender()
     {
         if (SmoothParallaxRenderer.Instance is not { } renderer) return;
 
         renderer.FixMatrices = false;
         SmoothParallaxRenderer.DisableLargeLevelBuffer();
-        Console.WriteLine("Prepared");
     }
 
     private static void BeforeDistortRender()
@@ -577,12 +619,7 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
 
 
 
-    private static VirtualRenderTarget GetLargeGameplayBuffer()
-    {
-        if (SmoothParallaxRenderer.Instance is not { } renderer) return GameplayBuffers.Gameplay;
-
-        return renderer.LargeGameplayBuffer;
-    }
+    
 
     private static VirtualRenderTarget GetLargeDisplacementBuffer()
     {
@@ -728,9 +765,10 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
             return;
         }
 
-        VirtualRenderTarget tempA = renderer.LargeTempABuffer; // Buffer replaced
-        Texture2D texture = ModifiedBlur((RenderTarget2D)target, renderer.LargeTempABuffer, renderer.LargeTempBBuffer); // Arguments and method modified
-        EnableFixMatricesForBloom(); // Inserted
+        SmoothParallaxRenderer.EnableLargeTempABuffer();
+
+        VirtualRenderTarget tempA = GameplayBuffers.TempA;
+        Texture2D texture = GaussianBlur.Blur((RenderTarget2D)GameplayBuffers.Displacement, GameplayBuffers.TempA, renderer.LargeTempBBuffer); // Argument modified
         List<Component> components = scene.Tracker.GetComponents<BloomPoint>();
         List<Component> components2 = scene.Tracker.GetComponents<EffectCutout>();
         Engine.Instance.GraphicsDevice.SetRenderTarget(tempA);
@@ -783,17 +821,11 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
         Draw.Rect(-10f, -10f, 340f, 200f, Color.White * self.Base);
         Draw.SpriteBatch.End();
 
-        DisableFixMatrices(); // Inserted
         Draw.SpriteBatch.Begin(SpriteSortMode.Deferred, BloomRenderer.BlurredScreenToMask);
-        EnableFixMatricesForBloom(); // Inserted
-
         Draw.SpriteBatch.Draw(texture, Vector2.Zero, Color.White);
         Draw.SpriteBatch.End();
         Engine.Instance.GraphicsDevice.SetRenderTarget(target);
-
-        DisableFixMatrices(); // Inserted
-        Draw.SpriteBatch.Begin(SpriteSortMode.Deferred, BloomRenderer.AdditiveMaskToScreen);
-        EnableFixMatricesForBloom(); // Inserted
+        Draw.SpriteBatch.Begin(SpriteSortMode.Deferred, BloomRenderer.AdditiveMaskToScreen, SamplerState.PointClamp, DepthStencilState.Default, RasterizerState.CullNone, null, GetOffsetScaleMatrix()); // Arguments modified
         for (int i = 0; (float)i < self.Strength; i++)
         {
             float num2 = (((float)i < self.Strength - 1f) ? 1f : (self.Strength - (float)i));
@@ -830,6 +862,31 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
             return (RenderTarget2D)output;
         }
         return texture;
+    }
+
+    private static void DownscaleLevelToDisplacementBuffer()
+    {
+        if (SmoothParallaxRenderer.Instance is not { } renderer) return;
+
+        // Render down the level to the old small buffer with linear scaling
+        Engine.Graphics.GraphicsDevice.SetRenderTarget(GameplayBuffers.Displacement);
+        Engine.Graphics.GraphicsDevice.Clear(Color.Transparent);
+
+        Draw.SpriteBatch.Begin(
+            SpriteSortMode.Deferred,
+            BlendState.Opaque,
+            SamplerState.LinearClamp,
+            DepthStencilState.None,
+            RasterizerState.CullNone
+        );
+
+        Draw.SpriteBatch.Draw(
+            renderer.LargeLevelBuffer,
+            new Rectangle(0, 0, 320, 180),
+            Color.White
+        );
+
+        Draw.SpriteBatch.End();
     }
 
     private static void HiresRendererBeginRenderHook(ILContext il)
@@ -983,4 +1040,22 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
             
         orig(self, sortMode, blendState, samplerState, depthStencilState, rasterizerState, effect, transformMatrix);
     }
+
+    //public delegate void orig_Draw(SpriteBatch self, Texture2D texture, Vector2 position, 
+    //Rectangle? sourceRectangle, Color color, float rotation, Vector2 origin, 
+    //Vector2 scale, SpriteEffects effects, float layerDepth);
+
+    //public static void SpriteBatch_Draw(orig_Draw orig, SpriteBatch self, Texture2D texture, Vector2 position,
+    //Rectangle? sourceRectangle, Color color, float rotation, Vector2 origin,
+    //Vector2 scale, SpriteEffects effects, float layerDepth)
+    //{
+    //    var renderTargets = Draw.SpriteBatch.GraphicsDevice.GetRenderTargets();
+
+    //    if (renderTargets == null || renderTargets.Length == 0)
+    //    {
+    //        Console.WriteLine(sourceRectangle?.Width.ToString() + " " + sourceRectangle?.Height.ToString());
+    //    }
+
+    //    orig(self, texture, position, sourceRectangle, color, rotation, origin, scale, effects, layerDepth);
+    //}
 }
