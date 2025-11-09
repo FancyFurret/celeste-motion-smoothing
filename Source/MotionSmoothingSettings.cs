@@ -23,6 +23,7 @@ public class MotionSmoothingSettings : EverestModuleSettings
     private bool _enabled = true;
     private bool _tasMode = false;
     private int _frameRate = 120;
+    private int _preferredFrameRate = 120;
     private bool _unlockCamera = true;
     private SmoothingMode _smoothingMode = SmoothingMode.Extrapolate;
     private UpdateMode _updateMode = UpdateMode.Interval;
@@ -39,6 +40,9 @@ public class MotionSmoothingSettings : EverestModuleSettings
         set
         {
             _enabled = value;
+
+            _frameRate = _enabled ? _preferredFrameRate : 60;
+
             MotionSmoothingModule.Instance.ApplySettings();
             MotionSmoothingModule.Instance.EnabledActions.ForEach(action => action(value));
         }
@@ -47,12 +51,16 @@ public class MotionSmoothingSettings : EverestModuleSettings
     [DefaultButtonBinding(new Buttons(), Keys.F8)]
     public ButtonBinding ButtonToggleSmoothing { get; set; }
 
+    [DefaultButtonBinding(new Buttons(), Keys.F9)]
+    public ButtonBinding ButtonToggleUnlockedCamera { get; set; }
+
     public int FrameRate
     {
         get => _frameRate;
         set
         {
             _frameRate = value;
+            _preferredFrameRate = value;
             MotionSmoothingModule.Instance.ApplySettings();
         }
     }
@@ -138,7 +146,7 @@ public class MotionSmoothingSettings : EverestModuleSettings
         }
     }
 
-    [SettingIgnore] [YamlIgnore] public bool GameSpeedModified => Math.Abs(_gameSpeed - 60) > double.Epsilon;
+    [SettingIgnore][YamlIgnore] public bool GameSpeedModified => Math.Abs(_gameSpeed - 60) > double.Epsilon;
 
     [SettingIgnore]
     [YamlIgnore]

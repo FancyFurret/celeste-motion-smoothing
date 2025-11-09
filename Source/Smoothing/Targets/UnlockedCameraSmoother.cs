@@ -67,11 +67,6 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
             })!, SpriteBatch_Begin));
     }
 
-    protected void AddHook(Hook hook)
-    {
-        _hooks.Add(hook);
-    }
-
     protected override void Unhook()
     {
         base.Unhook();

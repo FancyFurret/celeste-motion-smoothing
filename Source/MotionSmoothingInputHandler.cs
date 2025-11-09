@@ -44,6 +44,11 @@ public class MotionSmoothingInputHandler : ToggleableFeature<MotionSmoothingInpu
                 Logger.Log(LogLevel.Info, "MotionSmoothingInputHandler", "Toggling motion smoothing");
                 MotionSmoothingModule.Settings.Enabled = !MotionSmoothingModule.Settings.Enabled;
             }
+            if (MotionSmoothingModule.Settings.ButtonToggleUnlockedCamera.Pressed)
+            {
+                Logger.Log(LogLevel.Info, "MotionSmoothingInputHandler", "Toggling unlocked camera");
+                MotionSmoothingModule.Settings.UnlockCamera = !MotionSmoothingModule.Settings.UnlockCamera;
+            }
         }
     }
 }
