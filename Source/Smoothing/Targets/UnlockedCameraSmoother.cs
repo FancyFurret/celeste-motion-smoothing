@@ -65,14 +65,6 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
                 typeof(SpriteSortMode), typeof(BlendState), typeof(SamplerState),
                 typeof(DepthStencilState), typeof(RasterizerState), typeof(Effect), typeof(Matrix)
             })!, SpriteBatch_Begin));
-
-        //AddHook(new Hook(
-        //    typeof(SpriteBatch).GetMethod("Draw", new Type[] {
-        //        typeof(Texture2D), typeof(Vector2), typeof(Rectangle?), typeof(Color),
-        //        typeof(float), typeof(Vector2), typeof(Vector2), typeof(SpriteEffects), typeof(float)
-        //    }),
-        //    SpriteBatch_Draw
-        //));
     }
 
     protected void AddHook(Hook hook)
@@ -287,25 +279,25 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
             cursor.EmitDelegate(DisableFixMatrices);
         }
 
-        //Ditch the 6x scale and replace it with 181 / 180 to zoom
-        // First find the viewport assignment to ensure we're at the right location
-        if (cursor.TryGotoNext(MoveType.After,
-            instr => instr.MatchCallvirt<GraphicsDevice>("set_Viewport")))
-        {
-            // Find the pattern and position cursor right before stloc.2
-            if (cursor.TryGotoNext(MoveType.Before,
-                i => i.MatchLdcR4(6f)
-            ))
-            {
-                if (cursor.TryGotoNext(MoveType.Before,
-                    i => i.MatchStloc(2)
-                ))
-                {
-                    cursor.Emit(OpCodes.Pop);
-                    cursor.EmitDelegate(GetHiresDisplayMatrix);
-                }
-            }
-        }
+        ////Ditch the 6x scale and replace it with 181 / 180 to zoom
+        //// First find the viewport assignment to ensure we're at the right location
+        //if (cursor.TryGotoNext(MoveType.After,
+        //    instr => instr.MatchCallvirt<GraphicsDevice>("set_Viewport")))
+        //{
+        //    // Find the pattern and position cursor right before stloc.2
+        //    if (cursor.TryGotoNext(MoveType.Before,
+        //        i => i.MatchLdcR4(6f)
+        //    ))
+        //    {
+        //        if (cursor.TryGotoNext(MoveType.Before,
+        //            i => i.MatchStloc(2)
+        //        ))
+        //        {
+        //            cursor.Emit(OpCodes.Pop);
+        //            cursor.EmitDelegate(GetHiresDisplayMatrix);
+        //        }
+        //    }
+        //}
 
         // Ditch the 6x scale and replace it with the much milder 181/180.
         if (cursor.TryGotoNext(MoveType.Before,
@@ -317,19 +309,6 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
             cursor.EmitLdloca(9);
             cursor.EmitDelegate(MultiplyVectors);
         }
-
-        //if (cursor.TryGotoNext(MoveType.After,
-        //    instr => instr.MatchCallvirt("TimeController", "PostDrawHook")))
-        //{
-        //    Console.WriteLine("found");
-        //    cursor.Emit(OpCodes.Ret);
-        //}
-
-        //if (cursor.TryGotoNext(MoveType.After,
-        //    instr => instr.MatchCallvirt(typeof(SpriteBatch), "End")))
-        //{
-        //    cursor.Emit(OpCodes.Ret);
-        //}
     }
 
     private static void Level_Render(On.Celeste.Level.orig_Render orig, Level self)
@@ -1040,22 +1019,4 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
             
         orig(self, sortMode, blendState, samplerState, depthStencilState, rasterizerState, effect, transformMatrix);
     }
-
-    //public delegate void orig_Draw(SpriteBatch self, Texture2D texture, Vector2 position, 
-    //Rectangle? sourceRectangle, Color color, float rotation, Vector2 origin, 
-    //Vector2 scale, SpriteEffects effects, float layerDepth);
-
-    //public static void SpriteBatch_Draw(orig_Draw orig, SpriteBatch self, Texture2D texture, Vector2 position,
-    //Rectangle? sourceRectangle, Color color, float rotation, Vector2 origin,
-    //Vector2 scale, SpriteEffects effects, float layerDepth)
-    //{
-    //    var renderTargets = Draw.SpriteBatch.GraphicsDevice.GetRenderTargets();
-
-    //    if (renderTargets == null || renderTargets.Length == 0)
-    //    {
-    //        Console.WriteLine(sourceRectangle?.Width.ToString() + " " + sourceRectangle?.Height.ToString());
-    //    }
-
-    //    orig(self, texture, position, sourceRectangle, color, rotation, origin, scale, effects, layerDepth);
-    //}
 }
