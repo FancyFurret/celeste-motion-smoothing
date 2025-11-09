@@ -742,7 +742,8 @@ public class UnlockedCameraSmootherHires : ToggleableFeature<UnlockedCameraSmoot
         SmoothParallaxRenderer.EnableLargeTempABuffer();
 
         VirtualRenderTarget tempA = GameplayBuffers.TempA;
-        Texture2D texture = GaussianBlur.Blur((RenderTarget2D)GameplayBuffers.Displacement, GameplayBuffers.TempA, renderer.LargeTempBBuffer); // Argument modified
+        Texture2D texture = ModifiedBlur((RenderTarget2D)target, GameplayBuffers.TempA, renderer.LargeTempBBuffer); // Argument modified
+        EnableFixMatricesForBloom(); // Inserted
         List<Component> components = scene.Tracker.GetComponents<BloomPoint>();
         List<Component> components2 = scene.Tracker.GetComponents<EffectCutout>();
         Engine.Instance.GraphicsDevice.SetRenderTarget(tempA);
@@ -795,11 +796,15 @@ public class UnlockedCameraSmootherHires : ToggleableFeature<UnlockedCameraSmoot
         Draw.Rect(-10f, -10f, 340f, 200f, Color.White * self.Base);
         Draw.SpriteBatch.End();
 
+        DisableFixMatrices(); // Inserted
         Draw.SpriteBatch.Begin(SpriteSortMode.Deferred, BloomRenderer.BlurredScreenToMask);
+        EnableFixMatricesForBloom(); // Inserted
         Draw.SpriteBatch.Draw(texture, Vector2.Zero, Color.White);
         Draw.SpriteBatch.End();
         Engine.Instance.GraphicsDevice.SetRenderTarget(target);
-        Draw.SpriteBatch.Begin(SpriteSortMode.Deferred, BloomRenderer.AdditiveMaskToScreen, SamplerState.PointClamp, DepthStencilState.Default, RasterizerState.CullNone, null, GetOffsetScaleMatrix()); // Arguments modified
+        DisableFixMatrices(); // Inserted
+        Draw.SpriteBatch.Begin(SpriteSortMode.Deferred, BloomRenderer.AdditiveMaskToScreen);
+        EnableFixMatricesForBloom(); // Inserted
         for (int i = 0; (float)i < self.Strength; i++)
         {
             float num2 = (((float)i < self.Strength - 1f) ? 1f : (self.Strength - (float)i));
@@ -810,12 +815,12 @@ public class UnlockedCameraSmootherHires : ToggleableFeature<UnlockedCameraSmoot
 
     public static Texture2D ModifiedBlur(Texture2D texture, VirtualRenderTarget temp, VirtualRenderTarget output, float fade = 0f, bool clear = true, GaussianBlur.Samples samples = GaussianBlur.Samples.Nine, float sampleScale = 1f, GaussianBlur.Direction direction = GaussianBlur.Direction.Both, float alpha = 1f)
     {
-        Effect fxGaussianBlur = _fxHiresGaussianBlur;
+        Effect fxGaussianBlur = GFX.FxGaussianBlur;
         if (fxGaussianBlur != null)
         {
             fxGaussianBlur.CurrentTechnique = fxGaussianBlur.Techniques["GaussianBlur9"];
             fxGaussianBlur.Parameters["fade"].SetValue(fade);
-            fxGaussianBlur.Parameters["pixel"].SetValue(new Vector2(1f / (float)temp.Width, 0f) * sampleScale);
+            fxGaussianBlur.Parameters["pixel"].SetValue(new Vector2(6f / (float)temp.Width, 0f) * sampleScale);
             Engine.Instance.GraphicsDevice.SetRenderTarget(temp);
             if (clear)
             {
@@ -824,7 +829,7 @@ public class UnlockedCameraSmootherHires : ToggleableFeature<UnlockedCameraSmoot
             Draw.SpriteBatch.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend, SamplerState.PointClamp, DepthStencilState.Default, RasterizerState.CullNone, fxGaussianBlur);
             Draw.SpriteBatch.Draw(texture, new Rectangle(0, 0, temp.Width, temp.Height), Color.White);
             Draw.SpriteBatch.End();
-            fxGaussianBlur.Parameters["pixel"].SetValue(new Vector2(0f, 1f / (float)output.Height) * sampleScale);
+            fxGaussianBlur.Parameters["pixel"].SetValue(new Vector2(0f, 6f / (float)output.Height) * sampleScale);
             Engine.Instance.GraphicsDevice.SetRenderTarget(output);
             if (clear)
             {

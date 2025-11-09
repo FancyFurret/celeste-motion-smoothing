@@ -55,6 +55,20 @@ public class MotionSmoothingSettings : EverestModuleSettings
         set
         {
             _enabled = value;
+
+            if (!_enabled)
+            {
+                _frameRate = 60;
+                _enabled = true;
+                MotionSmoothingModule.Instance.ApplySettings();
+                _enabled = false;
+            }
+
+            else
+            {
+                _frameRate = _preferredFrameRate;
+            }
+
             MotionSmoothingModule.Instance.ApplySettings();
             MotionSmoothingModule.Instance.EnabledActions.ForEach(action => action(value));
         }
@@ -71,16 +85,12 @@ public class MotionSmoothingSettings : EverestModuleSettings
         get => _frameRate;
         set
         {
-            _frameRate = value;
-            MotionSmoothingModule.Instance.ApplySettings();
-        }
-    }
+            if (!Enabled)
+            {
+                return;
+            }
 
-    public int PreferredFrameRate
-    {
-        get => _preferredFrameRate;
-        set
-        {
+            _frameRate = value;
             _preferredFrameRate = value;
             MotionSmoothingModule.Instance.ApplySettings();
         }
@@ -89,7 +99,7 @@ public class MotionSmoothingSettings : EverestModuleSettings
     // ReSharper disable once UnusedMember.Global
     public void CreateFrameRateEntry(TextMenu menu, bool _)
     {
-        _frameRateMenuItem = new FrameRateTextMenuItem("Frame Rate", 60, 360, FrameRate);
+        _frameRateMenuItem = new FrameRateTextMenuItem("Frame Rate", 60, 480, FrameRate);
         _frameRateMenuItem.Change(fps => FrameRate = fps);
         menu.Add(_frameRateMenuItem);
     }
@@ -97,13 +107,13 @@ public class MotionSmoothingSettings : EverestModuleSettings
     [SettingSubText(
         "Allows the camera to move by fractions of a pixel, i.e.\n" +
         "half a pixel could be shown on the side of the screen.\n" +
-        "This makes slow camera movements look *MUCH* smoother.\n" +
-        "High Res: Changes level rendering to be at a higher internal\n" +
+        "This makes slow camera movements look *MUCH* smoother.\n\n" +
+        "HiRes: Changes level rendering to be at a higher internal\n" +
         "resolution. Usually has the fewest visual glitches but may\n" +
-        "not work in modded maps that use a large number of helpers\n" +
+        "not work in modded maps that use a large number of helpers\n\n" +
         "Unlock: lets the camera move without changing the rendering.\n" +
-        "Has the highest compatibility but makes the entire background\n" +
-        "jitter when moving.")]
+        "process. Has the highest compatibility, but makes the entire\n" +
+        "background jitter when moving.")]
     public UnlockCameraStrategy UnlockCameraStrategy
     {
         get => _unlockCameraStrategy;
