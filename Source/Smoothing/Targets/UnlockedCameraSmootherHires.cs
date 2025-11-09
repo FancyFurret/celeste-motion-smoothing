@@ -19,7 +19,7 @@ namespace Celeste.Mod.MotionSmoothing.Smoothing.Targets;
 
 public class UnlockedCameraSmootherHires : ToggleableFeature<UnlockedCameraSmootherHires>
 {
-    private const float ZoomScaleMultiplier = 181f / 180f;
+    private const float ZoomScaleMultiplier = 180f / 180f;
     private const int HiresPixelSize = 1080 / 180;
 
     private static Effect _fxHiresGaussianBlur;
