@@ -7,6 +7,8 @@ using Celeste.Mod.MotionSmoothing.Smoothing;
 using Celeste.Mod.MotionSmoothing.Smoothing.Targets;
 using Celeste.Mod.MotionSmoothing.Utilities;
 using Celeste.Pico8;
+using Microsoft.Xna.Framework;
+using Microsoft.Xna.Framework.Graphics;
 using Monocle;
 using MonoMod.ModInterop;
 
@@ -59,6 +61,8 @@ public class MotionSmoothingModule : EverestModule
 
     public override void Load()
     {
+        DisableInliningPushSpriteEnable();
+
         typeof(MotionSmoothingExports).ModInterop();
         typeof(GravityHelperImports).ModInterop();
         typeof(SpeedrunToolImports).ModInterop();
@@ -219,5 +223,22 @@ public class MotionSmoothingModule : EverestModule
     private static void LevelUnpause(Level level)
     {
         Instance.ApplyFramerate();
+    }
+
+
+    // A fix for Madeline's hait being glitchy;
+    // from Wartori's Mountain Tweaks, with permission. Thank you!
+    private static void DisableInliningPushSpriteEnable()
+    {
+        Type t_SpriteBatch = typeof(SpriteBatch);
+
+        MethodInfo? m_PushSprite = t_SpriteBatch.GetMethod("PushSprite", BindingFlags.Instance | BindingFlags.NonPublic);
+        if (m_PushSprite == null)
+        {
+            Logger.Log(LogLevel.Error, nameof(MotionSmoothingModule), $"Could not find method PushSprite in {nameof(SpriteBatch)}!");
+            return;
+        }
+
+        MonoMod.Core.Platforms.PlatformTriple.Current.TryDisableInlining(m_PushSprite);
     }
 }
