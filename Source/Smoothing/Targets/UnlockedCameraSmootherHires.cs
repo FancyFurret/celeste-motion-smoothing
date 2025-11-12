@@ -19,24 +19,19 @@ namespace Celeste.Mod.MotionSmoothing.Smoothing.Targets;
 
 public class UnlockedCameraSmootherHires : ToggleableFeature<UnlockedCameraSmootherHires>
 {
-    private const float ZoomScaleMultiplier = 180f / 180f;
+    private const float ZoomScaleMultiplier = 181f / 180f;
     private const int HiresPixelSize = 1080 / 180;
-
-    private static Effect _fxHiresGaussianBlur;
 
     private readonly HashSet<Hook> _hooks = new();
 
     public override void Load()
     {
         base.Load();
-        On.Celeste.GFX.LoadEffects += GfxLoadEffectsHook;
     }
 
     public override void Unload()
     {
         base.Unload();
-        _fxHiresGaussianBlur.Dispose();
-        On.Celeste.GFX.LoadEffects -= GfxLoadEffectsHook;
     }
 
 
@@ -48,7 +43,6 @@ public class UnlockedCameraSmootherHires : ToggleableFeature<UnlockedCameraSmoot
         IL.Celeste.Level.Render += LevelRenderHook;
         //On.Celeste.BloomRenderer.Apply += BloomRenderer_Apply;
         IL.Celeste.BloomRenderer.Apply += BloomRendererApplyHook;
-        //On.Celeste.Glitch.Apply += Glitch_Apply;
         IL.Celeste.Glitch.Apply += GlitchApplyHook;
         IL.Celeste.Godrays.Render += GodraysRenderHook;
 
@@ -61,8 +55,8 @@ public class UnlockedCameraSmootherHires : ToggleableFeature<UnlockedCameraSmoot
 
         if (Engine.Scene is Level)
         {
-            SmoothParallaxRenderer.Destroy();
-            SmoothParallaxRenderer.Create();
+            HiresRenderer.Destroy();
+            HiresRenderer.Create();
         }
 
         AddHook(new Hook(typeof(SpriteBatch).GetMethod("Begin",
@@ -81,7 +75,6 @@ public class UnlockedCameraSmootherHires : ToggleableFeature<UnlockedCameraSmoot
         IL.Celeste.Level.Render -= LevelRenderHook;
         //On.Celeste.BloomRenderer.Apply -= BloomRenderer_Apply;
         IL.Celeste.BloomRenderer.Apply -= BloomRendererApplyHook;
-        //On.Celeste.Glitch.Apply -= Glitch_Apply;
         IL.Celeste.Glitch.Apply -= GlitchApplyHook;
         IL.Celeste.Godrays.Render -= GodraysRenderHook;
 
@@ -95,14 +88,7 @@ public class UnlockedCameraSmootherHires : ToggleableFeature<UnlockedCameraSmoot
         foreach (var hook in _hooks)
             hook.Dispose();
 
-        SmoothParallaxRenderer.DisableLargeLevelBuffer();
-    }
-
-    private static void GfxLoadEffectsHook(On.Celeste.GFX.orig_LoadEffects orig)
-    {
-        orig();
-        _fxHiresGaussianBlur = new Effect(Engine.Graphics.GraphicsDevice,
-            Everest.Content.Get("MotionSmoothing:/Effects/HiresGaussianBlur.cso").Data);
+        HiresRenderer.DisableLargeLevelBuffer();
     }
 
     private static void Scene_Begin(On.Monocle.Scene.orig_Begin orig, Scene self)
@@ -111,7 +97,7 @@ public class UnlockedCameraSmootherHires : ToggleableFeature<UnlockedCameraSmoot
         // after GameplayBuffers.Create, but before any calls to Entity.SceneBegin
         if (self is Level level)
         {
-            level.Add(SmoothParallaxRenderer.Create());
+            level.Add(HiresRenderer.Create());
         }
 
         orig(self);
@@ -119,17 +105,12 @@ public class UnlockedCameraSmootherHires : ToggleableFeature<UnlockedCameraSmoot
 
     private static void Level_End(On.Celeste.Level.orig_End orig, Level self)
     {
-        SmoothParallaxRenderer.Destroy();
+        HiresRenderer.Destroy();
 
         orig(self);
     }
 
     private static Vector2 GetCameraOffset()
-    {
-        return Vector2.Zero;
-    }
-
-    private static Vector2 GetCameraOffsetInternal()
     {
         if (CelesteTasInterop.CenterCamera)
             return Vector2.Zero;
@@ -142,13 +123,6 @@ public class UnlockedCameraSmootherHires : ToggleableFeature<UnlockedCameraSmoot
         }
 
         return Vector2.Zero;
-    }
-
-    public static Matrix GetScreenCameraMatrix()
-    {
-        var offset = GetCameraOffset() * HiresPixelSize;
-
-        return Matrix.CreateTranslation(offset.X, offset.Y, 0);
     }
 
     public static float GetCameraScale()
@@ -199,11 +173,8 @@ public class UnlockedCameraSmootherHires : ToggleableFeature<UnlockedCameraSmoot
         if (cursor.TryGotoNext(MoveType.After,
             instr => instr.MatchCallvirt<BloomRenderer>("Apply")))
         {
-            cursor.EmitDelegate(SmoothParallaxRenderer.DisableLargeTempABuffer);
+            cursor.EmitDelegate(HiresRenderer.DisableLargeTempABuffer);
             cursor.EmitDelegate(EnableFixMatricesWithScale);
-            //cursor.EmitLdarg(0);
-            //cursor.EmitDelegate(ShortCircuit);
-            //cursor.Emit(OpCodes.Ret);
         }
 
 
@@ -280,8 +251,11 @@ public class UnlockedCameraSmootherHires : ToggleableFeature<UnlockedCameraSmoot
             cursor.EmitDelegate(DisableFixMatrices);
         }
 
-        ////Ditch the 6x scale and replace it with 181 / 180 to zoom
-        //// First find the viewport assignment to ensure we're at the right location
+        // Uncomment to replace the declaration of the scale matrix. In vanilla, this is only used to render
+        // the level buffer, so it has no effect (we change that below). In modded, this *shouldn't* need
+        // to happen, since code that draws to GameplayBuffers.Level gets hooked and drawn at 6x, and code that
+        // draws to the screen should already expect to draw at 6x.
+
         //if (cursor.TryGotoNext(MoveType.After,
         //    instr => instr.MatchCallvirt<GraphicsDevice>("set_Viewport")))
         //{
@@ -316,7 +290,7 @@ public class UnlockedCameraSmootherHires : ToggleableFeature<UnlockedCameraSmoot
     {
         PrepareLevelRender(); // Inserted
 
-        if (SmoothParallaxRenderer.Instance is not { } renderer) return;
+        if (HiresRenderer.Instance is not { } renderer) return;
 
         Engine.Instance.GraphicsDevice.SetRenderTarget(GameplayBuffers.Gameplay);
         Engine.Instance.GraphicsDevice.Clear(Color.Transparent);
@@ -450,15 +424,15 @@ public class UnlockedCameraSmootherHires : ToggleableFeature<UnlockedCameraSmoot
 
     private static void PrepareLevelRender()
     {
-        if (SmoothParallaxRenderer.Instance is not { } renderer) return;
+        if (HiresRenderer.Instance is not { } renderer) return;
 
         renderer.FixMatrices = false;
-        SmoothParallaxRenderer.DisableLargeLevelBuffer();
+        HiresRenderer.DisableLargeLevelBuffer();
     }
 
     private static void BeforeDistortRender()
     {
-        if (SmoothParallaxRenderer.Instance is not { } renderer) return;
+        if (HiresRenderer.Instance is not { } renderer) return;
 
         // Go to the large level buffer for compositing time.
         Engine.Instance.GraphicsDevice.SetRenderTarget(renderer.LargeLevelBuffer);
@@ -476,7 +450,7 @@ public class UnlockedCameraSmootherHires : ToggleableFeature<UnlockedCameraSmoot
 
     private static void DrawDisplacedGameplayWithOffset()
     {
-        if (SmoothParallaxRenderer.Instance is not { } renderer) return;
+        if (HiresRenderer.Instance is not { } renderer) return;
 
         Engine.Instance.GraphicsDevice.SetRenderTarget(renderer.LargeDisplacedGameplayBuffer);
         Engine.Instance.GraphicsDevice.Clear(Color.Transparent);
@@ -487,7 +461,7 @@ public class UnlockedCameraSmootherHires : ToggleableFeature<UnlockedCameraSmoot
 
         Engine.Instance.GraphicsDevice.SetRenderTarget(renderer.LargeLevelBuffer);
 
-        Vector2 offset = GetCameraOffsetInternal() * 6f;
+        Vector2 offset = GetCameraOffset() * 6f;
 
         Draw.SpriteBatch.Begin(SpriteSortMode.Immediate, BlendState.AlphaBlend, SamplerState.PointClamp, DepthStencilState.None, RasterizerState.CullNone, null, Matrix.Identity);
         Draw.SpriteBatch.Draw(renderer.LargeDisplacedGameplayBuffer, offset, Color.White);
@@ -508,12 +482,12 @@ public class UnlockedCameraSmootherHires : ToggleableFeature<UnlockedCameraSmoot
 
         Draw.SpriteBatch.End();
 
-        SmoothParallaxRenderer.EnableLargeLevelBuffer(); // Replace GameplayBuffers.Level with the big one.
+        HiresRenderer.EnableLargeLevelBuffer(); // Replace GameplayBuffers.Level with the big one.
     }
 
     private static void MultiplyVectors(ref Vector2 vector3, ref Vector2 vector4)
     {
-        if (SmoothParallaxRenderer.Instance is not { } renderer) return;
+        if (HiresRenderer.Instance is not { } renderer) return;
 
         vector3 *= 6f;
         vector4 *= 6f;
@@ -521,14 +495,14 @@ public class UnlockedCameraSmootherHires : ToggleableFeature<UnlockedCameraSmoot
 
     private static void DisableFixMatrices()
     {
-        if (SmoothParallaxRenderer.Instance is not { } renderer) return;
+        if (HiresRenderer.Instance is not { } renderer) return;
 
         renderer.FixMatrices = false;
     }
 
     private static void EnableFixMatricesWithScale()
     {
-        if (SmoothParallaxRenderer.Instance is not { } renderer) return;
+        if (HiresRenderer.Instance is not { } renderer) return;
 
         renderer.FixMatrices = true;
         renderer.ScaleMatricesForBloom = false;
@@ -536,7 +510,7 @@ public class UnlockedCameraSmootherHires : ToggleableFeature<UnlockedCameraSmoot
 
     private static void EnableFixMatricesForBloom()
     {
-        if (SmoothParallaxRenderer.Instance is not { } renderer) return;
+        if (HiresRenderer.Instance is not { } renderer) return;
 
         renderer.FixMatrices = true;
         renderer.ScaleMatricesForBloom = true;
@@ -544,32 +518,32 @@ public class UnlockedCameraSmootherHires : ToggleableFeature<UnlockedCameraSmoot
 
     private static Matrix GetScaleMatrix()
     {
-        if (SmoothParallaxRenderer.Instance is not { } renderer) return Matrix.Identity;
+        if (HiresRenderer.Instance is not { } renderer) return Matrix.Identity;
 
         return renderer.ScaleMatrix;
     }
 
     private static Matrix GetOffsetScaleMatrix()
     {
-        if (SmoothParallaxRenderer.Instance is not { } renderer) return Matrix.Identity;
+        if (HiresRenderer.Instance is not { } renderer) return Matrix.Identity;
 
-        Vector2 offset = GetCameraOffsetInternal();
+        Vector2 offset = GetCameraOffset();
 
         return Matrix.CreateTranslation(offset.X, offset.Y, 0f) * renderer.ScaleMatrix;
     }
 
     private static Matrix GetOffsetMatrix()
     {
-        if (SmoothParallaxRenderer.Instance is not { } renderer) return Matrix.Identity;
+        if (HiresRenderer.Instance is not { } renderer) return Matrix.Identity;
 
-        Vector2 offset = GetCameraOffsetInternal();
+        Vector2 offset = GetCameraOffset();
 
         return Matrix.CreateTranslation(offset.X, offset.Y, 0f);
     }
 
     private static Matrix GetScaledCameraMatrix(Level level)
     {
-        if (SmoothParallaxRenderer.Instance is not { } renderer) return level.Camera.Matrix;
+        if (HiresRenderer.Instance is not { } renderer) return level.Camera.Matrix;
 
         return renderer.ScaleMatrix * level.Camera.Matrix;
     }
@@ -578,9 +552,9 @@ public class UnlockedCameraSmootherHires : ToggleableFeature<UnlockedCameraSmoot
     // This one needs the camera matrix out in front to work properly.
     private static Matrix GetOffsetScaledCameraMatrixForBloom(Level level)
     {
-        if (SmoothParallaxRenderer.Instance is not { } renderer) return level.Camera.Matrix;
+        if (HiresRenderer.Instance is not { } renderer) return level.Camera.Matrix;
 
-        Vector2 offset = GetCameraOffsetInternal();
+        Vector2 offset = GetCameraOffset();
 
         return level.Camera.Matrix * Matrix.CreateTranslation(offset.X, offset.Y, 0f) * renderer.ScaleMatrix;
     }
@@ -603,28 +577,28 @@ public class UnlockedCameraSmootherHires : ToggleableFeature<UnlockedCameraSmoot
 
     private static VirtualRenderTarget GetLargeDisplacementBuffer()
     {
-        if (SmoothParallaxRenderer.Instance is not { } renderer) return GameplayBuffers.Displacement;
+        if (HiresRenderer.Instance is not { } renderer) return GameplayBuffers.Displacement;
 
         return renderer.LargeDisplacementBuffer;
     }
 
     private static VirtualRenderTarget GetLargeLevelBuffer()
     {
-        if (SmoothParallaxRenderer.Instance is not { } renderer) return GameplayBuffers.Level;
+        if (HiresRenderer.Instance is not { } renderer) return GameplayBuffers.Level;
 
         return renderer.LargeLevelBuffer;
     }
 
     private static VirtualRenderTarget GetLargeTempABuffer()
     {
-        if (SmoothParallaxRenderer.Instance is not { } renderer) return GameplayBuffers.TempA;
+        if (HiresRenderer.Instance is not { } renderer) return GameplayBuffers.TempA;
 
         return renderer.LargeTempABuffer;
     }
 
     private static VirtualRenderTarget GetLargeTempBBuffer()
     {
-        if (SmoothParallaxRenderer.Instance is not { } renderer) return GameplayBuffers.TempB;
+        if (HiresRenderer.Instance is not { } renderer) return GameplayBuffers.TempB;
 
         return renderer.LargeTempBBuffer;
     }
@@ -635,22 +609,7 @@ public class UnlockedCameraSmootherHires : ToggleableFeature<UnlockedCameraSmoot
     {
         var cursor = new ILCursor(il);
 
-        cursor.EmitDelegate(SmoothParallaxRenderer.EnableLargeTempABuffer);
-
-        //if (cursor.TryGotoNext(MoveType.After,
-        //    instr => instr.MatchLdsfld(typeof(GameplayBuffers), "TempA")))
-        //{
-        //    cursor.EmitPop();
-        //    cursor.EmitDelegate(GetLargeTempABuffer);
-        //}
-
-        //// Find and replace the TempA in the Blur call parameters
-        //if (cursor.TryGotoNext(MoveType.After,
-        //    instr => instr.MatchLdsfld(typeof(GameplayBuffers), "TempA")))
-        //{
-        //    cursor.EmitPop();
-        //    cursor.EmitDelegate(GetLargeTempABuffer);
-        //}
+        cursor.EmitDelegate(HiresRenderer.EnableLargeTempABuffer);
 
         // Replace TempB
         if (cursor.TryGotoNext(MoveType.After,
@@ -734,7 +693,7 @@ public class UnlockedCameraSmootherHires : ToggleableFeature<UnlockedCameraSmoot
 
     private static void BloomRenderer_Apply(On.Celeste.BloomRenderer.orig_Apply orig, BloomRenderer self, VirtualRenderTarget target, Scene scene)
     {
-        if (SmoothParallaxRenderer.Instance is not { } renderer)
+        if (HiresRenderer.Instance is not { } renderer)
         {
             orig(self, target, scene);
             return;
@@ -745,7 +704,7 @@ public class UnlockedCameraSmootherHires : ToggleableFeature<UnlockedCameraSmoot
             return;
         }
 
-        SmoothParallaxRenderer.EnableLargeTempABuffer();
+        HiresRenderer.EnableLargeTempABuffer();
 
         VirtualRenderTarget tempA = GameplayBuffers.TempA;
         Texture2D texture = ModifiedBlur((RenderTarget2D)target, GameplayBuffers.TempA, renderer.LargeTempBBuffer); // Argument modified
@@ -851,7 +810,7 @@ public class UnlockedCameraSmootherHires : ToggleableFeature<UnlockedCameraSmoot
 
     private static void DownscaleLevelToDisplacementBuffer()
     {
-        if (SmoothParallaxRenderer.Instance is not { } renderer) return;
+        if (HiresRenderer.Instance is not { } renderer) return;
 
         // Render down the level to the old small buffer with linear scaling
         Engine.Graphics.GraphicsDevice.SetRenderTarget(GameplayBuffers.Displacement);
@@ -920,7 +879,7 @@ public class UnlockedCameraSmootherHires : ToggleableFeature<UnlockedCameraSmoot
 
     private static void Godrays_Render(On.Celeste.Godrays.orig_Render orig, Godrays self, Scene scene)
     {
-        if (SmoothParallaxRenderer.Instance is not { } renderer) return;
+        if (HiresRenderer.Instance is not { } renderer) return;
 
         if (self.vertexCount > 0 && self.fade > 0f)
         {
@@ -945,7 +904,7 @@ public class UnlockedCameraSmootherHires : ToggleableFeature<UnlockedCameraSmoot
 
     private static void Glitch_Apply(On.Celeste.Glitch.orig_Apply orig, VirtualRenderTarget source, float timer, float seed, float amplitude)
     {
-        if (SmoothParallaxRenderer.Instance is not { } renderer) return;
+        if (HiresRenderer.Instance is not { } renderer) return;
 
         if (Glitch.Value > 0f && CoreModule.Settings.AllowGlitch)
         {
@@ -989,7 +948,7 @@ public class UnlockedCameraSmootherHires : ToggleableFeature<UnlockedCameraSmoot
     private static void SpriteBatch_Begin(Action<SpriteBatch, SpriteSortMode, BlendState, SamplerState, DepthStencilState, RasterizerState, Effect, Matrix> orig, SpriteBatch self, SpriteSortMode sortMode, BlendState blendState,
         SamplerState samplerState, DepthStencilState depthStencilState, RasterizerState rasterizerState, Effect effect, Matrix transformMatrix)
     {
-        if (SmoothParallaxRenderer.Instance is not { } renderer)
+        if (HiresRenderer.Instance is not { } renderer)
         {
             orig(self, sortMode, blendState, samplerState, depthStencilState, rasterizerState, effect, transformMatrix);
             return;

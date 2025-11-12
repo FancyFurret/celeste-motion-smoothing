@@ -7,9 +7,9 @@ using System.IO;
 
 namespace Celeste.Mod.MotionSmoothing.Smoothing.Targets;
 
-public class SmoothParallaxRenderer : Renderer
+public class HiresRenderer : Renderer
 {
-    public static SmoothParallaxRenderer Instance { get; private set; }
+    public static HiresRenderer Instance { get; private set; }
 
     public VirtualRenderTarget LargeGameplayBuffer { get; }
     public VirtualRenderTarget LargeDisplacementBuffer { get; }
@@ -26,7 +26,7 @@ public class SmoothParallaxRenderer : Renderer
     private static VirtualRenderTarget OriginalLevelBuffer = null;
     private static VirtualRenderTarget OriginalTempABuffer = null;
 
-    public SmoothParallaxRenderer(
+    public HiresRenderer(
         VirtualRenderTarget largeGameplayBuffer,
         VirtualRenderTarget largeDisplacementBuffer,
         VirtualRenderTarget largeDisplacedGameplayBuffer,
@@ -90,11 +90,11 @@ public class SmoothParallaxRenderer : Renderer
         OriginalTempABuffer = null;
     }
 
-    public static SmoothParallaxRenderer Create()
+    public static HiresRenderer Create()
     {
         Destroy();
 
-        Instance = new SmoothParallaxRenderer(
+        Instance = new HiresRenderer(
             GameplayBuffers.Create(1920, 1080),
             GameplayBuffers.Create(1920, 1080),
             GameplayBuffers.Create(1920, 1080),

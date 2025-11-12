@@ -103,7 +103,7 @@ public class MotionSmoothingModule : EverestModule
     public override void LoadContent(bool firstLoad)
     {
         base.LoadContent(firstLoad);
-        if (firstLoad) Smoothing.Targets.SmoothParallaxRenderer.Load();
+        if (firstLoad) Smoothing.Targets.HiresRenderer.Load();
     }
 
     public void ApplySettings()
