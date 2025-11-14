@@ -25,6 +25,10 @@
     </ItemGroup>
 
     <ItemGroup>
+      <Compile Remove="$(NuGetPackageRoot)bepinex.assemblypublicizer.msbuild\**\IgnoresAccessChecksToAttribute.cs" />
+    </ItemGroup>
+
+    <ItemGroup>
         <PackageReference Include="CelesteMod.Publicizer" Version="*" CelesteAssembly="$(CelestePrefix)\Celeste.dll" />
         <Reference Include="$(CelestePrefix)\MMHOOK_Celeste.dll" Private="false" />
     </ItemGroup>
