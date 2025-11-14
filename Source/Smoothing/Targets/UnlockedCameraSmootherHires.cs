@@ -48,7 +48,6 @@ public class UnlockedCameraSmootherHires : ToggleableFeature<UnlockedCameraSmoot
         On.Celeste.BackdropRenderer.Render += BackdropRenderer_Render;
 
         IL.Celeste.Glitch.Apply += GlitchApplyHook;
-        IL.Celeste.Godrays.Render += GodraysRenderHook;
 
         On.Celeste.Parallax.Render += Parallax_Render;
 
@@ -73,6 +72,10 @@ public class UnlockedCameraSmootherHires : ToggleableFeature<UnlockedCameraSmoot
                 typeof(DepthStencilState), typeof(RasterizerState), typeof(Effect), typeof(Matrix)
             })!, SpriteBatch_Begin));
 
+        HookDrawVertices<VertexPositionColor>();
+        HookDrawVertices<VertexPositionColorTexture>();
+        HookDrawVertices<LightingRenderer.VertexPositionColorMaskTexture>();
+
         AddHook(new Hook(typeof(Calc).GetMethod(nameof(Calc.Floor), new[] { typeof(Vector2) })!, FloorHook));
         AddHook(new Hook(typeof(Calc).GetMethod(nameof(Calc.Ceiling), new[] { typeof(Vector2) })!, CeilingHook));
         AddHook(new Hook(typeof(Calc).GetMethod(nameof(Calc.Round), new[] { typeof(Vector2) })!, RoundHook));
@@ -91,7 +94,6 @@ public class UnlockedCameraSmootherHires : ToggleableFeature<UnlockedCameraSmoot
         On.Celeste.BackdropRenderer.Render -= BackdropRenderer_Render;
 
         IL.Celeste.Glitch.Apply -= GlitchApplyHook;
-        IL.Celeste.Godrays.Render -= GodraysRenderHook;
 
         On.Celeste.Parallax.Render -= Parallax_Render;
 
@@ -931,31 +933,6 @@ public class UnlockedCameraSmootherHires : ToggleableFeature<UnlockedCameraSmoot
 
 
 
-    private static void Godrays_Render(On.Celeste.Godrays.orig_Render orig, Godrays self, Scene scene)
-    {
-        if (HiresRenderer.Instance is not { } renderer) return;
-
-        if (self.vertexCount > 0 && self.fade > 0f)
-        {
-            GFX.DrawVertices(renderer.ScaleMatrix, self.vertices, self.vertexCount);
-        }
-    }
-
-    private static void GodraysRenderHook(ILContext il)
-    {
-        var cursor = new ILCursor(il);
-
-        // Replace the identity matrix with the scale one
-        if (cursor.TryGotoNext(MoveType.After,
-            instr => instr.MatchCall(typeof(Matrix), "get_Identity")))
-        {
-            cursor.EmitPop();
-            cursor.EmitDelegate(GetScaleMatrix);
-        }
-    }
-
-
-
     private static void Glitch_Apply(On.Celeste.Glitch.orig_Apply orig, VirtualRenderTarget source, float timer, float seed, float amplitude)
     {
         if (HiresRenderer.Instance is not { } renderer) return;
@@ -1050,6 +1027,80 @@ public class UnlockedCameraSmootherHires : ToggleableFeature<UnlockedCameraSmoot
 
         orig(self, sortMode, blendState, samplerState, depthStencilState, rasterizerState, effect, transformMatrix);
     }
+
+
+
+    private static Matrix GetScaleMatrixForDrawVertices()
+    {
+        if (HiresRenderer.Instance is not { } renderer) return Matrix.Identity;
+
+        var renderTargets = Draw.SpriteBatch.GraphicsDevice.GetRenderTargets();
+
+        if (renderTargets == null || renderTargets.Length == 0)
+        {
+            return Matrix.Identity;
+        }
+
+        var currentRenderTarget = renderTargets[0].RenderTarget;
+
+        if (currentRenderTarget != renderer.LargeLevelBuffer.Target)
+        {
+            return Matrix.Identity;
+        }
+
+        return renderer.ScaleMatrix;
+    }
+
+    private static Matrix MultiplyMatrices(Matrix matrix1, Matrix matrix2)
+    {
+        return matrix1 * matrix2;
+    }
+
+    private void HookDrawVertices<T>() where T : struct, IVertexType
+    {
+        var drawVerticesMethod = typeof(GFX).GetMethod(nameof(GFX.DrawVertices))!.MakeGenericMethod(typeof(T));
+        var drawIndexedVerticesMethod = typeof(GFX).GetMethod(nameof(GFX.DrawIndexedVertices))!.MakeGenericMethod(typeof(T));
+
+        AddHook(new ILHook(drawVerticesMethod, DrawVerticesILHook<T>));
+        AddHook(new ILHook(drawIndexedVerticesMethod, DrawIndexedVerticesILHook<T>));
+    }
+
+    private void DrawVerticesILHook<T>(ILContext il) where T : struct, IVertexType
+    {
+        var cursor = new ILCursor(il);
+
+        // Move to the beginning
+        cursor.Index = 0;
+
+        //Emit the matrix parameter
+        cursor.Emit(OpCodes.Ldarg_0);
+
+        // Create and multiply by scale matrix
+        cursor.EmitDelegate(GetScaleMatrixForDrawVertices);
+        cursor.EmitDelegate(MultiplyMatrices);
+
+        // Store back to arg 0
+        cursor.Emit(OpCodes.Starg_S, (byte)0);
+    }
+
+    private void DrawIndexedVerticesILHook<T>(ILContext il) where T : struct, IVertexType
+    {
+        var cursor = new ILCursor(il);
+
+        // Move to the beginning
+        cursor.Index = 0;
+
+        //Emit the matrix parameter
+        cursor.Emit(OpCodes.Ldarg_0);
+
+        // Create and multiply by scale matrix
+        cursor.EmitDelegate(GetScaleMatrixForDrawVertices);
+        cursor.EmitDelegate(MultiplyMatrices);
+
+        // Store back to arg 0
+        cursor.Emit(OpCodes.Starg_S, (byte)0);
+    }
+
 
 
 
