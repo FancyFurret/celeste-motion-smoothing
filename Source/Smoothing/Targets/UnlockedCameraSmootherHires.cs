@@ -48,6 +48,8 @@ public class UnlockedCameraSmootherHires : ToggleableFeature<UnlockedCameraSmoot
         IL.Celeste.Glitch.Apply += GlitchApplyHook;
         IL.Celeste.Godrays.Render += GodraysRenderHook;
 
+        On.Celeste.Parallax.Render += Parallax_Render;
+
         IL.Celeste.HiresRenderer.BeginRender += HiresRendererBeginRenderHook;
         IL.Celeste.TalkComponent.TalkComponentUI.Render += TalkComponentUiRenderHook;
         IL.Celeste.Lookout.Hud.Render += LookoutHudRenderHook;
@@ -81,6 +83,8 @@ public class UnlockedCameraSmootherHires : ToggleableFeature<UnlockedCameraSmoot
 
         IL.Celeste.Glitch.Apply -= GlitchApplyHook;
         IL.Celeste.Godrays.Render -= GodraysRenderHook;
+
+        On.Celeste.Parallax.Render -= Parallax_Render;
 
         IL.Celeste.HiresRenderer.BeginRender -= HiresRendererBeginRenderHook;
         IL.Celeste.TalkComponent.TalkComponentUI.Render -= TalkComponentUiRenderHook;
@@ -156,6 +160,21 @@ public class UnlockedCameraSmootherHires : ToggleableFeature<UnlockedCameraSmoot
         cursor.EmitDelegate(PrepareLevelRender);
 
 
+
+        // Add delegates after Background.Render
+        if (cursor.TryGotoNext(MoveType.Before,
+            instr => instr.MatchLdfld<Level>("Background")))
+        {
+            // Move to after the Render call
+            if (cursor.TryGotoNext(MoveType.After,
+                instr => instr.MatchCallvirt<Renderer>("Render")))
+            {
+                cursor.EmitLdarg(0); // Load "this"
+                cursor.EmitDelegate(AfterBackgroundRender);
+            }
+        }
+
+        cursor.Index = 0;
 
         // Add delegates before and Distort.Render
         if (cursor.TryGotoNext(MoveType.Before,
@@ -303,6 +322,7 @@ public class UnlockedCameraSmootherHires : ToggleableFeature<UnlockedCameraSmoot
         Engine.Instance.GraphicsDevice.SetRenderTarget(GameplayBuffers.Level);
         Engine.Instance.GraphicsDevice.Clear(self.BackgroundColor);
         self.Background.Render(self);
+        AfterBackgroundRender(self); // Inserted
 
         BeforeDistortRender(); // Inserted
         Distort.Render((RenderTarget2D)GameplayBuffers.Gameplay, (RenderTarget2D)GameplayBuffers.Displacement, self.Displacement.HasDisplacement(self));
@@ -431,10 +451,13 @@ public class UnlockedCameraSmootherHires : ToggleableFeature<UnlockedCameraSmoot
         if (HiresRenderer.Instance is not { } renderer) return;
 
         renderer.FixMatrices = false;
+        renderer.AllowParallaxOneBackdrops = false;
+        renderer.CurrentlyRenderingBackground = true;
         HiresRenderer.DisableLargeLevelBuffer();
+        Engine.Instance.GraphicsDevice.Clear(Color.Transparent); 
     }
 
-    private static void BeforeDistortRender()
+    private static void AfterBackgroundRender(Level level)
     {
         if (HiresRenderer.Instance is not { } renderer) return;
 
@@ -443,9 +466,26 @@ public class UnlockedCameraSmootherHires : ToggleableFeature<UnlockedCameraSmoot
         Engine.Instance.GraphicsDevice.Clear(Color.Transparent);
 
         // Draw the background upscaled out of GameplayBuffers.Level
-        Draw.SpriteBatch.Begin(SpriteSortMode.Immediate, BlendState.Opaque, SamplerState.PointClamp, DepthStencilState.None, RasterizerState.CullNone, null, renderer.ScaleMatrix);
+        Draw.SpriteBatch.Begin(SpriteSortMode.Immediate, BlendState.AlphaBlend, SamplerState.PointClamp, DepthStencilState.None, RasterizerState.CullNone, null, renderer.ScaleMatrix);
+        // Draw the non-parallax one backgrounds upscaled
         Draw.SpriteBatch.Draw(GameplayBuffers.Level, Vector2.Zero, Color.White);
         Draw.SpriteBatch.End();
+
+
+
+        renderer.AllowParallaxOneBackdrops = true;
+        renderer.FixMatrices = true;
+        level.Background.Render(level);
+        HiresRenderer.EnableLargeLevelBuffer(); // Replace GameplayBuffers.Level with the big one.
+        renderer.AllowParallaxOneBackdrops = false;
+    }
+
+    private static void BeforeDistortRender()
+    {
+        if (HiresRenderer.Instance is not { } renderer) return;
+
+        HiresRenderer.DisableLargeLevelBuffer();
+        renderer.FixMatrices = false;
 
         // Reset to the usual Level buffer (but clear it) so the Distort.Render call that comes after renders into it
         Engine.Instance.GraphicsDevice.SetRenderTarget(GameplayBuffers.Level);
@@ -486,7 +526,8 @@ public class UnlockedCameraSmootherHires : ToggleableFeature<UnlockedCameraSmoot
 
         Draw.SpriteBatch.End();
 
-        HiresRenderer.EnableLargeLevelBuffer(); // Replace GameplayBuffers.Level with the big one.
+        renderer.CurrentlyRenderingBackground = false;
+        HiresRenderer.EnableLargeLevelBuffer();
     }
 
     private static void MultiplyVectors(ref Vector2 vector3, ref Vector2 vector4)
@@ -801,30 +842,32 @@ public class UnlockedCameraSmootherHires : ToggleableFeature<UnlockedCameraSmoot
         return texture;
     }
 
-    private static void DownscaleLevelToDisplacementBuffer()
+
+
+    public static void Parallax_Render(On.Celeste.Parallax.orig_Render orig, Parallax self, Scene scene)
     {
-        if (HiresRenderer.Instance is not { } renderer) return;
+        if (HiresRenderer.Instance is not { } renderer || scene is not Level level)
+        {
+            orig(self, scene);
+            return;
+        }
 
-        // Render down the level to the old small buffer with linear scaling
-        Engine.Graphics.GraphicsDevice.SetRenderTarget(GameplayBuffers.Displacement);
-        Engine.Graphics.GraphicsDevice.Clear(Color.Transparent);
+        if (renderer.CurrentlyRenderingBackground)
+        {
+            bool isParallaxOne = self.Scroll.X == 1.0 && self.Scroll.Y == 1.0;
 
-        Draw.SpriteBatch.Begin(
-            SpriteSortMode.Deferred,
-            BlendState.Opaque,
-            SamplerState.LinearClamp,
-            DepthStencilState.None,
-            RasterizerState.CullNone
-        );
+            if (isParallaxOne == renderer.AllowParallaxOneBackdrops)
+            {
+                orig(self, scene);
+            }
 
-        Draw.SpriteBatch.Draw(
-            renderer.LargeLevelBuffer,
-            new Rectangle(0, 0, 320, 180),
-            Color.White
-        );
+            return;
+        }
 
-        Draw.SpriteBatch.End();
+        orig(self, scene);
     }
+
+
 
     private static void HiresRendererBeginRenderHook(ILContext il)
     {

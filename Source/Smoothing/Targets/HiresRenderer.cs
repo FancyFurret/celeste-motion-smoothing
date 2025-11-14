@@ -22,6 +22,8 @@ public class HiresRenderer : Renderer
 
     public bool FixMatrices = false;
     public bool ScaleMatricesForBloom = true;
+    public bool AllowParallaxOneBackdrops = false;
+    public bool CurrentlyRenderingBackground = false;
     public bool UseModifiedBlur = true;
 
     private static VirtualRenderTarget OriginalLevelBuffer = null;
@@ -39,7 +41,6 @@ public class HiresRenderer : Renderer
         LargeDisplacementBuffer = largeDisplacementBuffer;
         LargeDisplacedGameplayBuffer = largeDisplacedGameplayBuffer;
         LargeLevelBuffer = largeLevelBuffer;
-
         LargeTempABuffer = largeTempABuffer;
         LargeTempBBuffer = largeTempBBuffer;
 
