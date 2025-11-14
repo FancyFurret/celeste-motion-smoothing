@@ -17,10 +17,11 @@
     </ItemDefinitionGroup>
 
     <ItemGroup>
-        <PackageReference Include="MonoMod.RuntimeDetour" Version="25.0.2" PrivateAssets="all" ExcludeAssets="runtime" />
-        <PackageReference Include="MonoMod.Patcher" Version="25.0.0-prerelease.2" />
+        <PackageReference Include="MonoMod.RuntimeDetour" Version="*" PrivateAssets="all" ExcludeAssets="runtime" />
+        <PackageReference Include="MonoMod.Patcher" Version="*" />
+        <PackageReference Include="Mono.Cecil" Version="*" />
         <PackageReference Include="CelesteAnalyzer" Version="*" />
-        <PackageReference Include="YamlDotNet" Version="15.1.6" />
+        <PackageReference Include="YamlDotNet" Version="*" />
     </ItemGroup>
 
     <ItemGroup>
@@ -29,7 +30,7 @@
     </ItemGroup>
 
     <ItemGroup>
-        <PackageReference Include="BepInEx.AssemblyPublicizer.MSBuild" Version="0.4.2" PrivateAssets="all" />
+        <PackageReference Include="BepInEx.AssemblyPublicizer.MSBuild" Version="*" PrivateAssets="all" />
         <Reference Include="$(CelestePrefix)\FNA.dll" Publicize="true" />
     </ItemGroup>
 

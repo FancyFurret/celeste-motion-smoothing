@@ -43,7 +43,11 @@ public static class PlayerSmoother
             speed.Y *= -1;
 
         if (ActorPushTracker.Instance.ApplyPusherOffset(player, elapsed, SmoothingMode.Extrapolate, out var pushed))
+        {
+            #pragma warning disable CS0618
             return pushed + speed * Engine.TimeRate * Engine.TimeRateB * (float)elapsed;
+            #pragma warning restore CS0618
+        }
 
         return SmoothingMath.Extrapolate(state.RealPositionHistory, elapsed);
     }
