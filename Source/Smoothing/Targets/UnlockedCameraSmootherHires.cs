@@ -161,25 +161,11 @@ public class UnlockedCameraSmootherHires : ToggleableFeature<UnlockedCameraSmoot
 
 
 
-        // Add delegates after Background.Render
-        if (cursor.TryGotoNext(MoveType.Before,
-            instr => instr.MatchLdfld<Level>("Background")))
-        {
-            // Move to after the Render call
-            if (cursor.TryGotoNext(MoveType.After,
-                instr => instr.MatchCallvirt<Renderer>("Render")))
-            {
-                cursor.EmitLdarg(0); // Load "this"
-                cursor.EmitDelegate(AfterBackgroundRender);
-            }
-        }
-
-        cursor.Index = 0;
-
         // Add delegates before and Distort.Render
         if (cursor.TryGotoNext(MoveType.Before,
             instr => instr.MatchCall(typeof(Distort), "Render")))
         {
+            cursor.EmitLdarg(0); // Load "this"
             cursor.EmitDelegate(BeforeDistortRender);
         }
 
@@ -322,9 +308,8 @@ public class UnlockedCameraSmootherHires : ToggleableFeature<UnlockedCameraSmoot
         Engine.Instance.GraphicsDevice.SetRenderTarget(GameplayBuffers.Level);
         Engine.Instance.GraphicsDevice.Clear(self.BackgroundColor);
         self.Background.Render(self);
-        AfterBackgroundRender(self); // Inserted
 
-        BeforeDistortRender(); // Inserted
+        BeforeDistortRender(self); // Inserted
         Distort.Render((RenderTarget2D)GameplayBuffers.Gameplay, (RenderTarget2D)GameplayBuffers.Displacement, self.Displacement.HasDisplacement(self));
         DrawDisplacedGameplayWithOffset(); //Inserted
 
@@ -470,22 +455,35 @@ public class UnlockedCameraSmootherHires : ToggleableFeature<UnlockedCameraSmoot
         // Draw the non-parallax one backgrounds upscaled
         Draw.SpriteBatch.Draw(GameplayBuffers.Level, Vector2.Zero, Color.White);
         Draw.SpriteBatch.End();
-
-
-
-        renderer.AllowParallaxOneBackdrops = true;
-        renderer.FixMatrices = true;
-        level.Background.Render(level);
-        HiresRenderer.EnableLargeLevelBuffer(); // Replace GameplayBuffers.Level with the big one.
-        renderer.AllowParallaxOneBackdrops = false;
     }
 
-    private static void BeforeDistortRender()
+    private static void BeforeDistortRender(Level level)
     {
         if (HiresRenderer.Instance is not { } renderer) return;
 
-        HiresRenderer.DisableLargeLevelBuffer();
+        // Go to the large level buffer for compositing time.
+        Engine.Instance.GraphicsDevice.SetRenderTarget(renderer.LargeLevelBuffer);
+        Engine.Instance.GraphicsDevice.Clear(Color.Transparent);
+
+        // Draw the background upscaled out of GameplayBuffers.Level
+        Draw.SpriteBatch.Begin(SpriteSortMode.Immediate, BlendState.AlphaBlend, SamplerState.PointClamp, DepthStencilState.None, RasterizerState.CullNone, null, renderer.ScaleMatrix);
+        // Draw the non-parallax one backgrounds upscaled
+        Draw.SpriteBatch.Draw(GameplayBuffers.Level, Vector2.Zero, Color.White);
+        Draw.SpriteBatch.End();
+
+
+
+        // Now draw the parallax-one backgrounds
+        renderer.AllowParallaxOneBackdrops = true;
+        renderer.FixMatrices = true;
+
+        level.Background.Render(level);
+
         renderer.FixMatrices = false;
+        renderer.AllowParallaxOneBackdrops = false;
+        renderer.CurrentlyRenderingBackground = false;
+
+
 
         // Reset to the usual Level buffer (but clear it) so the Distort.Render call that comes after renders into it
         Engine.Instance.GraphicsDevice.SetRenderTarget(GameplayBuffers.Level);
@@ -526,7 +524,6 @@ public class UnlockedCameraSmootherHires : ToggleableFeature<UnlockedCameraSmoot
 
         Draw.SpriteBatch.End();
 
-        renderer.CurrentlyRenderingBackground = false;
         HiresRenderer.EnableLargeLevelBuffer();
     }
 
@@ -852,6 +849,12 @@ public class UnlockedCameraSmootherHires : ToggleableFeature<UnlockedCameraSmoot
             return;
         }
 
+        // We save the parallax-one backgrounds (which should move in lockstep with
+        // the gameplay layer) until after the background has been upscaled, so that
+        // We can draw them with the camera offset. This does mean they're drawn slightly
+        // out of place from where they would normally be if other mods insert draw calls
+        // after background rendering but before gameplay rendering, but in practice this
+        // doesn't pose an issue.
         if (renderer.CurrentlyRenderingBackground)
         {
             bool isParallaxOne = self.Scroll.X == 1.0 && self.Scroll.Y == 1.0;
@@ -1017,7 +1020,7 @@ public class UnlockedCameraSmootherHires : ToggleableFeature<UnlockedCameraSmoot
         {
             transformMatrix = GetOffsetScaleMatrix() * transformMatrix;
         }
-            
+
         orig(self, sortMode, blendState, samplerState, depthStencilState, rasterizerState, effect, transformMatrix);
     }
 }
