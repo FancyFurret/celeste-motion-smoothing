@@ -25,6 +25,7 @@ public class HiresRenderer : Renderer
     public bool AllowParallaxOneBackdrops = false;
     public bool CurrentlyRenderingBackground = false;
     public bool UseModifiedBlur = true;
+    public bool DisableFloorFunctions = false;
 
     private static VirtualRenderTarget OriginalLevelBuffer = null;
     private static VirtualRenderTarget OriginalTempABuffer = null;

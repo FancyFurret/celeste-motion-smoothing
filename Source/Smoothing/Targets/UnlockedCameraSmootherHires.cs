@@ -50,8 +50,9 @@ public class UnlockedCameraSmootherHires : ToggleableFeature<UnlockedCameraSmoot
 
         On.Celeste.Parallax.Render += Parallax_Render;
 
+        On.Celeste.HudRenderer.RenderContent += HudRenderer_RenderContent;
+
         IL.Celeste.HiresRenderer.BeginRender += HiresRendererBeginRenderHook;
-        IL.Celeste.TalkComponent.TalkComponentUI.Render += TalkComponentUiRenderHook;
         IL.Celeste.Lookout.Hud.Render += LookoutHudRenderHook;
 
         On.Monocle.Scene.Begin += Scene_Begin;
@@ -69,6 +70,10 @@ public class UnlockedCameraSmootherHires : ToggleableFeature<UnlockedCameraSmoot
                 typeof(SpriteSortMode), typeof(BlendState), typeof(SamplerState),
                 typeof(DepthStencilState), typeof(RasterizerState), typeof(Effect), typeof(Matrix)
             })!, SpriteBatch_Begin));
+
+        AddHook(new Hook(typeof(Calc).GetMethod(nameof(Calc.Floor), new[] { typeof(Vector2) })!, FloorHook));
+        AddHook(new Hook(typeof(Calc).GetMethod(nameof(Calc.Ceiling), new[] { typeof(Vector2) })!, CeilingHook));
+        AddHook(new Hook(typeof(Calc).GetMethod(nameof(Calc.Round), new[] { typeof(Vector2) })!, RoundHook));
     }
 
     protected override void Unhook()
@@ -86,8 +91,9 @@ public class UnlockedCameraSmootherHires : ToggleableFeature<UnlockedCameraSmoot
 
         On.Celeste.Parallax.Render -= Parallax_Render;
 
+        On.Celeste.HudRenderer.RenderContent -= HudRenderer_RenderContent;
+
         IL.Celeste.HiresRenderer.BeginRender -= HiresRendererBeginRenderHook;
-        IL.Celeste.TalkComponent.TalkComponentUI.Render -= TalkComponentUiRenderHook;
         IL.Celeste.Lookout.Hud.Render -= LookoutHudRenderHook;
 
         On.Monocle.Scene.Begin -= Scene_Begin;
@@ -870,6 +876,24 @@ public class UnlockedCameraSmootherHires : ToggleableFeature<UnlockedCameraSmoot
         orig(self, scene);
     }
 
+    public static void HudRenderer_RenderContent(On.Celeste.HudRenderer.orig_RenderContent orig, HudRenderer self, Scene scene)
+    {
+        if (HiresRenderer.Instance is not { } renderer || scene is not Level level)
+        {
+            orig(self, scene);
+            return;
+        }
+
+        Vector2 oldCameraPosition = level.Camera.Position;
+        level.Camera.Position = GetSmoothedCameraPosition();
+        renderer.DisableFloorFunctions = true;
+
+        orig(self, scene);
+
+        level.Camera.Position = oldCameraPosition;
+        renderer.DisableFloorFunctions = false;
+    }
+
 
 
     private static void HiresRendererBeginRenderHook(ILContext il)
@@ -882,23 +906,6 @@ public class UnlockedCameraSmootherHires : ToggleableFeature<UnlockedCameraSmoot
             cursor.EmitDelegate(GetCameraScale);
             cursor.EmitCall(typeof(Matrix).GetMethod(nameof(Matrix.CreateScale), new[] { typeof(float) })!);
             cursor.EmitCall(typeof(Matrix).GetMethod("op_Multiply", new[] { typeof(Matrix), typeof(Matrix) })!);
-        }
-    }
-
-    private static void TalkComponentUiRenderHook(ILContext il)
-    {
-        var cursor = new ILCursor(il);
-
-        // Use the smoothed camera position
-        if (cursor.TryGotoNext(MoveType.After,
-            instr => instr.MatchCallvirt<Camera>("get_Position"),
-            instr => instr.MatchCall(typeof(Calc).GetMethod(nameof(Calc.Floor))!)))
-        {
-            // Ignore this value
-            cursor.EmitPop();
-
-            // Get just the smoothed position
-            cursor.EmitCall(typeof(UnlockedCameraSmootherHires).GetMethod(nameof(GetSmoothedCameraPosition))!);
         }
     }
 
@@ -1022,5 +1029,43 @@ public class UnlockedCameraSmootherHires : ToggleableFeature<UnlockedCameraSmoot
         }
 
         orig(self, sortMode, blendState, samplerState, depthStencilState, rasterizerState, effect, transformMatrix);
+    }
+
+
+
+    private delegate Vector2 orig_Floor(Vector2 self);
+
+    private static Vector2 FloorHook(orig_Floor orig, Vector2 self)
+    {
+        if (HiresRenderer.Instance is not { } renderer || !renderer.DisableFloorFunctions)
+        {
+            return orig(self);
+        }
+
+        return self;
+    }
+
+    private delegate Vector2 orig_Ceiling(Vector2 self);
+
+    private static Vector2 CeilingHook(orig_Ceiling orig, Vector2 self)
+    {
+        if (HiresRenderer.Instance is not { } renderer || !renderer.DisableFloorFunctions)
+        {
+            return orig(self);
+        }
+
+        return self;
+    }
+
+    private delegate Vector2 orig_Round(Vector2 self);
+
+    private static Vector2 RoundHook(orig_Round orig, Vector2 self)
+    {
+        if (HiresRenderer.Instance is not { } renderer || !renderer.DisableFloorFunctions)
+        {
+            return orig(self);
+        }
+
+        return self;
     }
 }
