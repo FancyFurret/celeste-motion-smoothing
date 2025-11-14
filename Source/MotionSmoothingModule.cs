@@ -1,6 +1,8 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Reflection;
+using System.Runtime.InteropServices;
+using System.Diagnostics.CodeAnalysis;
 using Celeste.Mod.MotionSmoothing.FrameUncap;
 using Celeste.Mod.MotionSmoothing.Interop;
 using Celeste.Mod.MotionSmoothing.Smoothing;
@@ -84,6 +86,8 @@ public class MotionSmoothingModule : EverestModule
         Everest.Events.Level.OnPause += LevelPause;
         Everest.Events.Level.OnUnpause += LevelUnpause;
 
+        DisableMacOSVSync();
+
         ApplySettings();
     }
 
@@ -102,6 +106,8 @@ public class MotionSmoothingModule : EverestModule
         On.Monocle.Scene.Begin -= SceneBeginHook;
         Everest.Events.Level.OnPause -= LevelPause;
         Everest.Events.Level.OnUnpause -= LevelUnpause;
+
+        EnableMacOSVSync();
     }
 
     public override void LoadContent(bool firstLoad)
@@ -226,13 +232,13 @@ public class MotionSmoothingModule : EverestModule
     }
 
 
-    // A fix for Madeline's hait being glitchy;
+    // A fix for Madeline's hair being glitchy;
     // from Wartori's Mountain Tweaks, with permission. Thank you!
     private static void DisableInliningPushSpriteEnable()
     {
         Type t_SpriteBatch = typeof(SpriteBatch);
 
-        MethodInfo? m_PushSprite = t_SpriteBatch.GetMethod("PushSprite", BindingFlags.Instance | BindingFlags.NonPublic);
+        MethodInfo m_PushSprite = t_SpriteBatch.GetMethod("PushSprite", BindingFlags.Instance | BindingFlags.NonPublic);
         if (m_PushSprite == null)
         {
             Logger.Log(LogLevel.Error, nameof(MotionSmoothingModule), $"Could not find method PushSprite in {nameof(SpriteBatch)}!");
@@ -240,5 +246,55 @@ public class MotionSmoothingModule : EverestModule
         }
 
         MonoMod.Core.Platforms.PlatformTriple.Current.TryDisableInlining(m_PushSprite);
+    }
+
+    private static void DisableMacOSVSync()
+    {
+        if (!RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
+        {
+            return;
+        }
+
+        Engine.Graphics.SynchronizeWithVerticalRetrace = false;
+        Engine.Graphics.ApplyChanges();
+
+        On.Monocle.Commands.Vsync += VsyncHook;
+        On.Celeste.MenuOptions.SetVSync += SetVSyncHook;
+    }
+
+    private static void VsyncHook(On.Monocle.Commands.orig_Vsync orig, bool enabled)
+    {
+        if (!Settings.Enabled)
+        {
+            orig(enabled);
+            return;
+        }
+
+        orig(false);
+    }
+
+    private static void SetVSyncHook(On.Celeste.MenuOptions.orig_SetVSync orig, bool on)
+    {
+        if (!Settings.Enabled)
+        {
+            orig(on);
+            return;
+        }
+
+        orig(false);
+    }
+
+    private static void EnableMacOSVSync()
+    {
+        if (!RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
+        {
+            return;
+        }
+
+        Engine.Graphics.SynchronizeWithVerticalRetrace = global::Celeste.Settings.Instance.VSync;
+        Engine.Graphics.ApplyChanges();
+
+        On.Monocle.Commands.Vsync -= VsyncHook;
+        On.Celeste.MenuOptions.SetVSync -= SetVSyncHook;
     }
 }
