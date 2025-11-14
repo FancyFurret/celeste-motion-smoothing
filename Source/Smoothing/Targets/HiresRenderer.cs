@@ -22,6 +22,7 @@ public class HiresRenderer : Renderer
 
     public bool FixMatrices = false;
     public bool ScaleMatricesForBloom = true;
+    public bool UseModifiedBlur = true;
 
     private static VirtualRenderTarget OriginalLevelBuffer = null;
     private static VirtualRenderTarget OriginalTempABuffer = null;
@@ -80,6 +81,7 @@ public class HiresRenderer : Renderer
 
         OriginalTempABuffer = GameplayBuffers.TempA;
         GameplayBuffers.TempA = Instance.LargeTempABuffer;
+        Instance.UseModifiedBlur = true;
     }
 
     public static void DisableLargeTempABuffer()
@@ -88,6 +90,7 @@ public class HiresRenderer : Renderer
 
         GameplayBuffers.TempA = OriginalTempABuffer;
         OriginalTempABuffer = null;
+        Instance.UseModifiedBlur = false;
     }
 
     public static HiresRenderer Create()

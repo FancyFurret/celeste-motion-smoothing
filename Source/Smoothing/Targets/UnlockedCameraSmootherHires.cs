@@ -43,6 +43,8 @@ public class UnlockedCameraSmootherHires : ToggleableFeature<UnlockedCameraSmoot
         IL.Celeste.Level.Render += LevelRenderHook;
         //On.Celeste.BloomRenderer.Apply += BloomRenderer_Apply;
         IL.Celeste.BloomRenderer.Apply += BloomRendererApplyHook;
+        On.Celeste.GaussianBlur.Blur += GaussianBlur_Blur;
+
         IL.Celeste.Glitch.Apply += GlitchApplyHook;
         IL.Celeste.Godrays.Render += GodraysRenderHook;
 
@@ -75,6 +77,8 @@ public class UnlockedCameraSmootherHires : ToggleableFeature<UnlockedCameraSmoot
         IL.Celeste.Level.Render -= LevelRenderHook;
         //On.Celeste.BloomRenderer.Apply -= BloomRenderer_Apply;
         IL.Celeste.BloomRenderer.Apply -= BloomRendererApplyHook;
+        On.Celeste.GaussianBlur.Blur -= GaussianBlur_Blur;
+
         IL.Celeste.Glitch.Apply -= GlitchApplyHook;
         IL.Celeste.Godrays.Render -= GodraysRenderHook;
 
@@ -627,33 +631,10 @@ public class UnlockedCameraSmootherHires : ToggleableFeature<UnlockedCameraSmoot
             cursor.EmitDelegate(EnableFixMatricesForBloom);
         }
 
-        cursor.Index = 0;
-
-        // Find and replace the Blur method call
-        if (cursor.TryGotoNext(MoveType.Before,
-            instr => instr.MatchCall(typeof(GaussianBlur), "Blur")))
-        {
-            // Save reference to the instruction before modifying
-            var blurInstruction = cursor.Next;
-
-            // Replace with ModifiedBlur method
-            blurInstruction.Operand = typeof(UnlockedCameraSmootherHires).GetMethod("ModifiedBlur", new[] {
-                typeof(Texture2D),
-                typeof(VirtualRenderTarget),
-                typeof(VirtualRenderTarget),
-                typeof(float),
-                typeof(bool),
-                typeof(GaussianBlur.Samples),
-                typeof(float),
-                typeof(GaussianBlur.Direction),
-                typeof(float)
-            });
-        }
-
         // Start from the end of the method
         cursor.Index = cursor.Instrs.Count - 1;
 
-        // Search backwards
+        // Search backwards for the two different renders and exempt them from upscaling
         if (cursor.TryGotoPrev(MoveType.Before,
             instr => instr.MatchLdsfld(typeof(BloomRenderer), "BlurredScreenToMask"),
             instr => instr.MatchCallvirt<SpriteBatch>("Begin")))
@@ -776,6 +757,18 @@ public class UnlockedCameraSmootherHires : ToggleableFeature<UnlockedCameraSmoot
             Draw.SpriteBatch.Draw((RenderTarget2D)tempA, Vector2.Zero, Color.White * num2);
         }
         Draw.SpriteBatch.End();
+    }
+
+
+
+    private static Texture2D GaussianBlur_Blur(On.Celeste.GaussianBlur.orig_Blur orig, Texture2D texture, VirtualRenderTarget temp, VirtualRenderTarget output, float fade, bool clear, GaussianBlur.Samples samples, float sampleScale, GaussianBlur.Direction direction, float alpha)
+    {
+        if (HiresRenderer.Instance is not { } renderer || !renderer.UseModifiedBlur)
+        {
+            return orig(texture, temp, output, fade, clear, samples, sampleScale, direction, alpha);
+        }
+        
+        return ModifiedBlur(texture, temp, output, fade, clear, samples, sampleScale, direction, alpha);
     }
 
     public static Texture2D ModifiedBlur(Texture2D texture, VirtualRenderTarget temp, VirtualRenderTarget output, float fade = 0f, bool clear = true, GaussianBlur.Samples samples = GaussianBlur.Samples.Nine, float sampleScale = 1f, GaussianBlur.Direction direction = GaussianBlur.Direction.Both, float alpha = 1f)
