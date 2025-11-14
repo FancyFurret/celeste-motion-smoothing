@@ -45,6 +45,8 @@ public class UnlockedCameraSmootherHires : ToggleableFeature<UnlockedCameraSmoot
         IL.Celeste.BloomRenderer.Apply += BloomRendererApplyHook;
         On.Celeste.GaussianBlur.Blur += GaussianBlur_Blur;
 
+        On.Celeste.BackdropRenderer.Render += BackdropRenderer_Render;
+
         IL.Celeste.Glitch.Apply += GlitchApplyHook;
         IL.Celeste.Godrays.Render += GodraysRenderHook;
 
@@ -85,6 +87,8 @@ public class UnlockedCameraSmootherHires : ToggleableFeature<UnlockedCameraSmoot
         //On.Celeste.BloomRenderer.Apply -= BloomRenderer_Apply;
         IL.Celeste.BloomRenderer.Apply -= BloomRendererApplyHook;
         On.Celeste.GaussianBlur.Blur -= GaussianBlur_Blur;
+
+        On.Celeste.BackdropRenderer.Render -= BackdropRenderer_Render;
 
         IL.Celeste.Glitch.Apply -= GlitchApplyHook;
         IL.Celeste.Godrays.Render -= GodraysRenderHook;
@@ -166,6 +170,8 @@ public class UnlockedCameraSmootherHires : ToggleableFeature<UnlockedCameraSmoot
         cursor.EmitDelegate(PrepareLevelRender);
 
 
+
+        cursor.Index = 0;
 
         // Add delegates before and Distort.Render
         if (cursor.TryGotoNext(MoveType.Before,
@@ -442,57 +448,22 @@ public class UnlockedCameraSmootherHires : ToggleableFeature<UnlockedCameraSmoot
         if (HiresRenderer.Instance is not { } renderer) return;
 
         renderer.FixMatrices = false;
+        renderer.FixMatricesWithoutOffset = false;
         renderer.AllowParallaxOneBackdrops = false;
         renderer.CurrentlyRenderingBackground = true;
         HiresRenderer.DisableLargeLevelBuffer();
         Engine.Instance.GraphicsDevice.Clear(Color.Transparent); 
     }
 
-    private static void AfterBackgroundRender(Level level)
-    {
-        if (HiresRenderer.Instance is not { } renderer) return;
-
-        // Go to the large level buffer for compositing time.
-        Engine.Instance.GraphicsDevice.SetRenderTarget(renderer.LargeLevelBuffer);
-        Engine.Instance.GraphicsDevice.Clear(Color.Transparent);
-
-        // Draw the background upscaled out of GameplayBuffers.Level
-        Draw.SpriteBatch.Begin(SpriteSortMode.Immediate, BlendState.AlphaBlend, SamplerState.PointClamp, DepthStencilState.None, RasterizerState.CullNone, null, renderer.ScaleMatrix);
-        // Draw the non-parallax one backgrounds upscaled
-        Draw.SpriteBatch.Draw(GameplayBuffers.Level, Vector2.Zero, Color.White);
-        Draw.SpriteBatch.End();
-    }
-
     private static void BeforeDistortRender(Level level)
     {
         if (HiresRenderer.Instance is not { } renderer) return;
 
-        // Go to the large level buffer for compositing time.
-        Engine.Instance.GraphicsDevice.SetRenderTarget(renderer.LargeLevelBuffer);
-        Engine.Instance.GraphicsDevice.Clear(Color.Transparent);
-
-        // Draw the background upscaled out of GameplayBuffers.Level
-        Draw.SpriteBatch.Begin(SpriteSortMode.Immediate, BlendState.AlphaBlend, SamplerState.PointClamp, DepthStencilState.None, RasterizerState.CullNone, null, renderer.ScaleMatrix);
-        // Draw the non-parallax one backgrounds upscaled
-        Draw.SpriteBatch.Draw(GameplayBuffers.Level, Vector2.Zero, Color.White);
-        Draw.SpriteBatch.End();
-
-
-
-        // Now draw the parallax-one backgrounds
-        renderer.AllowParallaxOneBackdrops = true;
-        renderer.FixMatrices = true;
-
-        level.Background.Render(level);
-
         renderer.FixMatrices = false;
-        renderer.AllowParallaxOneBackdrops = false;
-        renderer.CurrentlyRenderingBackground = false;
-
-
+        renderer.FixMatricesWithoutOffset = false;
 
         // Reset to the usual Level buffer (but clear it) so the Distort.Render call that comes after renders into it
-        Engine.Instance.GraphicsDevice.SetRenderTarget(GameplayBuffers.Level);
+        Engine.Instance.GraphicsDevice.SetRenderTarget(renderer.SmallLevelBuffer);
         Engine.Instance.GraphicsDevice.Clear(Color.Transparent);
     }
 
@@ -504,7 +475,7 @@ public class UnlockedCameraSmootherHires : ToggleableFeature<UnlockedCameraSmoot
         Engine.Instance.GraphicsDevice.Clear(Color.Transparent);
 
         Draw.SpriteBatch.Begin(SpriteSortMode.Immediate, BlendState.AlphaBlend, SamplerState.PointClamp, DepthStencilState.None, RasterizerState.CullNone, null, renderer.ScaleMatrix);
-        Draw.SpriteBatch.Draw(GameplayBuffers.Level, Vector2.Zero, Color.White);
+        Draw.SpriteBatch.Draw(renderer.SmallLevelBuffer, Vector2.Zero, Color.White);
         Draw.SpriteBatch.End();
 
         Engine.Instance.GraphicsDevice.SetRenderTarget(renderer.LargeLevelBuffer);
@@ -529,8 +500,6 @@ public class UnlockedCameraSmootherHires : ToggleableFeature<UnlockedCameraSmoot
         );
 
         Draw.SpriteBatch.End();
-
-        HiresRenderer.EnableLargeLevelBuffer();
     }
 
     private static void MultiplyVectors(ref Vector2 vector3, ref Vector2 vector4)
@@ -847,6 +816,45 @@ public class UnlockedCameraSmootherHires : ToggleableFeature<UnlockedCameraSmoot
 
 
 
+    public static void BackdropRenderer_Render(On.Celeste.BackdropRenderer.orig_Render orig, BackdropRenderer self, Scene scene)
+    {
+        if (HiresRenderer.Instance is not { } renderer || scene is not Level level || !renderer.CurrentlyRenderingBackground)
+        {
+            orig(self, scene);
+            return;
+        }
+
+        orig(self, scene);
+
+        // Go to the large level buffer for compositing time.
+        Engine.Instance.GraphicsDevice.SetRenderTarget(renderer.LargeLevelBuffer);
+        Engine.Instance.GraphicsDevice.Clear(Color.Transparent);
+
+        // Draw the background upscaled out of GameplayBuffers.Level
+        Draw.SpriteBatch.Begin(SpriteSortMode.Immediate, BlendState.Opaque, SamplerState.PointClamp, DepthStencilState.None, RasterizerState.CullNone, null, renderer.ScaleMatrix);
+        // Draw the non-parallax one backgrounds upscaled
+        Draw.SpriteBatch.Draw(GameplayBuffers.Level, Vector2.Zero, Color.White);
+        Draw.SpriteBatch.End();
+
+
+
+        // Now draw the parallax-one backgrounds
+        renderer.AllowParallaxOneBackdrops = true;
+        renderer.FixMatrices = true;
+
+        orig(self, scene);
+
+        renderer.AllowParallaxOneBackdrops = false;
+        renderer.CurrentlyRenderingBackground = false;
+
+        HiresRenderer.EnableLargeLevelBuffer();
+        renderer.FixMatricesWithoutOffset = true;
+
+        Engine.Instance.GraphicsDevice.SetRenderTarget(GameplayBuffers.Level);
+    }
+
+
+
     public static void Parallax_Render(On.Celeste.Parallax.orig_Render orig, Parallax self, Scene scene)
     {
         if (HiresRenderer.Instance is not { } renderer || scene is not Level level)
@@ -1016,16 +1024,28 @@ public class UnlockedCameraSmootherHires : ToggleableFeature<UnlockedCameraSmoot
 
         var currentRenderTarget = renderTargets[0].RenderTarget;
 
+
+
+        // For reasons I haven't fully understood, all of these
+        // coming scale matrices *must* be precomposed to work properly.
+
         if (renderer.ScaleMatricesForBloom && currentRenderTarget == renderer.LargeTempABuffer.Target)
         {
-            // Bloom needs this scale matrix precomposed.
             transformMatrix = transformMatrix * GetOffsetScaleMatrix();
         }
 
         // Otherwise, only modify the matrix if we're rendering to the one buffer that's bigger than things expect.
         else if (currentRenderTarget == renderer.LargeLevelBuffer.Target)
         {
-            transformMatrix = GetOffsetScaleMatrix() * transformMatrix;
+            if (renderer.FixMatricesWithoutOffset)
+            {
+                transformMatrix = transformMatrix * renderer.ScaleMatrix;
+            }
+
+            else
+            {
+                transformMatrix = transformMatrix * GetOffsetScaleMatrix();
+            }
         }
 
         orig(self, sortMode, blendState, samplerState, depthStencilState, rasterizerState, effect, transformMatrix);

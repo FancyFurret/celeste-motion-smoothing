@@ -18,9 +18,12 @@ public class HiresRenderer : Renderer
     public VirtualRenderTarget LargeTempABuffer { get; }
     public VirtualRenderTarget LargeTempBBuffer { get; }
 
+    public VirtualRenderTarget SmallLevelBuffer { get; }
+
     public Matrix ScaleMatrix;
 
     public bool FixMatrices = false;
+    public bool FixMatricesWithoutOffset = false;
     public bool ScaleMatricesForBloom = true;
     public bool AllowParallaxOneBackdrops = false;
     public bool CurrentlyRenderingBackground = false;
@@ -36,7 +39,8 @@ public class HiresRenderer : Renderer
         VirtualRenderTarget largeDisplacedGameplayBuffer,
         VirtualRenderTarget largeLevelBuffer,
         VirtualRenderTarget largeTempABuffer,
-        VirtualRenderTarget largeTempBBuffer
+        VirtualRenderTarget largeTempBBuffer,
+        VirtualRenderTarget smallLevelBuffer
     ) {
         LargeGameplayBuffer = largeGameplayBuffer;
         LargeDisplacementBuffer = largeDisplacementBuffer;
@@ -44,6 +48,8 @@ public class HiresRenderer : Renderer
         LargeLevelBuffer = largeLevelBuffer;
         LargeTempABuffer = largeTempABuffer;
         LargeTempBBuffer = largeTempBBuffer;
+
+        SmallLevelBuffer = smallLevelBuffer;
 
         ScaleMatrix = Matrix.CreateScale(6f);
 
@@ -105,7 +111,9 @@ public class HiresRenderer : Renderer
             GameplayBuffers.Create(1920, 1080),
             GameplayBuffers.Create(1920, 1080),
             GameplayBuffers.Create(1920, 1080),
-            GameplayBuffers.Create(1920, 1080)
+            GameplayBuffers.Create(1920, 1080),
+
+            GameplayBuffers.Create(320, 180)
         );
 
         return Instance;
