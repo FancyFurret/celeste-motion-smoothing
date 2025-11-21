@@ -54,6 +54,7 @@ public class UnlockedCameraSmootherHires : ToggleableFeature<UnlockedCameraSmoot
         On.Celeste.HudRenderer.RenderContent += HudRenderer_RenderContent;
 
         IL.Celeste.HiresRenderer.BeginRender += HiresRendererBeginRenderHook;
+        IL.Celeste.TalkComponent.TalkComponentUI.Render += TalkComponentUiRenderHook;
         IL.Celeste.Lookout.Hud.Render += LookoutHudRenderHook;
 
         On.Monocle.Scene.Begin += Scene_Begin;
@@ -100,6 +101,7 @@ public class UnlockedCameraSmootherHires : ToggleableFeature<UnlockedCameraSmoot
         On.Celeste.HudRenderer.RenderContent -= HudRenderer_RenderContent;
 
         IL.Celeste.HiresRenderer.BeginRender -= HiresRendererBeginRenderHook;
+        IL.Celeste.TalkComponent.TalkComponentUI.Render -= TalkComponentUiRenderHook;
         IL.Celeste.Lookout.Hud.Render -= LookoutHudRenderHook;
 
         On.Monocle.Scene.Begin -= Scene_Begin;
@@ -916,6 +918,25 @@ public class UnlockedCameraSmootherHires : ToggleableFeature<UnlockedCameraSmoot
             cursor.EmitDelegate(GetCameraScale);
             cursor.EmitCall(typeof(Matrix).GetMethod(nameof(Matrix.CreateScale), new[] { typeof(float) })!);
             cursor.EmitCall(typeof(Matrix).GetMethod("op_Multiply", new[] { typeof(Matrix), typeof(Matrix) })!);
+        }
+    }
+
+    // Despite having a fix for this more broadly by disaling Floor()s, some very
+    // obscure places like the gate to Raspberry Roots in SJ still benefit from this more targeted fix
+    private static void TalkComponentUiRenderHook(ILContext il)
+    {
+        var cursor = new ILCursor(il);
+
+        // Use the smoothed camera position
+        if (cursor.TryGotoNext(MoveType.After,
+                instr => instr.MatchCallvirt<Camera>("get_Position"),
+                instr => instr.MatchCall(typeof(Calc).GetMethod(nameof(Calc.Floor))!)))
+        {
+            // Ignore this value
+            cursor.EmitPop();
+
+            // Get just the smoothed position
+            cursor.EmitCall(typeof(UnlockedCameraSmoother).GetMethod(nameof(GetSmoothedCameraPosition))!);
         }
     }
 

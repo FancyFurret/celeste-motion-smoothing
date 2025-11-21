@@ -21,6 +21,7 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
 
         IL.Celeste.Level.Render += LevelRenderHook;
         IL.Celeste.HiresRenderer.BeginRender += HiresRendererBeginRenderHook;
+        IL.Celeste.TalkComponent.TalkComponentUI.Render += TalkComponentUiRenderHook;
         IL.Celeste.Lookout.Hud.Render += LookoutHudRenderHook;
         On.Monocle.Camera.CameraToScreen += CameraToScreenHook;
 
@@ -37,6 +38,7 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
 
         IL.Celeste.Level.Render -= LevelRenderHook;
         IL.Celeste.HiresRenderer.BeginRender -= HiresRendererBeginRenderHook;
+        IL.Celeste.TalkComponent.TalkComponentUI.Render -= TalkComponentUiRenderHook;
         IL.Celeste.Lookout.Hud.Render -= LookoutHudRenderHook;
         On.Monocle.Camera.CameraToScreen -= CameraToScreenHook;
 
@@ -184,6 +186,23 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
             cursor.EmitDelegate(GetCameraScale);
             cursor.EmitCall(typeof(Matrix).GetMethod(nameof(Matrix.CreateScale), new[] { typeof(float) })!);
             cursor.EmitCall(typeof(Matrix).GetMethod("op_Multiply", new[] { typeof(Matrix), typeof(Matrix) })!);
+        }
+    }
+
+    private static void TalkComponentUiRenderHook(ILContext il)
+    {
+        var cursor = new ILCursor(il);
+
+        // Use the smoothed camera position
+        if (cursor.TryGotoNext(MoveType.After,
+                instr => instr.MatchCallvirt<Camera>("get_Position"),
+                instr => instr.MatchCall(typeof(Calc).GetMethod(nameof(Calc.Floor))!)))
+        {
+            // Ignore this value
+            cursor.EmitPop();
+
+            // Get just the smoothed position
+            cursor.EmitCall(typeof(UnlockedCameraSmoother).GetMethod(nameof(GetSmoothedCameraPosition))!);
         }
     }
 
