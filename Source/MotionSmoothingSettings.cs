@@ -94,6 +94,9 @@ public class MotionSmoothingSettings : EverestModuleSettings
     [DefaultButtonBinding(new Buttons(), Keys.F8)]
     public ButtonBinding ButtonToggleSmoothing { get; set; }
 
+    [DefaultButtonBinding(new Buttons(), Keys.F9)]
+    public ButtonBinding ButtonToggleUnlockStrategy { get; set; }
+
     public int FrameRate
     {
         get => _frameRate;

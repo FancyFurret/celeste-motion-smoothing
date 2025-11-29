@@ -39,10 +39,36 @@ public class MotionSmoothingInputHandler : ToggleableFeature<MotionSmoothingInpu
         public override void Update()
         {
             base.Update();
+
             if (MotionSmoothingModule.Settings.ButtonToggleSmoothing.Pressed)
             {
                 Logger.Log(LogLevel.Info, "MotionSmoothingInputHandler", "Toggling motion smoothing");
                 MotionSmoothingModule.Settings.Enabled = !MotionSmoothingModule.Settings.Enabled;
+            }
+
+            else if (MotionSmoothingModule.Settings.ButtonToggleUnlockStrategy.Pressed)
+            {
+                if (!MotionSmoothingModule.Settings.Enabled)
+                {
+                    return;
+                }
+
+                Logger.Log(LogLevel.Info, "MotionSmoothingInputHandler", "Toggling unlock strategy");
+
+                if (MotionSmoothingModule.Settings.UnlockCameraStrategy == UnlockCameraStrategy.Hires)
+                {
+                    MotionSmoothingModule.Settings.UnlockCameraStrategy = UnlockCameraStrategy.Unlock;
+                }
+
+                else if (MotionSmoothingModule.Settings.UnlockCameraStrategy == UnlockCameraStrategy.Unlock)
+                {
+                    MotionSmoothingModule.Settings.UnlockCameraStrategy = UnlockCameraStrategy.Off;
+                }
+
+                else
+                {
+                    MotionSmoothingModule.Settings.UnlockCameraStrategy = UnlockCameraStrategy.Hires;
+                }
             }
         }
     }
