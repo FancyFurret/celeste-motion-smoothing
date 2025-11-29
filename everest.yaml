@@ -1,9 +1,11 @@
 - Name: MotionSmoothing
-  Version: 1.2
+  Version: 1.2.0
   DLL: bin/MotionSmoothing.dll
   Dependencies:
     - Name: EverestCore
       Version: 1.4673.0
+    - Name: DisplayMessageCommand
+      Version: 1.0.4
   OptionalDependencies:
     - Name: SpeedrunTool
       Version: 3.22.0

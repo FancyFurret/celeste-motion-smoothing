@@ -1,8 +1,10 @@
 using System;
+using System.Collections;
 using Celeste.Mod.MotionSmoothing.Utilities;
 using Celeste.Mod.UI;
 using Microsoft.Xna.Framework.Input;
 using YamlDotNet.Serialization;
+using Monocle;
 
 namespace Celeste.Mod.MotionSmoothing;
 
@@ -142,7 +144,7 @@ public class MotionSmoothingSettings : EverestModuleSettings
     public void CreateUnlockCameraStrategyEntry(TextMenu menu, bool inGame)
     {
         var strategySlider = new TextMenu.Slider(
-            "Unlock Camera Strategy",
+            "Smooth Camera",
             index => ((UnlockCameraStrategy)index).ToString(),
             0,
             Enum.GetValues(typeof(UnlockCameraStrategy)).Length - 1,
@@ -163,7 +165,7 @@ public class MotionSmoothingSettings : EverestModuleSettings
             "half a pixel could be shown on the side of the screen.\n" +
             "This makes slow camera movements look *MUCH* smoother.\n\n" +
             "Hires: Changes level rendering to be at a higher internal\n" +
-            "resolution. Usually has the fewest visual glitches but may\n" +
+            "resolution. Usually has the fewest visual glitches, but may\n" +
             "not work in modded maps that use a large number of helpers\n\n" +
             "Unlock: lets the camera move without changing the rendering\n" +
             "pipeline. Has the highest compatibility, but makes the entire\n" +
@@ -180,7 +182,7 @@ public class MotionSmoothingSettings : EverestModuleSettings
     public void CreateUnlockCameraModeEntry(TextMenu menu, bool inGame)
     {
         _unlockCameraModeItem = new TextMenu.Slider(
-            "Unlock Camera Mode",
+            "Unlocked Camera Mode",
             index => ((UnlockCameraMode)index).ToString(),
             0,
             Enum.GetValues(typeof(UnlockCameraMode)).Length - 1,

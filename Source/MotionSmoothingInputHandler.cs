@@ -36,6 +36,9 @@ public class MotionSmoothingInputHandler : ToggleableFeature<MotionSmoothingInpu
 
     private class MotionSmoothingInputHandlerEntity : Entity
     {
+        private Alarm _enabledMessageAlarm;
+        private Alarm _unlockStrategyMessageAlarm;
+
         public override void Update()
         {
             base.Update();
@@ -44,7 +47,34 @@ public class MotionSmoothingInputHandler : ToggleableFeature<MotionSmoothingInpu
             {
                 Logger.Log(LogLevel.Info, "MotionSmoothingInputHandler", "Toggling motion smoothing");
                 MotionSmoothingModule.Settings.Enabled = !MotionSmoothingModule.Settings.Enabled;
+
+
+
+                if (_enabledMessageAlarm is Alarm alarm)
+                {
+                    Engine.Commands.ExecuteCommand("hide_message", new string[] { "motion_smoothing_enabled" });
+                    alarm.RemoveSelf();
+                }
+
+                Engine.Commands.ExecuteCommand("display_message", new string[] {
+                    "motion_smoothing_enabled", // id
+                    "0.5", // scale
+                    "980", // y
+                    "true",
+                    MotionSmoothingModule.Settings.Enabled ? "[Motion Smoothing] Enabled" : "[Motion Smoothing] Disabled"
+                });
+
+                Entity dummy = new Entity();
+                (Engine.Scene as Level)?.Add(dummy);
+                _enabledMessageAlarm = Alarm.Set(dummy, 1f, () =>
+                {
+                    Engine.Commands.ExecuteCommand("hide_message", new string[] { "motion_smoothing_enabled" });
+                    Engine.Commands.ExecuteCommand("hide_message", new string[] { "motion_smoothing_unlock_strategy" });
+                    _enabledMessageAlarm.RemoveSelf();
+                });
             }
+
+
 
             else if (MotionSmoothingModule.Settings.ButtonToggleUnlockStrategy.Pressed)
             {
@@ -69,6 +99,31 @@ public class MotionSmoothingInputHandler : ToggleableFeature<MotionSmoothingInpu
                 {
                     MotionSmoothingModule.Settings.UnlockCameraStrategy = UnlockCameraStrategy.Hires;
                 }
+
+
+
+                if (_unlockStrategyMessageAlarm is Alarm alarm)
+                {
+                    Engine.Commands.ExecuteCommand("hide_message", new string[] { "motion_smoothing_unlock_strategy" });
+                    alarm.RemoveSelf();
+                }
+
+                Engine.Commands.ExecuteCommand("display_message", new string[] {
+                    "motion_smoothing_unlock_strategy", // id
+                    "0.5", // scale
+                    "1020", // y
+                    "true",
+                    $"[Motion Smoothing] Smooth Camera: {MotionSmoothingModule.Settings.UnlockCameraStrategy.ToString()}"
+                });
+
+                Entity dummy = new Entity();
+                (Engine.Scene as Level)?.Add(dummy);
+                _unlockStrategyMessageAlarm = Alarm.Set(dummy, 1f, () =>
+                {
+                    Engine.Commands.ExecuteCommand("hide_message", new string[] { "motion_smoothing_enabled" });
+                    Engine.Commands.ExecuteCommand("hide_message", new string[] { "motion_smoothing_unlock_strategy" });
+                    _unlockStrategyMessageAlarm.RemoveSelf();
+                });
             }
         }
     }
