@@ -19,6 +19,7 @@
     <ItemGroup>
         <PackageReference Include="MonoMod.RuntimeDetour" Version="*" PrivateAssets="all" ExcludeAssets="runtime" />
         <PackageReference Include="MonoMod.Patcher" Version="*" />
+        <PackageReference Include="MonoMod.Utils" Version="*" />
         <PackageReference Include="Mono.Cecil" Version="*" />
         <PackageReference Include="CelesteAnalyzer" Version="*" />
         <PackageReference Include="YamlDotNet" Version="*" />
