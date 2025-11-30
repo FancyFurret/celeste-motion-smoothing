@@ -7,7 +7,5 @@
     - Name: DisplayMessageCommand
       Version: 1.0.4
   OptionalDependencies:
-    - Name: SpeedrunTool
-      Version: 3.22.0
     - Name: GravityHelper
       Version: 1.2.0
