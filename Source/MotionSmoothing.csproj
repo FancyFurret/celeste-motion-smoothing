@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
     <PropertyGroup>
-        <TargetFramework>net7.0</TargetFramework>
+        <TargetFramework>net8.0</TargetFramework>
         <RootNamespace>Celeste.Mod.MotionSmoothing</RootNamespace>
         <LangVersion>latest</LangVersion>
         <CelestePrefix Condition="'$(CelestePrefix)' == '' And Exists('..\..\..\Celeste.dll')">..\..\..</CelestePrefix>
@@ -17,10 +17,15 @@
     </ItemDefinitionGroup>
 
     <ItemGroup>
-        <PackageReference Include="MonoMod.RuntimeDetour" Version="25.0.2" PrivateAssets="all" ExcludeAssets="runtime" />
-        <PackageReference Include="MonoMod.Patcher" Version="25.0.0-prerelease.2" />
+        <PackageReference Include="MonoMod.RuntimeDetour" Version="*" PrivateAssets="all" ExcludeAssets="runtime" />
+        <PackageReference Include="MonoMod.Patcher" Version="*" />
+        <PackageReference Include="Mono.Cecil" Version="*" />
         <PackageReference Include="CelesteAnalyzer" Version="*" />
-        <PackageReference Include="YamlDotNet" Version="15.1.6" />
+        <PackageReference Include="YamlDotNet" Version="*" />
+    </ItemGroup>
+
+    <ItemGroup>
+      <Compile Remove="$(NuGetPackageRoot)bepinex.assemblypublicizer.msbuild\**\IgnoresAccessChecksToAttribute.cs" />
     </ItemGroup>
 
     <ItemGroup>
@@ -29,7 +34,7 @@
     </ItemGroup>
 
     <ItemGroup>
-        <PackageReference Include="BepInEx.AssemblyPublicizer.MSBuild" Version="0.4.2" PrivateAssets="all" />
+        <PackageReference Include="BepInEx.AssemblyPublicizer.MSBuild" Version="*" PrivateAssets="all" />
         <Reference Include="$(CelestePrefix)\FNA.dll" Publicize="true" />
     </ItemGroup>
 
@@ -43,6 +48,7 @@
         <Copy SourceFiles="..\bin\MotionSmoothing.dll" DestinationFolder="$(CelestePrefix)\Mods\MotionSmoothing\bin" />
         <Copy SourceFiles="..\bin\MotionSmoothing.pdb" DestinationFolder="$(CelestePrefix)\Mods\MotionSmoothing\bin" />
         <Copy SourceFiles="..\Dialog\English.txt" DestinationFolder="$(CelestePrefix)\Mods\MotionSmoothing\Dialog" />
+        <Copy SourceFiles="..\Effects\HiresGaussianBlur.cso" DestinationFolder="$(CelestePrefix)\Mods\MotionSmoothing\Effects" />
     </Target>
 
     <Target Name="PackageMod" AfterTargets="CopyFiles" Inputs="$(ZippedFiles)" Outputs="..\MotionSmoothing.zip" Condition="'$(Configuration)' == 'Release'">

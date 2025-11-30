@@ -58,13 +58,17 @@ public static class SmoothingMath
     public static float Extrapolate(float[] history, double elapsedSeconds)
     {
         var speed = (history[0] - history[1]) / SecondsPerUpdate;
+        #pragma warning disable CS0618
         return history[0] + speed * Engine.TimeRate * Engine.TimeRateB * (float)elapsedSeconds;
+        #pragma warning restore CS0618
     }
 
     public static float ExtrapolateAngle(float[] history, double elapsedSeconds)
     {
         var speed = Calc.AngleDiff(history[1], history[0]) / SecondsPerUpdate;
+        #pragma warning disable CS0618
         return Calc.WrapAngle(history[0] + speed * Engine.TimeRate * Engine.TimeRateB * (float)elapsedSeconds);
+        #pragma warning restore CS0618
     }
 
     public static Vector2 Extrapolate(Vector2[] positionHistory, double elapsedSeconds)
@@ -75,6 +79,8 @@ public static class SmoothingMath
 
     public static Vector2 Extrapolate(Vector2[] positionHistory, Vector2 speed, double elapsedSeconds)
     {
+        #pragma warning disable CS0618
         return positionHistory[0] + speed * Engine.TimeRate * Engine.TimeRateB * (float)elapsedSeconds;
+        #pragma warning restore CS0618
     }
 }

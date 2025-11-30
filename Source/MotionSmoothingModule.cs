@@ -1,12 +1,16 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Reflection;
+using System.Runtime.InteropServices;
+using System.Diagnostics.CodeAnalysis;
 using Celeste.Mod.MotionSmoothing.FrameUncap;
 using Celeste.Mod.MotionSmoothing.Interop;
 using Celeste.Mod.MotionSmoothing.Smoothing;
 using Celeste.Mod.MotionSmoothing.Smoothing.Targets;
 using Celeste.Mod.MotionSmoothing.Utilities;
 using Celeste.Pico8;
+using Microsoft.Xna.Framework;
+using Microsoft.Xna.Framework.Graphics;
 using Monocle;
 using MonoMod.ModInterop;
 
@@ -50,6 +54,7 @@ public class MotionSmoothingModule : EverestModule
 
     private MotionSmoothingHandler MotionSmoothing { get; } = new();
     private UnlockedCameraSmoother UnlockedCameraSmoother { get; } = new();
+    private UnlockedCameraSmootherHires UnlockedCameraSmootherHires { get; } = new();
     private ActorPushTracker ActorPushTracker { get; } = new();
     private UpdateAtDraw UpdateAtDraw { get; } = new();
     private MotionSmoothingInputHandler InputHandler { get; } = new();
@@ -58,6 +63,8 @@ public class MotionSmoothingModule : EverestModule
 
     public override void Load()
     {
+        DisableInliningPushSpriteEnable();
+
         typeof(MotionSmoothingExports).ModInterop();
         typeof(GravityHelperImports).ModInterop();
         typeof(SpeedrunToolImports).ModInterop();
@@ -66,6 +73,7 @@ public class MotionSmoothingModule : EverestModule
         UpdateEveryNTicks.Load();
         MotionSmoothing.Load();
         UnlockedCameraSmoother.Load();
+        UnlockedCameraSmootherHires.Load();
         ActorPushTracker.Load();
         UpdateAtDraw.Load();
         InputHandler.Load();
@@ -78,6 +86,8 @@ public class MotionSmoothingModule : EverestModule
         Everest.Events.Level.OnPause += LevelPause;
         Everest.Events.Level.OnUnpause += LevelUnpause;
 
+        DisableMacOSVSync();
+
         ApplySettings();
     }
 
@@ -86,6 +96,7 @@ public class MotionSmoothingModule : EverestModule
         UpdateEveryNTicks.Unload();
         MotionSmoothing.Unload();
         UnlockedCameraSmoother.Unload();
+        UnlockedCameraSmootherHires.Unload();
         ActorPushTracker.Unload();
         UpdateAtDraw.Unload();
         InputHandler.Unload();
@@ -95,6 +106,14 @@ public class MotionSmoothingModule : EverestModule
         On.Monocle.Scene.Begin -= SceneBeginHook;
         Everest.Events.Level.OnPause -= LevelPause;
         Everest.Events.Level.OnUnpause -= LevelUnpause;
+
+        EnableMacOSVSync();
+    }
+
+    public override void LoadContent(bool firstLoad)
+    {
+        base.LoadContent(firstLoad);
+        if (firstLoad) Smoothing.Targets.HiresRenderer.Load();
     }
 
     public void ApplySettings()
@@ -108,12 +127,14 @@ public class MotionSmoothingModule : EverestModule
 
             MotionSmoothing.Disable();
             UnlockedCameraSmoother.Disable();
+            UnlockedCameraSmootherHires.Disable();
             ActorPushTracker.Disable();
             UpdateAtDraw.Disable();
             DebugRenderFix.Disable();
             DeltaTimeFix.Disable();
             return;
         }
+
 
 
         // If the game speed is modified, then we have to use dynamic mode
@@ -136,6 +157,7 @@ public class MotionSmoothingModule : EverestModule
             ActorPushTracker.Disable();
             UpdateAtDraw.Disable();
             UnlockedCameraSmoother.Disable();
+            UnlockedCameraSmootherHires.Disable();
             return;
         }
 
@@ -145,10 +167,23 @@ public class MotionSmoothingModule : EverestModule
         DebugRenderFix.Enable();
         DeltaTimeFix.Enable();
 
-        if (Settings.UnlockCamera)
-            UnlockedCameraSmoother.Enable();
-        else
+        if (Settings.UnlockCameraStrategy == UnlockCameraStrategy.Hires)
+        {
             UnlockedCameraSmoother.Disable();
+            UnlockedCameraSmootherHires.Enable();
+        }
+
+        else if (Settings.UnlockCameraStrategy == UnlockCameraStrategy.Unlock)
+        {
+            UnlockedCameraSmootherHires.Disable();
+            UnlockedCameraSmoother.Enable();
+        }
+        
+        else
+        {
+            UnlockedCameraSmoother.Disable();
+            UnlockedCameraSmootherHires.Disable();
+        }
     }
 
     private void ApplyFramerate()
@@ -194,5 +229,72 @@ public class MotionSmoothingModule : EverestModule
     private static void LevelUnpause(Level level)
     {
         Instance.ApplyFramerate();
+    }
+
+
+    // A fix for Madeline's hair being glitchy;
+    // from Wartori's Mountain Tweaks, with permission. Thank you!
+    private static void DisableInliningPushSpriteEnable()
+    {
+        Type t_SpriteBatch = typeof(SpriteBatch);
+
+        MethodInfo m_PushSprite = t_SpriteBatch.GetMethod("PushSprite", BindingFlags.Instance | BindingFlags.NonPublic);
+        if (m_PushSprite == null)
+        {
+            Logger.Log(LogLevel.Error, nameof(MotionSmoothingModule), $"Could not find method PushSprite in {nameof(SpriteBatch)}!");
+            return;
+        }
+
+        MonoMod.Core.Platforms.PlatformTriple.Current.TryDisableInlining(m_PushSprite);
+    }
+
+    private static void DisableMacOSVSync()
+    {
+        if (!RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
+        {
+            return;
+        }
+
+        Engine.Graphics.SynchronizeWithVerticalRetrace = false;
+        Engine.Graphics.ApplyChanges();
+
+        On.Monocle.Commands.Vsync += VsyncHook;
+        On.Celeste.MenuOptions.SetVSync += SetVSyncHook;
+    }
+
+    private static void VsyncHook(On.Monocle.Commands.orig_Vsync orig, bool enabled)
+    {
+        if (!Settings.Enabled)
+        {
+            orig(enabled);
+            return;
+        }
+
+        orig(false);
+    }
+
+    private static void SetVSyncHook(On.Celeste.MenuOptions.orig_SetVSync orig, bool on)
+    {
+        if (!Settings.Enabled)
+        {
+            orig(on);
+            return;
+        }
+
+        orig(false);
+    }
+
+    private static void EnableMacOSVSync()
+    {
+        if (!RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
+        {
+            return;
+        }
+
+        Engine.Graphics.SynchronizeWithVerticalRetrace = global::Celeste.Settings.Instance.VSync;
+        Engine.Graphics.ApplyChanges();
+
+        On.Monocle.Commands.Vsync -= VsyncHook;
+        On.Celeste.MenuOptions.SetVSync -= SetVSyncHook;
     }
 }

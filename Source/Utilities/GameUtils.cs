@@ -12,8 +12,10 @@ public static class GameUtils
 
     public static float CalculateDeltaTime(float rawDeltaTime)
     {
+        #pragma warning disable CS0618
         return rawDeltaTime * Engine.TimeRate * Engine.TimeRateB *
                GetTimeRateComponentMultiplier(Engine.Instance.scene);
+       #pragma warning restore CS0618
     }
 
     private static float GetTimeRateComponentMultiplier(Scene scene)

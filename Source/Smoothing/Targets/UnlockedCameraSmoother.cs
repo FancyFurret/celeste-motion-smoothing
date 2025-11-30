@@ -5,6 +5,7 @@ using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using Monocle;
 using MonoMod.Cil;
+using MonoMod.RuntimeDetour;
 
 namespace Celeste.Mod.MotionSmoothing.Smoothing.Targets;
 
@@ -23,6 +24,12 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
         IL.Celeste.TalkComponent.TalkComponentUI.Render += TalkComponentUiRenderHook;
         IL.Celeste.Lookout.Hud.Render += LookoutHudRenderHook;
         On.Monocle.Camera.CameraToScreen += CameraToScreenHook;
+
+        On.Celeste.HudRenderer.RenderContent += HudRenderer_RenderContent;
+
+        AddHook(new Hook(typeof(Calc).GetMethod(nameof(Calc.Floor), new[] { typeof(Vector2) })!, FloorHook));
+        AddHook(new Hook(typeof(Calc).GetMethod(nameof(Calc.Ceiling), new[] { typeof(Vector2) })!, CeilingHook));
+        AddHook(new Hook(typeof(Calc).GetMethod(nameof(Calc.Round), new[] { typeof(Vector2) })!, RoundHook));
     }
 
     protected override void Unhook()
@@ -34,6 +41,8 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
         IL.Celeste.TalkComponent.TalkComponentUI.Render -= TalkComponentUiRenderHook;
         IL.Celeste.Lookout.Hud.Render -= LookoutHudRenderHook;
         On.Monocle.Camera.CameraToScreen -= CameraToScreenHook;
+
+        On.Celeste.HudRenderer.RenderContent -= HudRenderer_RenderContent;
     }
 
     private static Vector2 GetCameraOffset()
@@ -213,5 +222,63 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
         Vector2 position)
     {
         return orig(camera, position + GetCameraOffset());
+    }
+
+
+
+    public static void HudRenderer_RenderContent(On.Celeste.HudRenderer.orig_RenderContent orig, HudRenderer self, Scene scene)
+    {
+        if (HiresRenderer.Instance is not { } renderer || scene is not Level level)
+        {
+            orig(self, scene);
+            return;
+        }
+
+        Vector2 oldCameraPosition = level.Camera.Position;
+        level.Camera.Position = GetSmoothedCameraPosition();
+        renderer.DisableFloorFunctions = true;
+
+        orig(self, scene);
+
+        level.Camera.Position = oldCameraPosition;
+        renderer.DisableFloorFunctions = false;
+    }
+
+
+
+    private delegate Vector2 orig_Floor(Vector2 self);
+
+    private static Vector2 FloorHook(orig_Floor orig, Vector2 self)
+    {
+        if (HiresRenderer.Instance is not { } renderer || !renderer.DisableFloorFunctions)
+        {
+            return orig(self);
+        }
+
+        return self;
+    }
+
+    private delegate Vector2 orig_Ceiling(Vector2 self);
+
+    private static Vector2 CeilingHook(orig_Ceiling orig, Vector2 self)
+    {
+        if (HiresRenderer.Instance is not { } renderer || !renderer.DisableFloorFunctions)
+        {
+            return orig(self);
+        }
+
+        return self;
+    }
+
+    private delegate Vector2 orig_Round(Vector2 self);
+
+    private static Vector2 RoundHook(orig_Round orig, Vector2 self)
+    {
+        if (HiresRenderer.Instance is not { } renderer || !renderer.DisableFloorFunctions)
+        {
+            return orig(self);
+        }
+
+        return self;
     }
 }
