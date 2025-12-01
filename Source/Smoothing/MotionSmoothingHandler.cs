@@ -1,9 +1,12 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Diagnostics;
+using System.Linq;
 using Celeste.Mod.MotionSmoothing.Interop;
 using Celeste.Mod.MotionSmoothing.Smoothing.States;
 using Celeste.Mod.MotionSmoothing.Smoothing.Strategies;
 using Celeste.Mod.MotionSmoothing.Utilities;
+using Celeste.Pico8;
 using Microsoft.Xna.Framework;
 using Monocle;
 
@@ -11,10 +14,8 @@ namespace Celeste.Mod.MotionSmoothing.Smoothing;
 
 public class MotionSmoothingHandler : ToggleableFeature<MotionSmoothingHandler>
 {
-    public Player Player => _playerReference?.TryGetTarget(out var player) == true ? player : null;
-    private WeakReference<Player> _playerReference;
-
-    public IPositionSmoothingState PlayerState => ValueSmoother.GetState(Player) as IPositionSmoothingState;
+    public HashSet<Player> Players = new();
+    private List<WeakReference<Player>> _playerReferences = new();
 
     public AtDrawInputHandler AtDrawInputHandler { get; } = new();
 
@@ -45,6 +46,11 @@ public class MotionSmoothingHandler : ToggleableFeature<MotionSmoothingHandler>
 
         ValueSmoother.ClearStates();
         PushSpriteSmoother.ClearStates();
+    }
+
+    public IPositionSmoothingState GetPlayerState(Player player)
+    {
+        return ValueSmoother.Instance.GetState(player) as IPositionSmoothingState;
     }
 
     protected override void Hook()
@@ -119,6 +125,15 @@ public class MotionSmoothingHandler : ToggleableFeature<MotionSmoothingHandler>
         {
             DeltaTimeFix.UpdateFixedDeltaTimeMultiplier();
 
+            Instance.Players.Clear();
+            for (var i = Instance._playerReferences.Count - 1; i >= 0; i--)
+            {
+                if (Instance._playerReferences[i].TryGetTarget(out var player))
+                    Instance.Players.Add(player);
+                else
+                    Instance._playerReferences.RemoveAt(i);
+            }
+
             var mode = MotionSmoothingModule.Settings.SmoothingMode;
             var elapsedTicks = Instance._timer.ElapsedTicks - Instance._lastTicks;
             var elapsedSeconds = (double)elapsedTicks / Stopwatch.Frequency;
@@ -141,6 +156,8 @@ public class MotionSmoothingHandler : ToggleableFeature<MotionSmoothingHandler>
 
             // Reset the input back so that physics is still consistent
             Instance.AtDrawInputHandler.ResetInput();
+
+            Instance.Players.Clear();
         }
 
         orig(self, gameTime);
@@ -243,7 +260,7 @@ public class MotionSmoothingHandler : ToggleableFeature<MotionSmoothingHandler>
     private void SmoothEntity(Entity entity)
     {
         if (entity is Player player)
-            Instance._playerReference = new WeakReference<Player>(player);
+            Instance._playerReferences.Add(new WeakReference<Player>(player));
 
         var state = GetPositionSmootherState(entity);
         if (state != null)

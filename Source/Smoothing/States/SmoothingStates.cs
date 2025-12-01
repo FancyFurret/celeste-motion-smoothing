@@ -60,12 +60,16 @@ public class ComponentSmoothingState : PositionSmoothingState<GraphicsComponent>
         {
             // Boosters use the player's draw position, not real position, so make sure we smooth with the player's 
             // real position instead
-            var player = MotionSmoothingHandler.Instance.Player;
-            if ((player.StateMachine.State == 2 || player.StateMachine.state == 5) && booster.BoostingPlayer)
+            foreach (var player in MotionSmoothingHandler.Instance.Players)
             {
-                var playerRealCenterX = player.ExactPosition.X + (player.Collider?.Center.X ?? 0);
-                var playerRealCenterY = player.ExactPosition.Y + (player.Collider?.Center.Y ?? 0);
-                return new Vector2(playerRealCenterX, playerRealCenterY) + Booster.playerOffset - booster.Position;
+                if (player.CurrentBooster != booster) continue;
+
+                if ((player.StateMachine.State == 2 || player.StateMachine.state == 5) && booster.BoostingPlayer)
+                {
+                    var playerRealCenterX = player.ExactPosition.X + (player.Collider?.Center.X ?? 0);
+                    var playerRealCenterY = player.ExactPosition.Y + (player.Collider?.Center.Y ?? 0);
+                    return new Vector2(playerRealCenterX, playerRealCenterY) + Booster.playerOffset - booster.Position;
+                }
             }
         }
 
@@ -132,6 +136,6 @@ public class LevelZoomSmoothingState : FloatSmoothingState<Level>
 {
     protected override SmoothingMode? OverrideSmoothingMode => SmoothingMode.Extrapolate;
     protected override bool CancelSmoothing => CelesteTasInterop.CenterCamera;
-    protected override float GetValue(Level obj) => Math.Max(obj.Zoom, 1f);
-    protected override void SetValue(Level obj, float value) => obj.Zoom = Math.Max(value, 1f);
+    protected override float GetValue(Level obj) => Math.Max(obj.Zoom, 0.01f);
+    protected override void SetValue(Level obj, float value) => obj.Zoom = Math.Max(value, 0.01f);
 }
