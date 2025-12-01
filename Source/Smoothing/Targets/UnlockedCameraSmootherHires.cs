@@ -45,7 +45,7 @@ public class UnlockedCameraSmootherHires : ToggleableFeature<UnlockedCameraSmoot
         IL.Celeste.BloomRenderer.Apply += BloomRendererApplyHook;
         On.Celeste.GaussianBlur.Blur += GaussianBlur_Blur;
 
-        // On.Celeste.BackdropRenderer.Render += BackdropRenderer_Render;
+        On.Celeste.BackdropRenderer.Render += BackdropRenderer_Render;
 
         IL.Celeste.Glitch.Apply += GlitchApplyHook;
 
@@ -92,7 +92,7 @@ public class UnlockedCameraSmootherHires : ToggleableFeature<UnlockedCameraSmoot
         IL.Celeste.BloomRenderer.Apply -= BloomRendererApplyHook;
         On.Celeste.GaussianBlur.Blur -= GaussianBlur_Blur;
 
-        // On.Celeste.BackdropRenderer.Render -= BackdropRenderer_Render;
+        On.Celeste.BackdropRenderer.Render -= BackdropRenderer_Render;
 
         IL.Celeste.Glitch.Apply -= GlitchApplyHook;
 
@@ -489,13 +489,26 @@ public class UnlockedCameraSmootherHires : ToggleableFeature<UnlockedCameraSmoot
         renderer.FixMatricesWithoutOffset = false;
         renderer.AllowParallaxOneBackdrops = false;
         renderer.CurrentlyRenderingBackground = true;
-        HiresRenderer.EnableLargeLevelBuffer();
+
+        if (renderer.RenderBackgroundHires)
+        {
+            HiresRenderer.EnableLargeLevelBuffer();
+        }
+
+        else
+        {
+            HiresRenderer.DisableLargeLevelBuffer();
+        }
+
         Engine.Instance.GraphicsDevice.Clear(Color.Transparent); 
     }
 
     private static void AfterLevelClear(Level level)
     {
-        if (HiresRenderer.Instance is not { } renderer) return;
+        if (HiresRenderer.Instance is not { } renderer || !renderer.RenderBackgroundHires)
+        {
+            return;
+        }
 
         renderer.DisableFloorFunctions = true;
         renderer.FixMatrices = true;
@@ -868,7 +881,7 @@ public class UnlockedCameraSmootherHires : ToggleableFeature<UnlockedCameraSmoot
 
     public static void BackdropRenderer_Render(On.Celeste.BackdropRenderer.orig_Render orig, BackdropRenderer self, Scene scene)
     {
-        if (HiresRenderer.Instance is not { } renderer || scene is not Level level || !renderer.CurrentlyRenderingBackground)
+        if (HiresRenderer.Instance is not { } renderer || scene is not Level level || !renderer.CurrentlyRenderingBackground || renderer.RenderBackgroundHires)
         {
             orig(self, scene);
             return;
@@ -907,7 +920,7 @@ public class UnlockedCameraSmootherHires : ToggleableFeature<UnlockedCameraSmoot
 
     public static void Parallax_Render(On.Celeste.Parallax.orig_Render orig, Parallax self, Scene scene)
     {
-        if (HiresRenderer.Instance is not { } renderer || scene is not Level level)
+        if (HiresRenderer.Instance is not { } renderer || scene is not Level level || renderer.RenderBackgroundHires)
         {
             orig(self, scene);
             return;
