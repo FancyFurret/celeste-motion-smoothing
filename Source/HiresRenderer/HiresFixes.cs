@@ -39,9 +39,9 @@ public class HiresFixes : ToggleableFeature<HiresFixes>
         // IL.Celeste.Parallax.Render += RemoveFloors;
         // AddHook(new ILHook(typeof(Parallax).GetMethod("orig_Render")!, RemoveFloors));
 
-        HookDrawVertices<VertexPositionColor>();
-        HookDrawVertices<VertexPositionColorTexture>();
-        HookDrawVertices<LightingRenderer.VertexPositionColorMaskTexture>();
+        // HookDrawVertices<VertexPositionColor>();
+        // HookDrawVertices<VertexPositionColorTexture>();
+        // HookDrawVertices<LightingRenderer.VertexPositionColorMaskTexture>();
     }
 
     private void HookDrawVertices<T>() where T : struct, IVertexType
