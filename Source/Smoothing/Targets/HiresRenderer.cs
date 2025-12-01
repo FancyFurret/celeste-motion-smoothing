@@ -41,7 +41,8 @@ public class HiresRenderer : Renderer
         VirtualRenderTarget largeTempABuffer,
         VirtualRenderTarget largeTempBBuffer,
         VirtualRenderTarget smallLevelBuffer
-    ) {
+    )
+    {
         LargeGameplayBuffer = largeGameplayBuffer;
         LargeDisplacementBuffer = largeDisplacementBuffer;
         LargeDisplacedGameplayBuffer = largeDisplacedGameplayBuffer;
@@ -58,7 +59,6 @@ public class HiresRenderer : Renderer
 
     public static void Load()
     {
-
     }
 
     public static void EnableLargeLevelBuffer()
@@ -74,7 +74,10 @@ public class HiresRenderer : Renderer
 
     public static void DisableLargeLevelBuffer()
     {
-        if (OriginalLevelBuffer == null ) { return; }
+        if (OriginalLevelBuffer == null)
+        {
+            return;
+        }
 
         GameplayBuffers.Level = OriginalLevelBuffer;
         OriginalLevelBuffer = null;
@@ -94,7 +97,10 @@ public class HiresRenderer : Renderer
 
     public static void DisableLargeTempABuffer()
     {
-        if (OriginalTempABuffer == null) { return; }
+        if (OriginalTempABuffer == null)
+        {
+            return;
+        }
 
         GameplayBuffers.TempA = OriginalTempABuffer;
         OriginalTempABuffer = null;
@@ -104,16 +110,21 @@ public class HiresRenderer : Renderer
     public static HiresRenderer Create()
     {
         Destroy();
+        
+        // Make the buffers extra large to support mods that try to zoom out the camera
+        var zoomOutWidth = 960f;
+        var zoomOutHeight = 540f;
+        var scaleW = zoomOutWidth / 320f;
+        var scaleH = zoomOutHeight / 180f;
 
         Instance = new HiresRenderer(
-            GameplayBuffers.Create(1920, 1080),
-            GameplayBuffers.Create(1920, 1080),
-            GameplayBuffers.Create(1920, 1080),
-            GameplayBuffers.Create(1920, 1080),
-            GameplayBuffers.Create(1920, 1080),
-            GameplayBuffers.Create(1920, 1080),
-
-            GameplayBuffers.Create(320, 180)
+            GameplayBuffers.Create((int)(1920 * scaleW), (int)(1080 * scaleH)),
+            GameplayBuffers.Create((int)(1920 * scaleW), (int)(1080 * scaleH)),
+            GameplayBuffers.Create((int)(1920 * scaleW), (int)(1080 * scaleH)),
+            GameplayBuffers.Create((int)(1920 * scaleW), (int)(1080 * scaleH)),
+            GameplayBuffers.Create((int)(1920 * scaleW), (int)(1080 * scaleH)),
+            GameplayBuffers.Create((int)(1920 * scaleW), (int)(1080 * scaleH)),
+            GameplayBuffers.Create((int)(320 * scaleW), (int)(180 * scaleH))
         );
 
         return Instance;

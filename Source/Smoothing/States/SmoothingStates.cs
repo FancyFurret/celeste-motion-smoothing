@@ -132,6 +132,6 @@ public class LevelZoomSmoothingState : FloatSmoothingState<Level>
 {
     protected override SmoothingMode? OverrideSmoothingMode => SmoothingMode.Extrapolate;
     protected override bool CancelSmoothing => CelesteTasInterop.CenterCamera;
-    protected override float GetValue(Level obj) => Math.Max(obj.Zoom, 1f);
-    protected override void SetValue(Level obj, float value) => obj.Zoom = Math.Max(value, 1f);
+    protected override float GetValue(Level obj) => Math.Max(obj.Zoom, 0f);
+    protected override void SetValue(Level obj, float value) => obj.Zoom = Math.Max(value, 0f);
 }
