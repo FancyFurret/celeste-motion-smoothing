@@ -39,13 +39,13 @@ public class UnlockedCameraSmootherHires : ToggleableFeature<UnlockedCameraSmoot
     {
         base.Hook();
 
-        //On.Celeste.Level.Render += Level_Render;
+        // On.Celeste.Level.Render += Level_Render;
         IL.Celeste.Level.Render += LevelRenderHook;
         //On.Celeste.BloomRenderer.Apply += BloomRenderer_Apply;
         IL.Celeste.BloomRenderer.Apply += BloomRendererApplyHook;
         On.Celeste.GaussianBlur.Blur += GaussianBlur_Blur;
 
-        On.Celeste.BackdropRenderer.Render += BackdropRenderer_Render;
+        // On.Celeste.BackdropRenderer.Render += BackdropRenderer_Render;
 
         IL.Celeste.Glitch.Apply += GlitchApplyHook;
 
@@ -86,13 +86,13 @@ public class UnlockedCameraSmootherHires : ToggleableFeature<UnlockedCameraSmoot
     {
         base.Unhook();
 
-        //On.Celeste.Level.Render -= Level_Render;
+        // On.Celeste.Level.Render -= Level_Render;
         IL.Celeste.Level.Render -= LevelRenderHook;
         //On.Celeste.BloomRenderer.Apply -= BloomRenderer_Apply;
         IL.Celeste.BloomRenderer.Apply -= BloomRendererApplyHook;
         On.Celeste.GaussianBlur.Blur -= GaussianBlur_Blur;
 
-        On.Celeste.BackdropRenderer.Render -= BackdropRenderer_Render;
+        // On.Celeste.BackdropRenderer.Render -= BackdropRenderer_Render;
 
         IL.Celeste.Glitch.Apply -= GlitchApplyHook;
 
@@ -163,6 +163,23 @@ public class UnlockedCameraSmootherHires : ToggleableFeature<UnlockedCameraSmoot
         return Vector2.Zero;
     }
 
+    private static void SmoothCameraPosition(Level level)
+    {
+        // Camera's UpdateMatrices method ALSO floors the position, so manually create the matrix here, and set
+        // the private fields instead of using the public properties.
+        var cameraState = (MotionSmoothingHandler.Instance.GetState(level.Camera) as IPositionSmoothingState)!;
+        var camera = level.Camera;
+        camera.position = cameraState.SmoothedRealPosition;
+        camera.matrix = Matrix.Identity *
+                        Matrix.CreateTranslation(new Vector3(-new Vector2(camera.position.X, camera.position.Y),
+                            0.0f)) *
+                        Matrix.CreateRotationZ(camera.angle) * Matrix.CreateScale(new Vector3(camera.zoom, 1f)) *
+                        Matrix.CreateTranslation(new Vector3(
+                            new Vector2((int)Math.Floor(camera.origin.X), (int)Math.Floor(camera.origin.Y)), 0.0f));
+        camera.inverse = Matrix.Invert(camera.matrix);
+        camera.changed = false;
+    }
+
 
 
     private static void LevelRenderHook(ILContext il)
@@ -176,6 +193,17 @@ public class UnlockedCameraSmootherHires : ToggleableFeature<UnlockedCameraSmoot
 
 
         cursor.Index = 0;
+
+        if (cursor.TryGotoNext(MoveType.After,
+            instr => instr.MatchLdfld<Level>("BackgroundColor")))
+        {
+            if (cursor.TryGotoNext(MoveType.After,
+            instr => instr.MatchCallvirt<GraphicsDevice>("Clear")))
+            {
+                cursor.EmitLdarg(0); // Load "this"
+                cursor.EmitDelegate(AfterLevelClear);
+            }
+        }
 
         // Add delegates before and Distort.Render
         if (cursor.TryGotoNext(MoveType.Before,
@@ -321,15 +349,19 @@ public class UnlockedCameraSmootherHires : ToggleableFeature<UnlockedCameraSmoot
         Engine.Instance.GraphicsDevice.Clear(Color.Transparent);
         self.GameplayRenderer.Render(self);
         self.Lighting.Render(self);
+
         Engine.Instance.GraphicsDevice.SetRenderTarget(GameplayBuffers.Level);
         Engine.Instance.GraphicsDevice.Clear(self.BackgroundColor);
+        AfterLevelClear(self); // Inserted
         self.Background.Render(self);
+        
 
         BeforeDistortRender(self); // Inserted
         Distort.Render((RenderTarget2D)GameplayBuffers.Gameplay, (RenderTarget2D)GameplayBuffers.Displacement, self.Displacement.HasDisplacement(self));
         DrawDisplacedGameplayWithOffset(); //Inserted
 
         self.Bloom.Apply(GameplayBuffers.Level, self);
+        HiresRenderer.DisableLargeTempABuffer(); // Inserted
         EnableFixMatricesWithScale(); // Inserted
 
         self.Foreground.Render(self);
@@ -369,9 +401,9 @@ public class UnlockedCameraSmootherHires : ToggleableFeature<UnlockedCameraSmoot
         Engine.Instance.GraphicsDevice.Clear(Color.Black);
         Engine.Instance.GraphicsDevice.Viewport = Engine.Viewport;
         Matrix matrix = Matrix.CreateScale(6f) * Engine.ScreenMatrix;
-        Vector2 vector = new Vector2(1920f, 1080f); // Vector multiplied by 6
-        Vector2 vector2 = vector / (self.ZoomTarget * 6f); // zoom multiplied by 6
-        Vector2 vector3 = ((self.ZoomTarget != 1f) ? (((self.ZoomFocusPoint * 6f) - vector2 / 2f) / (vector - vector2) * vector) : Vector2.Zero); // Zoom focus point multiplied by 6
+        Vector2 vector = new Vector2(320f, 180f);
+        Vector2 vector2 = vector / self.ZoomTarget;
+        Vector2 vector3 = (self.ZoomTarget != 1f) ? ((self.ZoomFocusPoint - vector2 / 2f) / (vector - vector2) * vector) : Vector2.Zero; // Zoom focus point multiplied by 6
         MTexture orDefault = GFX.ColorGrades.GetOrDefault(self.lastColorGrade, GFX.ColorGrades["none"]);
         MTexture orDefault2 = GFX.ColorGrades.GetOrDefault(self.Session.ColorGrade, GFX.ColorGrades["none"]);
         if (self.colorGradeEase > 0f && orDefault != orDefault2)
@@ -390,6 +422,8 @@ public class UnlockedCameraSmootherHires : ToggleableFeature<UnlockedCameraSmoot
             vector3.X = 160f - (vector3.X - 160f);
         }
 
+        vector3 *= 6f; // Vector scaled
+        vector4 *= 6f; // Vector scaled
         Draw.SpriteBatch.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend, SamplerState.PointClamp, DepthStencilState.Default, RasterizerState.CullNone, ColorGrade.Effect, GetHiresDisplayMatrix()); // Matrix modified
         Draw.SpriteBatch.Draw((RenderTarget2D)GameplayBuffers.Level, vector3 + vector4, GameplayBuffers.Level.Bounds, Color.White, 0f, vector3, scale, SaveData.Instance.Assists.MirrorMode ? SpriteEffects.FlipHorizontally : SpriteEffects.None, 0f);
         Draw.SpriteBatch.End();
@@ -455,16 +489,28 @@ public class UnlockedCameraSmootherHires : ToggleableFeature<UnlockedCameraSmoot
         renderer.FixMatricesWithoutOffset = false;
         renderer.AllowParallaxOneBackdrops = false;
         renderer.CurrentlyRenderingBackground = true;
-        HiresRenderer.DisableLargeLevelBuffer();
+        HiresRenderer.EnableLargeLevelBuffer();
         Engine.Instance.GraphicsDevice.Clear(Color.Transparent); 
+    }
+
+    private static void AfterLevelClear(Level level)
+    {
+        if (HiresRenderer.Instance is not { } renderer) return;
+
+        renderer.DisableFloorFunctions = true;
+        renderer.FixMatrices = true;
+        renderer.FixMatricesWithoutOffset = false;
+        SmoothCameraPosition(level);
     }
 
     private static void BeforeDistortRender(Level level)
     {
         if (HiresRenderer.Instance is not { } renderer) return;
 
+        renderer.DisableFloorFunctions = false;
         renderer.FixMatrices = false;
         renderer.FixMatricesWithoutOffset = false;
+        
 
         // Reset to the usual Level buffer (but clear it) so the Distort.Render call that comes after renders into it
         Engine.Instance.GraphicsDevice.SetRenderTarget(renderer.SmallLevelBuffer);
