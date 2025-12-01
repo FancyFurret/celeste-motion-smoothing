@@ -40,16 +40,18 @@ public static class PositionSmoother
             return state.OriginalDrawPosition;
 
         // TODO: Could move these to smoothing state subclasses
-        var player = MotionSmoothingHandler.Instance.Player;
-        if (state is ActorSmoothingState entityState && player != null)
+        if (state is ActorSmoothingState entityState)
         {
-            if (obj == player)
-                return PlayerSmoother.Smooth(player, entityState, elapsedSeconds, mode);
-
-            if (obj == player.Holding?.Entity)
+            foreach (var player in MotionSmoothingHandler.Instance.Players)
             {
-                var playerState = MotionSmoothingHandler.Instance.PlayerState;
-                return entityState.GetLastDrawPosition(mode) + playerState.GetSmoothedOffset(mode);
+                if (obj == player)
+                    return PlayerSmoother.Smooth(player, entityState, elapsedSeconds, mode);
+
+                if (obj == player.Holding?.Entity)
+                {
+                    var playerState = MotionSmoothingHandler.Instance.GetPlayerState(player);
+                    return entityState.GetLastDrawPosition(mode) + playerState.GetSmoothedOffset(mode);
+                }
             }
         }
 
