@@ -42,6 +42,7 @@ public class MotionSmoothingSettings : EverestModuleSettings
     private int _frameRate = 120;
     private int _preferredFrameRate = 120;
     private UnlockCameraStrategy _unlockCameraStrategy = UnlockCameraStrategy.Hires;
+    private bool _renderBackgroundHires;
     private UnlockCameraMode _unlockCameraMode = UnlockCameraMode.Extend;
     private SmoothingMode _smoothingMode = SmoothingMode.Extrapolate;
     private UpdateMode _updateMode = UpdateMode.Interval;
@@ -52,6 +53,8 @@ public class MotionSmoothingSettings : EverestModuleSettings
 
     private FrameRateTextMenuItem _frameRateMenuItem;
     private TextMenu.Item _unlockCameraModeItem;
+
+    private TextMenu.Item _renderBackgroundHiresItem;
 
     public bool Enabled
     {
@@ -173,6 +176,46 @@ public class MotionSmoothingSettings : EverestModuleSettings
         );
     }
 
+    public bool RenderBackgroundHires
+    {
+        get => _renderBackgroundHires;
+        set
+        {
+            _renderBackgroundHires = value;
+            MotionSmoothingModule.Instance.ApplySettings();
+        }
+    }
+
+    public void CreateRenderBackgroundHiresEntry(TextMenu menu, bool inGame)
+    {
+        _renderBackgroundHiresItem = new TextMenu.OnOff(
+            "Render Background Hires",
+            true
+        );
+
+        (_renderBackgroundHiresItem as TextMenu.OnOff).Change(value =>
+        {
+            RenderBackgroundHires = value;
+        });
+
+        // Set initial state based on UnlockCameraStrategy
+        bool shouldDisable = UnlockCameraStrategy != UnlockCameraStrategy.Hires;
+        _renderBackgroundHiresItem.Disabled = shouldDisable;
+        _renderBackgroundHiresItem.Selectable = !shouldDisable;
+
+        menu.Add(_renderBackgroundHiresItem);
+
+        _renderBackgroundHiresItem.AddDescription(
+            menu,
+            "Only applies if Smooth Camera is set to Hires. Determines\n" +
+            "whether the background is drawn at a 6x scale. This makes\n" +
+            "for a much smoother result (particularly with parallax),\n" +
+            "but it may not be desirable."
+        );
+    }
+
+
+
     public UnlockCameraMode UnlockCameraMode
     {
         get => _unlockCameraMode;
@@ -215,9 +258,13 @@ public class MotionSmoothingSettings : EverestModuleSettings
     {
         if (_unlockCameraModeItem != null)
         {
-            bool shouldDisable = UnlockCameraStrategy == UnlockCameraStrategy.Hires;
-            _unlockCameraModeItem.Disabled = shouldDisable;
-            _unlockCameraModeItem.Selectable = !shouldDisable;
+            bool shouldDisableUnlockMode = UnlockCameraStrategy != UnlockCameraStrategy.Unlock;
+            _unlockCameraModeItem.Disabled = shouldDisableUnlockMode;
+            _unlockCameraModeItem.Selectable = !shouldDisableUnlockMode;
+
+            bool shouldDisableRenderBackgroundHires = UnlockCameraStrategy != UnlockCameraStrategy.Hires;
+            _renderBackgroundHiresItem.Disabled = shouldDisableRenderBackgroundHires;
+            _renderBackgroundHiresItem.Selectable = !shouldDisableRenderBackgroundHires;
         }
     }
 

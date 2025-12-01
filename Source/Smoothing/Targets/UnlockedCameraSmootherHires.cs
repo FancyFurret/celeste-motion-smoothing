@@ -490,7 +490,7 @@ public class UnlockedCameraSmootherHires : ToggleableFeature<UnlockedCameraSmoot
         renderer.AllowParallaxOneBackdrops = false;
         renderer.CurrentlyRenderingBackground = true;
 
-        if (renderer.RenderBackgroundHires)
+        if (MotionSmoothingModule.Settings.RenderBackgroundHires)
         {
             HiresRenderer.EnableLargeLevelBuffer();
         }
@@ -505,7 +505,7 @@ public class UnlockedCameraSmootherHires : ToggleableFeature<UnlockedCameraSmoot
 
     private static void AfterLevelClear(Level level)
     {
-        if (HiresRenderer.Instance is not { } renderer || !renderer.RenderBackgroundHires)
+        if (HiresRenderer.Instance is not { } renderer || !MotionSmoothingModule.Settings.RenderBackgroundHires)
         {
             return;
         }
@@ -881,7 +881,7 @@ public class UnlockedCameraSmootherHires : ToggleableFeature<UnlockedCameraSmoot
 
     public static void BackdropRenderer_Render(On.Celeste.BackdropRenderer.orig_Render orig, BackdropRenderer self, Scene scene)
     {
-        if (HiresRenderer.Instance is not { } renderer || scene is not Level level || !renderer.CurrentlyRenderingBackground || renderer.RenderBackgroundHires)
+        if (HiresRenderer.Instance is not { } renderer || scene is not Level level || !renderer.CurrentlyRenderingBackground || MotionSmoothingModule.Settings.RenderBackgroundHires)
         {
             orig(self, scene);
             return;
@@ -920,7 +920,7 @@ public class UnlockedCameraSmootherHires : ToggleableFeature<UnlockedCameraSmoot
 
     public static void Parallax_Render(On.Celeste.Parallax.orig_Render orig, Parallax self, Scene scene)
     {
-        if (HiresRenderer.Instance is not { } renderer || scene is not Level level || renderer.RenderBackgroundHires)
+        if (HiresRenderer.Instance is not { } renderer || scene is not Level level || MotionSmoothingModule.Settings.RenderBackgroundHires)
         {
             orig(self, scene);
             return;

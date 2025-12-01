@@ -30,8 +30,6 @@ public class HiresRenderer : Renderer
     public bool UseModifiedBlur = true;
     public bool DisableFloorFunctions = false;
 
-    public bool RenderBackgroundHires = true;
-
     private static VirtualRenderTarget OriginalLevelBuffer = null;
     private static VirtualRenderTarget OriginalTempABuffer = null;
 
