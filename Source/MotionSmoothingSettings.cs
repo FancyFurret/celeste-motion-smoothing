@@ -42,7 +42,7 @@ public class MotionSmoothingSettings : EverestModuleSettings
     private int _frameRate = 120;
     private int _preferredFrameRate = 120;
     private UnlockCameraStrategy _unlockCameraStrategy = UnlockCameraStrategy.Hires;
-    private bool _renderBackgroundHires;
+    private bool _renderBackgroundHires = true;
     private UnlockCameraMode _unlockCameraMode = UnlockCameraMode.Extend;
     private SmoothingMode _smoothingMode = SmoothingMode.Extrapolate;
     private UpdateMode _updateMode = UpdateMode.Interval;
@@ -190,7 +190,7 @@ public class MotionSmoothingSettings : EverestModuleSettings
     {
         _renderBackgroundHiresItem = new TextMenu.OnOff(
             "Render Background Hires",
-            true
+            _renderBackgroundHires
         );
 
         (_renderBackgroundHiresItem as TextMenu.OnOff).Change(value =>
