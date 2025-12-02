@@ -63,7 +63,7 @@ public class HiresRenderer : Renderer
 
     public static void EnableLargeLevelBuffer()
     {
-        if (Instance == null)
+        if (Instance == null || GameplayBuffers.Level == Instance.LargeLevelBuffer)
         {
             return;
         }
@@ -82,7 +82,7 @@ public class HiresRenderer : Renderer
 
     public static void EnableLargeTempABuffer()
     {
-        if (Instance == null)
+        if (Instance == null || GameplayBuffers.TempA == Instance.LargeTempABuffer)
         {
             return;
         }
