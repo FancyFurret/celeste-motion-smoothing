@@ -74,7 +74,7 @@ public class HiresRenderer : Renderer
 
     public static void DisableLargeLevelBuffer()
     {
-        if (OriginalLevelBuffer == null ) { return; }
+        if (OriginalLevelBuffer == null) { return; }
 
         GameplayBuffers.Level = OriginalLevelBuffer;
         OriginalLevelBuffer = null;
@@ -130,6 +130,13 @@ public class HiresRenderer : Renderer
         if (Instance != null)
         {
             Instance.LargeLevelBuffer?.Dispose();
+            Instance.LargeGameplayBuffer?.Dispose();
+            Instance.LargeDisplacementBuffer?.Dispose();
+            Instance.LargeDisplacedGameplayBuffer?.Dispose();
+            Instance.LargeTempABuffer?.Dispose();
+            Instance.LargeTempBBuffer?.Dispose();
+
+            Instance.SmallLevelBuffer?.Dispose();
 
             Instance = null;
         }

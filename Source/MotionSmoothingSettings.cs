@@ -168,8 +168,8 @@ public class MotionSmoothingSettings : EverestModuleSettings
             "half a pixel could be shown on the side of the screen.\n" +
             "This makes slow camera movements look *MUCH* smoother.\n\n" +
             "Hires: Changes level rendering to be at a higher internal\n" +
-            "resolution. Usually has the fewest visual glitches, but may\n" +
-            "not work in modded maps that use a large number of helpers\n\n" +
+            "resolution. Usually has the fewest visual disturbances, but may\n" +
+            "not work in modded maps that use a large number of helpers.\n\n" +
             "Unlock: lets the camera move without changing the rendering\n" +
             "pipeline. Has the highest compatibility, but makes the entire\n" +
             "background jitter when moving."

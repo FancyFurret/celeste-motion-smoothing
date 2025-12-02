@@ -505,15 +505,24 @@ public class UnlockedCameraSmootherHires : ToggleableFeature<UnlockedCameraSmoot
 
     private static void AfterLevelClear(Level level)
     {
-        if (HiresRenderer.Instance is not { } renderer || !MotionSmoothingModule.Settings.RenderBackgroundHires)
+        if (HiresRenderer.Instance is not { } renderer)
         {
             return;
         }
 
-        renderer.DisableFloorFunctions = true;
-        renderer.FixMatrices = true;
-        renderer.FixMatricesWithoutOffset = false;
-        SmoothCameraPosition(level);
+        if (MotionSmoothingModule.Settings.RenderBackgroundHires)
+        {
+            renderer.DisableFloorFunctions = true;
+            renderer.FixMatrices = true;
+            renderer.FixMatricesWithoutOffset = false;
+            SmoothCameraPosition(level);
+        }
+
+        else
+        {
+            renderer.DisableFloorFunctions = false;
+            renderer.FixMatrices = false;
+        }
     }
 
     private static void BeforeDistortRender(Level level)
@@ -892,7 +901,6 @@ public class UnlockedCameraSmootherHires : ToggleableFeature<UnlockedCameraSmoot
         // Go to the large level buffer for compositing time.
         Engine.Instance.GraphicsDevice.SetRenderTarget(renderer.LargeLevelBuffer);
         Engine.Instance.GraphicsDevice.Clear(Color.Transparent);
-
         // Draw the background upscaled out of GameplayBuffers.Level
         Draw.SpriteBatch.Begin(SpriteSortMode.Immediate, BlendState.Opaque, SamplerState.PointClamp, DepthStencilState.None, RasterizerState.CullNone, null, renderer.ScaleMatrix);
         // Draw the non-parallax one backgrounds upscaled
