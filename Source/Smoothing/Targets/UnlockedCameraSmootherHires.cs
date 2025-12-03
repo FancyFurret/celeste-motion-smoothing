@@ -51,6 +51,7 @@ public class UnlockedCameraSmootherHires : ToggleableFeature<UnlockedCameraSmoot
         On.Celeste.GaussianBlur.Blur += GaussianBlur_Blur;
 
         On.Celeste.BackdropRenderer.Render += BackdropRenderer_Render;
+		On.Celeste.Godrays.Update += Godrays_Update;
 
         IL.Celeste.Glitch.Apply += GlitchApplyHook;
 
@@ -102,6 +103,7 @@ public class UnlockedCameraSmootherHires : ToggleableFeature<UnlockedCameraSmoot
         IL.Celeste.Glitch.Apply -= GlitchApplyHook;
 
         On.Celeste.Parallax.Render -= Parallax_Render;
+		On.Celeste.Godrays.Update -= Godrays_Update;
 
         On.Celeste.HudRenderer.RenderContent -= HudRenderer_RenderContent;
 
@@ -971,6 +973,69 @@ public class UnlockedCameraSmootherHires : ToggleableFeature<UnlockedCameraSmoot
 
         Engine.Instance.GraphicsDevice.SetRenderTarget(GameplayBuffers.Level);
     }
+
+
+
+	private static void Godrays_Update(On.Celeste.Godrays.orig_Update orig, Godrays self, Scene scene)
+	{
+		if (HiresRenderer.Instance is not { } renderer)
+		{
+			orig(self, scene);
+			return;
+		}
+
+		Level level = scene as Level;
+		bool flag = self.IsVisible(level);
+		self.fade = Calc.Approach(self.fade, (float)(flag ? 1 : 0), Engine.DeltaTime);
+		self.Visible = (self.fade > 0f);
+		if (!self.Visible)
+		{
+			return;
+		}
+		Player entity = level.Tracker.GetEntity<Player>();
+		Vector2 vector = Calc.AngleToVector(-1.6707964f, 1f);
+		Vector2 value = new Vector2(-vector.Y, vector.X);
+		int num = 0;
+		for (int i = 0; i < self.rays.Length; i++)
+		{
+			if (self.rays[i].Percent >= 1f)
+			{
+				self.rays[i].Reset();
+			}
+			Godrays.Ray[] array = self.rays;
+			int num2 = i;
+			array[num2].Percent = array[num2].Percent + Engine.DeltaTime / self.rays[i].Duration;
+			Godrays.Ray[] array2 = self.rays;
+			int num3 = i;
+			array2[num3].Y = array2[num3].Y + 8f * Engine.DeltaTime;
+			float percent = self.rays[i].Percent;
+			float num4 = -32f + self.Mod(self.rays[i].X - level.Camera.X * 0.9f, 384f);
+			float num5 = -32f + self.Mod(self.rays[i].Y - level.Camera.Y * 0.9f, 244f);
+			float width = self.rays[i].Width;
+			float length = self.rays[i].Length;
+			Vector2 value2 = new Vector2(num4, num5); // Removed casting
+			Color color = self.rayColor * Ease.CubeInOut(Calc.Clamp(((percent < 0.5f) ? percent : (1f - percent)) * 2f, 0f, 1f)) * self.fade;
+			if (entity != null)
+			{
+				float num6 = (value2 + level.Camera.Position - entity.Position).Length();
+				if (num6 < 64f)
+				{
+					color *= 0.25f + 0.75f * (num6 / 64f);
+				}
+			}
+			VertexPositionColor vertexPositionColor = new VertexPositionColor(new Vector3(value2 + value * width + vector * length, 0f), color);
+			VertexPositionColor vertexPositionColor2 = new VertexPositionColor(new Vector3(value2 - value * width, 0f), color);
+			VertexPositionColor vertexPositionColor3 = new VertexPositionColor(new Vector3(value2 + value * width, 0f), color);
+			VertexPositionColor vertexPositionColor4 = new VertexPositionColor(new Vector3(value2 - value * width - vector * length, 0f), color);
+			self.vertices[num++] = vertexPositionColor;
+			self.vertices[num++] = vertexPositionColor2;
+			self.vertices[num++] = vertexPositionColor3;
+			self.vertices[num++] = vertexPositionColor2;
+			self.vertices[num++] = vertexPositionColor3;
+			self.vertices[num++] = vertexPositionColor4;
+		}
+		self.vertexCount = num;
+	}
 
 
 
