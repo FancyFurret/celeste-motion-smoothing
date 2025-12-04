@@ -44,8 +44,8 @@ public class UnlockedCameraSmootherHires : ToggleableFeature<UnlockedCameraSmoot
     {
         base.Hook();
 
-        On.Celeste.Level.Render += Level_Render;
-        // IL.Celeste.Level.Render += LevelRenderHook;
+        // On.Celeste.Level.Render += Level_Render;
+        IL.Celeste.Level.Render += LevelRenderHook;
 
         IL.Celeste.BloomRenderer.Apply += BloomRendererApplyHook;
         On.Celeste.GaussianBlur.Blur += GaussianBlur_Blur;
@@ -92,8 +92,8 @@ public class UnlockedCameraSmootherHires : ToggleableFeature<UnlockedCameraSmoot
     {
         base.Unhook();
 
-        On.Celeste.Level.Render -= Level_Render;
-        // IL.Celeste.Level.Render -= LevelRenderHook;
+        // On.Celeste.Level.Render -= Level_Render;
+        IL.Celeste.Level.Render -= LevelRenderHook;
 
         IL.Celeste.BloomRenderer.Apply -= BloomRendererApplyHook;
         On.Celeste.GaussianBlur.Blur -= GaussianBlur_Blur;
@@ -584,6 +584,9 @@ public class UnlockedCameraSmootherHires : ToggleableFeature<UnlockedCameraSmoot
 
 		renderer.FixMatrices = true;
 
+		Engine.Instance.GraphicsDevice.SetRenderTarget(renderer.LargeGameplayBuffer);
+		Engine.Instance.GraphicsDevice.Clear(Color.Transparent);
+
 		Engine.Instance.GraphicsDevice.SetRenderTarget(renderer.SmallLevelBuffer);
 		Engine.Instance.GraphicsDevice.Clear(Color.Transparent);
 		GameplayRenderer.Begin();
@@ -597,7 +600,7 @@ public class UnlockedCameraSmootherHires : ToggleableFeature<UnlockedCameraSmoot
 					// Render the things below the player
 					GameplayRenderer.End();
 
-					Engine.Instance.GraphicsDevice.SetRenderTarget(renderer.LargeLevelBuffer);
+					Engine.Instance.GraphicsDevice.SetRenderTarget(renderer.LargeGameplayBuffer);
 
 					Draw.SpriteBatch.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend, SamplerState.PointClamp, DepthStencilState.None, RasterizerState.CullNone, null, Matrix.Identity);
 					Draw.SpriteBatch.Draw(renderer.SmallLevelBuffer, Vector2.Zero, Color.White);
@@ -626,7 +629,7 @@ public class UnlockedCameraSmootherHires : ToggleableFeature<UnlockedCameraSmoot
 						float.Epsilon)
 						offset.Y = 0;
 
-					Engine.Instance.GraphicsDevice.SetRenderTarget(renderer.LargeLevelBuffer);
+					Engine.Instance.GraphicsDevice.SetRenderTarget(renderer.LargeGameplayBuffer);
 					Draw.SpriteBatch.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend, SamplerState.PointClamp, DepthStencilState.None, RasterizerState.CullNone, null, Matrix.Identity);
 					Draw.SpriteBatch.Draw(renderer.SmallLevelBuffer, offset, Color.White);
 					Draw.SpriteBatch.End();
@@ -648,13 +651,23 @@ public class UnlockedCameraSmootherHires : ToggleableFeature<UnlockedCameraSmoot
 
 		// Draw the stuff on top of Madeline
 
-		Engine.Instance.GraphicsDevice.SetRenderTarget(renderer.LargeLevelBuffer);
-
+		Engine.Instance.GraphicsDevice.SetRenderTarget(renderer.LargeGameplayBuffer);
+	
         Draw.SpriteBatch.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend, SamplerState.PointClamp, DepthStencilState.None, RasterizerState.CullNone, null, Matrix.Identity);
         Draw.SpriteBatch.Draw(renderer.SmallLevelBuffer, Vector2.Zero, Color.White);
         Draw.SpriteBatch.End();
 
+		level.Lighting.Render(level);
+
+
+
 		renderer.FixMatrices = false;
+
+		Engine.Instance.GraphicsDevice.SetRenderTarget(renderer.LargeLevelBuffer);
+
+        Draw.SpriteBatch.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend, SamplerState.PointClamp, DepthStencilState.None, RasterizerState.CullNone, null, Matrix.Identity);
+        Draw.SpriteBatch.Draw(renderer.LargeGameplayBuffer, Vector2.Zero, Color.White);
+        Draw.SpriteBatch.End();
     }
 
     private static void AfterBloomApply(Level level)
@@ -1259,7 +1272,7 @@ public class UnlockedCameraSmootherHires : ToggleableFeature<UnlockedCameraSmoot
         }
 
         // Otherwise, only modify the matrix if we're rendering to the one buffer that's bigger than things expect.
-        else if (currentRenderTarget == renderer.LargeLevelBuffer.Target)
+        else if (currentRenderTarget == renderer.LargeLevelBuffer.Target || currentRenderTarget == renderer.LargeGameplayBuffer.Target)
         {
             if (renderer.FixMatricesWithoutOffset)
             {
