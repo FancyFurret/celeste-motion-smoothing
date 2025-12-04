@@ -44,9 +44,9 @@ public class UnlockedCameraSmootherHires : ToggleableFeature<UnlockedCameraSmoot
     {
         base.Hook();
 
-        // On.Celeste.Level.Render += Level_Render;
-        IL.Celeste.Level.Render += LevelRenderHook;
-        //On.Celeste.BloomRenderer.Apply += BloomRenderer_Apply;
+        On.Celeste.Level.Render += Level_Render;
+        // IL.Celeste.Level.Render += LevelRenderHook;
+
         IL.Celeste.BloomRenderer.Apply += BloomRendererApplyHook;
         On.Celeste.GaussianBlur.Blur += GaussianBlur_Blur;
 
@@ -56,6 +56,8 @@ public class UnlockedCameraSmootherHires : ToggleableFeature<UnlockedCameraSmoot
         IL.Celeste.Glitch.Apply += GlitchApplyHook;
 
         On.Celeste.Parallax.Render += Parallax_Render;
+
+		On.Celeste.Player.Render += Player_Render;
 
         On.Celeste.HudRenderer.RenderContent += HudRenderer_RenderContent;
 
@@ -92,9 +94,9 @@ public class UnlockedCameraSmootherHires : ToggleableFeature<UnlockedCameraSmoot
     {
         base.Unhook();
 
-        // On.Celeste.Level.Render -= Level_Render;
-        IL.Celeste.Level.Render -= LevelRenderHook;
-        //On.Celeste.BloomRenderer.Apply -= BloomRenderer_Apply;
+        On.Celeste.Level.Render -= Level_Render;
+        // IL.Celeste.Level.Render -= LevelRenderHook;
+
         IL.Celeste.BloomRenderer.Apply -= BloomRendererApplyHook;
         On.Celeste.GaussianBlur.Blur -= GaussianBlur_Blur;
 
@@ -104,6 +106,8 @@ public class UnlockedCameraSmootherHires : ToggleableFeature<UnlockedCameraSmoot
 
         On.Celeste.Parallax.Render -= Parallax_Render;
 		On.Celeste.Godrays.Update -= Godrays_Update;
+
+		On.Celeste.Player.Render -= Player_Render;
 
         On.Celeste.HudRenderer.RenderContent -= HudRenderer_RenderContent;
 
@@ -582,35 +586,40 @@ public class UnlockedCameraSmootherHires : ToggleableFeature<UnlockedCameraSmoot
     {
         if (HiresRenderer.Instance is not { } renderer) return;
 
-        Engine.Instance.GraphicsDevice.SetRenderTarget(renderer.LargeDisplacedGameplayBuffer);
-        Engine.Instance.GraphicsDevice.Clear(Color.Transparent);
-
-        Draw.SpriteBatch.Begin(SpriteSortMode.Immediate, BlendState.AlphaBlend, SamplerState.PointClamp, DepthStencilState.None, RasterizerState.CullNone, null, renderer.ScaleMatrix);
-        Draw.SpriteBatch.Draw(renderer.SmallLevelBuffer, Vector2.Zero, Color.White);
-        Draw.SpriteBatch.End();
+		renderer.FixMatrices = true;
 
         Engine.Instance.GraphicsDevice.SetRenderTarget(renderer.LargeLevelBuffer);
 
-        Vector2 offset = GetCameraOffset() * 6f;
-
         Draw.SpriteBatch.Begin(SpriteSortMode.Immediate, BlendState.AlphaBlend, SamplerState.PointClamp, DepthStencilState.None, RasterizerState.CullNone, null, Matrix.Identity);
-        Draw.SpriteBatch.Draw(renderer.LargeDisplacedGameplayBuffer, offset, Color.White);
-
-        //These are necessary even with the zoom to ensure that the bloom doesn't show through from the background on the edges
-        Draw.SpriteBatch.Draw(
-           renderer.LargeDisplacedGameplayBuffer,
-           offset + new Vector2(1920f, 0f),
-           new Rectangle(1920 - 6, 0, 6, 1080),
-           Color.White
-       );
-        Draw.SpriteBatch.Draw(
-            renderer.LargeDisplacedGameplayBuffer,
-            offset + new Vector2(0f, 1080f),
-            new Rectangle(0, 1080 - 6, 1920, 6),
-            Color.White
-        );
+        Draw.SpriteBatch.Draw(renderer.SmallLevelBuffer, Vector2.Zero, Color.White);
 
         Draw.SpriteBatch.End();
+
+
+
+		Engine.Instance.GraphicsDevice.SetRenderTarget(renderer.SmallLevelBuffer);
+		Engine.Instance.GraphicsDevice.Clear(Color.Transparent);
+
+		GameplayRenderer.Begin();
+		storedPlayerRenderOrig(storedPlayer);
+		GameplayRenderer.End();
+
+		Vector2 offset = storedPlayer.ExactPosition - storedPlayer.Sprite.RenderPosition;
+
+		var state = MotionSmoothingHandler.Instance.GetState(storedPlayer) as IPositionSmoothingState;
+		if (state == null || Math.Abs(state.RealPositionHistory[0].X - state.RealPositionHistory[1].X) <
+			float.Epsilon)
+			offset.X = 0;
+		if (state == null || Math.Abs(state.RealPositionHistory[0].Y - state.RealPositionHistory[1].Y) <
+			float.Epsilon)
+			offset.Y = 0;
+
+		Engine.Instance.GraphicsDevice.SetRenderTarget(renderer.LargeLevelBuffer);
+        Draw.SpriteBatch.Begin(SpriteSortMode.Immediate, BlendState.AlphaBlend, SamplerState.PointClamp, DepthStencilState.None, RasterizerState.CullNone, null, Matrix.Identity);
+        Draw.SpriteBatch.Draw(renderer.SmallLevelBuffer, offset, Color.White);
+        Draw.SpriteBatch.End();
+
+		renderer.FixMatrices = false;
     }
 
     private static void AfterBloomApply(Level level)
@@ -1067,6 +1076,26 @@ public class UnlockedCameraSmootherHires : ToggleableFeature<UnlockedCameraSmoot
 
         orig(self, scene);
     }
+
+	
+
+	private static On.Celeste.Player.orig_Render storedPlayerRenderOrig;
+	private static Player storedPlayer;
+
+	public static void Player_Render(On.Celeste.Player.orig_Render orig, Player self)
+	{
+		if (HiresRenderer.Instance is not { } renderer)
+		{
+			orig(self);
+			return;
+		}
+
+		storedPlayerRenderOrig ??= orig;
+		storedPlayer = self;
+		return;
+	}
+
+
 
     public static void HudRenderer_RenderContent(On.Celeste.HudRenderer.orig_RenderContent orig, HudRenderer self, Scene scene)
     {

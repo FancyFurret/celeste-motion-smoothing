@@ -13,7 +13,6 @@ public class HiresRenderer : Renderer
 
     public VirtualRenderTarget LargeGameplayBuffer { get; }
     public VirtualRenderTarget LargeDisplacementBuffer { get; }
-    public VirtualRenderTarget LargeDisplacedGameplayBuffer { get; }
     public VirtualRenderTarget LargeLevelBuffer { get; }
     public VirtualRenderTarget LargeTempABuffer { get; }
     public VirtualRenderTarget LargeTempBBuffer { get; }
@@ -36,7 +35,6 @@ public class HiresRenderer : Renderer
     public HiresRenderer(
         VirtualRenderTarget largeGameplayBuffer,
         VirtualRenderTarget largeDisplacementBuffer,
-        VirtualRenderTarget largeDisplacedGameplayBuffer,
         VirtualRenderTarget largeLevelBuffer,
         VirtualRenderTarget largeTempABuffer,
         VirtualRenderTarget largeTempBBuffer,
@@ -44,7 +42,6 @@ public class HiresRenderer : Renderer
     ) {
         LargeGameplayBuffer = largeGameplayBuffer;
         LargeDisplacementBuffer = largeDisplacementBuffer;
-        LargeDisplacedGameplayBuffer = largeDisplacedGameplayBuffer;
         LargeLevelBuffer = largeLevelBuffer;
         LargeTempABuffer = largeTempABuffer;
         LargeTempBBuffer = largeTempBBuffer;
@@ -111,7 +108,6 @@ public class HiresRenderer : Renderer
             GameplayBuffers.Create(1920, 1080),
             GameplayBuffers.Create(1920, 1080),
             GameplayBuffers.Create(1920, 1080),
-            GameplayBuffers.Create(1920, 1080),
 
             GameplayBuffers.Create(320, 180)
         );
@@ -132,7 +128,6 @@ public class HiresRenderer : Renderer
             Instance.LargeLevelBuffer?.Dispose();
             Instance.LargeGameplayBuffer?.Dispose();
             Instance.LargeDisplacementBuffer?.Dispose();
-            Instance.LargeDisplacedGameplayBuffer?.Dispose();
             Instance.LargeTempABuffer?.Dispose();
             Instance.LargeTempBBuffer?.Dispose();
 
