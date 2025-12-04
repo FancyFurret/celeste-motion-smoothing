@@ -18,6 +18,9 @@ public class UnlockedCameraSmootherHires : ToggleableFeature<UnlockedCameraSmoot
     private const float ZoomScaleMultiplier = 181f / 180f;
     private const int HiresPixelSize = 1080 / 180;
 
+	private static Effect _fxHiresDistort;
+	private static Effect _fxOrigDistort;
+
 
     private static Vector2 SmoothedCameraPosition;
     private static Matrix SmoothedCameraMatrix;
@@ -32,12 +35,36 @@ public class UnlockedCameraSmootherHires : ToggleableFeature<UnlockedCameraSmoot
     public override void Load()
     {
         base.Load();
+
+		On.Celeste.GFX.LoadEffects += GfxLoadEffectsHook;
     }
 
     public override void Unload()
     {
         base.Unload();
+
+		DisableHiresDistort();
+		_fxHiresDistort.Dispose();
+        On.Celeste.GFX.LoadEffects -= GfxLoadEffectsHook;
     }
+
+	private static void GfxLoadEffectsHook(On.Celeste.GFX.orig_LoadEffects orig)
+    {
+        orig();
+        _fxHiresDistort = new Effect(Engine.Graphics.GraphicsDevice,
+            Everest.Content.Get("MotionSmoothing:/Effects/HiresDistort.cso").Data);
+		_fxOrigDistort = GFX.FxDistort;
+	}
+
+	public static void EnableHiresDistort()
+	{
+        GFX.FxDistort = _fxHiresDistort;
+	}
+
+	public static void DisableHiresDistort()
+	{
+        GFX.FxDistort = _fxOrigDistort;
+	}
 
 
     protected override void Hook()
@@ -87,6 +114,11 @@ public class UnlockedCameraSmootherHires : ToggleableFeature<UnlockedCameraSmoot
         AddHook(new Hook(typeof(Calc).GetMethod(nameof(Calc.Floor), new[] { typeof(Vector2) })!, FloorHook));
         AddHook(new Hook(typeof(Calc).GetMethod(nameof(Calc.Ceiling), new[] { typeof(Vector2) })!, CeilingHook));
         AddHook(new Hook(typeof(Calc).GetMethod(nameof(Calc.Round), new[] { typeof(Vector2) })!, RoundHook));
+
+		if (MotionSmoothingModule.Settings.RenderMadelineWithSubpixels)
+		{
+			EnableHiresDistort();
+		}
     }
 
     protected override void Unhook()
@@ -120,6 +152,7 @@ public class UnlockedCameraSmootherHires : ToggleableFeature<UnlockedCameraSmoot
             hook.Dispose();
 
         HiresRenderer.DisableLargeLevelBuffer();
+		DisableHiresDistort();
     }
 
     private static void Scene_Begin(On.Monocle.Scene.orig_Begin orig, Scene self)
@@ -600,7 +633,7 @@ public class UnlockedCameraSmootherHires : ToggleableFeature<UnlockedCameraSmoot
             return;
         }
 
-		renderer.FixMatrices = true;
+
 
 		Engine.Instance.GraphicsDevice.SetRenderTarget(renderer.LargeGameplayBuffer);
 		Engine.Instance.GraphicsDevice.Clear(Color.Transparent);
@@ -620,7 +653,7 @@ public class UnlockedCameraSmootherHires : ToggleableFeature<UnlockedCameraSmoot
 
 					Engine.Instance.GraphicsDevice.SetRenderTarget(renderer.LargeGameplayBuffer);
 
-					Draw.SpriteBatch.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend, SamplerState.PointClamp, DepthStencilState.None, RasterizerState.CullNone, null, Matrix.Identity);
+					Draw.SpriteBatch.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend, SamplerState.PointClamp, DepthStencilState.None, RasterizerState.CullNone, null, renderer.ScaleMatrix);
 					Draw.SpriteBatch.Draw(renderer.SmallLevelBuffer, Vector2.Zero, Color.White);
 					Draw.SpriteBatch.End();
 
@@ -648,7 +681,7 @@ public class UnlockedCameraSmootherHires : ToggleableFeature<UnlockedCameraSmoot
 						offset.Y = 0;
 
 					Engine.Instance.GraphicsDevice.SetRenderTarget(renderer.LargeGameplayBuffer);
-					Draw.SpriteBatch.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend, SamplerState.PointClamp, DepthStencilState.None, RasterizerState.CullNone, null, Matrix.Identity);
+					Draw.SpriteBatch.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend, SamplerState.PointClamp, DepthStencilState.None, RasterizerState.CullNone, null, renderer.ScaleMatrix);
 					Draw.SpriteBatch.Draw(renderer.SmallLevelBuffer, offset, Color.White);
 					Draw.SpriteBatch.End();
 					
@@ -671,11 +704,13 @@ public class UnlockedCameraSmootherHires : ToggleableFeature<UnlockedCameraSmoot
 
 		Engine.Instance.GraphicsDevice.SetRenderTarget(renderer.LargeGameplayBuffer);
 	
-        Draw.SpriteBatch.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend, SamplerState.PointClamp, DepthStencilState.None, RasterizerState.CullNone, null, Matrix.Identity);
+        Draw.SpriteBatch.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend, SamplerState.PointClamp, DepthStencilState.None, RasterizerState.CullNone, null, renderer.ScaleMatrix);
         Draw.SpriteBatch.Draw(renderer.SmallLevelBuffer, Vector2.Zero, Color.White);
         Draw.SpriteBatch.End();
 
+		renderer.FixMatrices = true;
 		level.Lighting.Render(level);
+		renderer.FixMatrices = false;
 
 
 
@@ -701,7 +736,7 @@ public class UnlockedCameraSmootherHires : ToggleableFeature<UnlockedCameraSmoot
 		Engine.Instance.GraphicsDevice.SetRenderTarget(renderer.LargeLevelBuffer);
 
         Draw.SpriteBatch.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend, SamplerState.PointClamp, DepthStencilState.None, RasterizerState.CullNone, null, Matrix.Identity);
-        Draw.SpriteBatch.Draw(renderer.LargeTempBBuffer, Vector2.Zero, Color.White);
+        Draw.SpriteBatch.Draw(renderer.LargeTempBBuffer, GetCameraOffset() * 6f, Color.White);
         Draw.SpriteBatch.End();
     }
 

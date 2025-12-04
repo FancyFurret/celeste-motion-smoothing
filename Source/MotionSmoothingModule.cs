@@ -170,6 +170,16 @@ public class MotionSmoothingModule : EverestModule
         {
             UnlockedCameraSmoother.Disable();
             UnlockedCameraSmootherHires.Enable();
+
+			if (Settings.RenderMadelineWithSubpixels)
+			{
+				UnlockedCameraSmootherHires.EnableHiresDistort();
+			}
+
+			else
+			{
+				UnlockedCameraSmootherHires.DisableHiresDistort();
+			}
         }
 
         else if (Settings.UnlockCameraStrategy == UnlockCameraStrategy.Unlock)
