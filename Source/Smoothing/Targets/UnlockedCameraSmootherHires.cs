@@ -671,14 +671,16 @@ public class UnlockedCameraSmootherHires : ToggleableFeature<UnlockedCameraSmoot
 					GameplayRenderer.End();
 
 					Vector2 offset = player.ExactPosition - player.Sprite.RenderPosition;
-
-					var state = MotionSmoothingHandler.Instance.GetState(player) as IPositionSmoothingState;
-					if (state == null || Math.Abs(state.RealPositionHistory[0].X - state.RealPositionHistory[1].X) <
-						float.Epsilon)
+	
+					if (Math.Abs(player.Speed.X) < float.Epsilon)
+					{
 						offset.X = 0;
-					if (state == null || Math.Abs(state.RealPositionHistory[0].Y - state.RealPositionHistory[1].Y) <
-						float.Epsilon)
+					}
+
+					if (Math.Abs(player.Speed.Y) < float.Epsilon)
+					{
 						offset.Y = 0;
+					}
 
 					Engine.Instance.GraphicsDevice.SetRenderTarget(renderer.LargeGameplayBuffer);
 					Draw.SpriteBatch.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend, SamplerState.PointClamp, DepthStencilState.None, RasterizerState.CullNone, null, renderer.ScaleMatrix);
@@ -709,8 +711,10 @@ public class UnlockedCameraSmootherHires : ToggleableFeature<UnlockedCameraSmoot
         Draw.SpriteBatch.End();
 
 		renderer.FixMatrices = true;
+        renderer.FixMatricesWithoutOffset = true;
 		level.Lighting.Render(level);
 		renderer.FixMatrices = false;
+        renderer.FixMatricesWithoutOffset = false;
 
 
 

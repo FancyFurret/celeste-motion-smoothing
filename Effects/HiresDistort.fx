@@ -36,17 +36,27 @@ uniform float waterAlpha = 1.0;
 
 float2 GetDisplacement(float2 texcoord)
 {
-    texcoord = float2(floor(texcoord.x * 320.0) / 320.0, floor(texcoord.y * 180.0) / 180.0);
+    float2 pixelatedTexcoord = float2(floor(texcoord.x * 320.0) / 320.0 + 0.5 / 320.0, floor(texcoord.y * 180.0) / 180.0 + 0.5 / 180.0);
 
     // normal displacement
-    float4 displacementPixel = SAMPLE_TEXTURE(map, texcoord);
-    float2 position = texcoord;
+    float4 displacementPixel = SAMPLE_TEXTURE(map, pixelatedTexcoord);
+    float shift = waterAlpha * sin((pixelatedTexcoord.y * 180.0 + waterCameraY) * 0.3 - waterSine * displacementPixel.b) * 0.004;
+
+    if (
+        abs((displacementPixel.r * 2.0 - 1.0) * 0.044) < 0.1 / 320.0
+        && abs((displacementPixel.g * 2.0 - 1.0) * 0.078) < 0.1 / 180.0
+        && abs(shift * ceil(displacementPixel.b)) < 0.1 / 320.0
+    ) {
+        displacementPixel = float4(0.5, 0.5, 0.0, 0.0);
+        pixelatedTexcoord = texcoord;
+    }
+
+    float2 position = pixelatedTexcoord;
     position.x += (displacementPixel.r * 2.0 - 1.0) * 0.044;
     position.y += (displacementPixel.g * 2.0 - 1.0) * 0.078;
 
     // water shifting stuff
     // amount of BLUE describes how FAST it should wave (range 0.0 -> 1.0)
-    float shift = waterAlpha * sin((texcoord.y * 180.0 + waterCameraY) * 0.3 - waterSine * displacementPixel.b) * 0.004;
     position.x += shift * ceil(displacementPixel.b);
 
     return position;
@@ -93,7 +103,7 @@ technique Distort
 {
     pass
     {
-        PixelShader = compile PS_2_SHADER_COMPILER PS_Distort();
+        PixelShader = compile PS_3_SHADER_COMPILER PS_Distort();
     }
 }
 
@@ -101,6 +111,6 @@ technique Displace
 {
     pass
     {
-        PixelShader = compile PS_2_SHADER_COMPILER PS_Displace();
+        PixelShader = compile PS_3_SHADER_COMPILER PS_Displace();
     }
 }

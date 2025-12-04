@@ -43,7 +43,7 @@ public class MotionSmoothingSettings : EverestModuleSettings
     private int _preferredFrameRate = 120;
     private UnlockCameraStrategy _unlockCameraStrategy = UnlockCameraStrategy.Hires;
     private bool _renderBackgroundHires = true;
-    private bool _renderMadelineWithSubpixels = true;
+    private bool _renderMadelineWithSubpixels = false;
     private UnlockCameraMode _unlockCameraMode = UnlockCameraMode.Extend;
     private SmoothingMode _smoothingMode = SmoothingMode.Extrapolate;
     private UpdateMode _updateMode = UpdateMode.Interval;
@@ -123,7 +123,7 @@ public class MotionSmoothingSettings : EverestModuleSettings
     // ReSharper disable once UnusedMember.Global
     public void CreateFrameRateEntry(TextMenu menu, bool _)
     {
-        _frameRateMenuItem = new FrameRateTextMenuItem("Frame Rate", 60, 480, FrameRate);
+        _frameRateMenuItem = new FrameRateTextMenuItem("Framerate", 60, 480, FrameRate);
         _frameRateMenuItem.Change(fps => FrameRate = fps);
        
         if (!_enabled)
