@@ -43,6 +43,7 @@ public class MotionSmoothingSettings : EverestModuleSettings
     private int _preferredFrameRate = 120;
     private UnlockCameraStrategy _unlockCameraStrategy = UnlockCameraStrategy.Hires;
     private bool _renderBackgroundHires = true;
+    private bool _renderMadelineWithSubpixels = true;
     private UnlockCameraMode _unlockCameraMode = UnlockCameraMode.Extend;
     private SmoothingMode _smoothingMode = SmoothingMode.Extrapolate;
     private UpdateMode _updateMode = UpdateMode.Interval;
@@ -55,6 +56,7 @@ public class MotionSmoothingSettings : EverestModuleSettings
     private TextMenu.Item _unlockCameraModeItem;
 
     private TextMenu.Item _renderBackgroundHiresItem;
+    private TextMenu.Item _renderMadelineWithSubpixelsItem;
 
     public bool Enabled
     {
@@ -209,8 +211,48 @@ public class MotionSmoothingSettings : EverestModuleSettings
             menu,
             "Only applies if Smooth Camera is set to Hires. Determines\n" +
             "whether the background is drawn at a 6x scale. This makes\n" +
-            "for a much smoother result (particularly with parallax),\n" +
-            "but it may not be desirable."
+            "for a much smoother result (particularly with parallax)."
+        );
+    }
+
+
+
+    public bool RenderMadelineWithSubpixels
+    {
+        get => _renderMadelineWithSubpixels;
+        set
+        {
+            _renderMadelineWithSubpixels = value;
+            MotionSmoothingModule.Instance.ApplySettings();
+        }
+    }
+
+    public void CreateRenderMadelineWithSubpixelsEntry(TextMenu menu, bool inGame)
+    {
+        _renderMadelineWithSubpixelsItem = new TextMenu.OnOff(
+            "Render Madeline at Subpixel Position",
+            _renderMadelineWithSubpixels
+        );
+
+        (_renderMadelineWithSubpixelsItem as TextMenu.OnOff).Change(value =>
+        {
+            RenderMadelineWithSubpixels = value;
+        });
+
+        // Set initial state based on UnlockCameraStrategy
+        bool shouldDisable = UnlockCameraStrategy != UnlockCameraStrategy.Hires;
+        _renderMadelineWithSubpixelsItem.Disabled = shouldDisable;
+        _renderMadelineWithSubpixelsItem.Selectable = !shouldDisable;
+
+        menu.Add(_renderMadelineWithSubpixelsItem);
+
+        _renderMadelineWithSubpixelsItem.AddDescription(
+            menu,
+            "Only applies if Smooth Camera is set to Hires. Determines\n" +
+            "whether Madeline is drawn at her exact subpixel position\n" +
+            "(i.e. offset from the pixel grid). When not moving, Madeline\n" +
+            "will always be drawn aligned to the grid, so that information\n" +
+            "about subpixels cannot be gleaned. This effect is minor.\n"
         );
     }
 

@@ -51,11 +51,12 @@ public class UnlockedCameraSmootherHires : ToggleableFeature<UnlockedCameraSmoot
         On.Celeste.GaussianBlur.Blur += GaussianBlur_Blur;
 
         On.Celeste.BackdropRenderer.Render += BackdropRenderer_Render;
-		On.Celeste.Godrays.Update += Godrays_Update;
-
+        On.Celeste.GameplayRenderer.Render += GameplayRenderer_Render;
+		
         IL.Celeste.Glitch.Apply += GlitchApplyHook;
 
         On.Celeste.Parallax.Render += Parallax_Render;
+        On.Celeste.Godrays.Update += Godrays_Update;
 
         On.Celeste.HudRenderer.RenderContent += HudRenderer_RenderContent;
 
@@ -99,6 +100,7 @@ public class UnlockedCameraSmootherHires : ToggleableFeature<UnlockedCameraSmoot
         On.Celeste.GaussianBlur.Blur -= GaussianBlur_Blur;
 
         On.Celeste.BackdropRenderer.Render -= BackdropRenderer_Render;
+        On.Celeste.GameplayRenderer.Render -= GameplayRenderer_Render;
 
         IL.Celeste.Glitch.Apply -= GlitchApplyHook;
 
@@ -582,6 +584,22 @@ public class UnlockedCameraSmootherHires : ToggleableFeature<UnlockedCameraSmoot
     {
         if (HiresRenderer.Instance is not { } renderer) return;
 
+        if (!MotionSmoothingModule.Settings.RenderMadelineWithSubpixels)
+        {
+            // Everything we need is already in renderer.SmallLevelBuffer, so just draw that in and get out.
+            renderer.FixMatrices = true;
+
+		    Engine.Instance.GraphicsDevice.SetRenderTarget(renderer.LargeLevelBuffer);
+
+            Draw.SpriteBatch.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend, SamplerState.PointClamp, DepthStencilState.None, RasterizerState.CullNone, null, Matrix.Identity);
+            Draw.SpriteBatch.Draw(renderer.SmallLevelBuffer, Vector2.Zero, Color.White);
+            Draw.SpriteBatch.End();
+
+            renderer.FixMatrices = false;
+
+            return;
+        }
+
 		renderer.FixMatrices = true;
 
 		Engine.Instance.GraphicsDevice.SetRenderTarget(renderer.LargeGameplayBuffer);
@@ -661,12 +679,29 @@ public class UnlockedCameraSmootherHires : ToggleableFeature<UnlockedCameraSmoot
 
 
 
+        // Now apply distortion. We use TempA for the nearest-neighbor scaled
+        // distortion buffer and TempB for the output.
+
+        Engine.Instance.GraphicsDevice.SetRenderTarget(renderer.LargeTempABuffer);
+        Engine.Instance.GraphicsDevice.Clear(Color.Transparent);
+	
+        Draw.SpriteBatch.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend, SamplerState.PointClamp, DepthStencilState.None, RasterizerState.CullNone, null, renderer.ScaleMatrix);
+        Draw.SpriteBatch.Draw(GameplayBuffers.Displacement, Vector2.Zero, Color.White);
+        Draw.SpriteBatch.End();
+
+        Engine.Instance.GraphicsDevice.SetRenderTarget(renderer.LargeTempBBuffer);
+        Engine.Instance.GraphicsDevice.Clear(Color.Transparent);
+
+		Distort.Render(renderer.LargeGameplayBuffer, renderer.LargeTempABuffer, level.Displacement.HasDisplacement(level));
+
+
+
 		renderer.FixMatrices = false;
 
 		Engine.Instance.GraphicsDevice.SetRenderTarget(renderer.LargeLevelBuffer);
 
         Draw.SpriteBatch.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend, SamplerState.PointClamp, DepthStencilState.None, RasterizerState.CullNone, null, Matrix.Identity);
-        Draw.SpriteBatch.Draw(renderer.LargeGameplayBuffer, Vector2.Zero, Color.White);
+        Draw.SpriteBatch.Draw(renderer.LargeTempBBuffer, Vector2.Zero, Color.White);
         Draw.SpriteBatch.End();
     }
 
@@ -768,15 +803,6 @@ public class UnlockedCameraSmootherHires : ToggleableFeature<UnlockedCameraSmoot
     }
 
 
-
-    
-
-    private static VirtualRenderTarget GetLargeDisplacementBuffer()
-    {
-        if (HiresRenderer.Instance is not { } renderer) return GameplayBuffers.Displacement;
-
-        return renderer.LargeDisplacementBuffer;
-    }
 
     private static VirtualRenderTarget GetLargeLevelBuffer()
     {
@@ -1031,6 +1057,17 @@ public class UnlockedCameraSmootherHires : ToggleableFeature<UnlockedCameraSmoot
         Engine.Instance.GraphicsDevice.SetRenderTarget(GameplayBuffers.Level);
     }
 
+    public static void GameplayRenderer_Render(On.Celeste.GameplayRenderer.orig_Render orig, GameplayRenderer self, Scene scene)
+    {
+        if (MotionSmoothingModule.Settings.RenderMadelineWithSubpixels)
+        {
+            // We do this ourselves in DrawDisplacedGameplayWithOffset, so no need to
+            // do duplicate work here.
+            return;
+        }
+
+        orig(self, scene);
+    }
 
 
 	private static void Godrays_Update(On.Celeste.Godrays.orig_Update orig, Godrays self, Scene scene)
