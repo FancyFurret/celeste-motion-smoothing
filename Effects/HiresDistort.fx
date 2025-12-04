@@ -43,8 +43,8 @@ float2 GetDisplacement(float2 texcoord)
     float shift = waterAlpha * sin((pixelatedTexcoord.y * 180.0 + waterCameraY) * 0.3 - waterSine * displacementPixel.b) * 0.004;
 
     if (
-        abs((displacementPixel.r * 2.0 - 1.0) * 0.044) < 0.1 / 320.0
-        && abs((displacementPixel.g * 2.0 - 1.0) * 0.078) < 0.1 / 180.0
+        abs((displacementPixel.r * 2.0 - 1.0) * 0.044) < 0.49 / 320.0
+        && abs((displacementPixel.g * 2.0 - 1.0) * 0.078) < 0.49 / 180.0
         && abs(shift * ceil(displacementPixel.b)) < 0.1 / 320.0
     ) {
         displacementPixel = float4(0.5, 0.5, 0.0, 0.0);

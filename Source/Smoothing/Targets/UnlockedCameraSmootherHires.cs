@@ -669,8 +669,8 @@ public class UnlockedCameraSmootherHires : ToggleableFeature<UnlockedCameraSmoot
 					entity.Render();
 
 					GameplayRenderer.End();
-
-					Vector2 offset = player.ExactPosition - player.Sprite.RenderPosition;
+                    var state = MotionSmoothingHandler.Instance.GetState(player) as IPositionSmoothingState;
+					Vector2 offset = state.SmoothedRealPosition - state.SmoothedRealPosition.Round();
 	
 					if (Math.Abs(player.Speed.X) < float.Epsilon)
 					{
