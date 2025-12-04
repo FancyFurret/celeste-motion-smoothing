@@ -57,8 +57,6 @@ public class UnlockedCameraSmootherHires : ToggleableFeature<UnlockedCameraSmoot
 
         On.Celeste.Parallax.Render += Parallax_Render;
 
-		On.Celeste.Player.Render += Player_Render;
-
         On.Celeste.HudRenderer.RenderContent += HudRenderer_RenderContent;
 
         IL.Celeste.HiresRenderer.BeginRender += HiresRendererBeginRenderHook;
@@ -106,8 +104,6 @@ public class UnlockedCameraSmootherHires : ToggleableFeature<UnlockedCameraSmoot
 
         On.Celeste.Parallax.Render -= Parallax_Render;
 		On.Celeste.Godrays.Update -= Godrays_Update;
-
-		On.Celeste.Player.Render -= Player_Render;
 
         On.Celeste.HudRenderer.RenderContent -= HudRenderer_RenderContent;
 
@@ -588,35 +584,74 @@ public class UnlockedCameraSmootherHires : ToggleableFeature<UnlockedCameraSmoot
 
 		renderer.FixMatrices = true;
 
-        Engine.Instance.GraphicsDevice.SetRenderTarget(renderer.LargeLevelBuffer);
-
-        Draw.SpriteBatch.Begin(SpriteSortMode.Immediate, BlendState.AlphaBlend, SamplerState.PointClamp, DepthStencilState.None, RasterizerState.CullNone, null, Matrix.Identity);
-        Draw.SpriteBatch.Draw(renderer.SmallLevelBuffer, Vector2.Zero, Color.White);
-
-        Draw.SpriteBatch.End();
-
-
-
 		Engine.Instance.GraphicsDevice.SetRenderTarget(renderer.SmallLevelBuffer);
 		Engine.Instance.GraphicsDevice.Clear(Color.Transparent);
-
 		GameplayRenderer.Begin();
-		storedPlayerRenderOrig(storedPlayer);
+
+		foreach (Entity entity in level.Entities)
+		{
+			if (entity.Visible && !entity.TagCheck(Tags.HUD | TagsExt.SubHUD))
+			{
+				if (entity is Player player)
+				{
+					// Render the things below the player
+					GameplayRenderer.End();
+
+					Engine.Instance.GraphicsDevice.SetRenderTarget(renderer.LargeLevelBuffer);
+
+					Draw.SpriteBatch.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend, SamplerState.PointClamp, DepthStencilState.None, RasterizerState.CullNone, null, Matrix.Identity);
+					Draw.SpriteBatch.Draw(renderer.SmallLevelBuffer, Vector2.Zero, Color.White);
+					Draw.SpriteBatch.End();
+
+					Engine.Instance.GraphicsDevice.SetRenderTarget(renderer.SmallLevelBuffer);
+					Engine.Instance.GraphicsDevice.Clear(Color.Transparent);
+
+					GameplayRenderer.Begin();
+
+
+
+
+					// Now render the player and copy that in at subpixel-precise position
+					entity.Render();
+
+					GameplayRenderer.End();
+
+					Vector2 offset = player.ExactPosition - player.Sprite.RenderPosition;
+
+					var state = MotionSmoothingHandler.Instance.GetState(player) as IPositionSmoothingState;
+					if (state == null || Math.Abs(state.RealPositionHistory[0].X - state.RealPositionHistory[1].X) <
+						float.Epsilon)
+						offset.X = 0;
+					if (state == null || Math.Abs(state.RealPositionHistory[0].Y - state.RealPositionHistory[1].Y) <
+						float.Epsilon)
+						offset.Y = 0;
+
+					Engine.Instance.GraphicsDevice.SetRenderTarget(renderer.LargeLevelBuffer);
+					Draw.SpriteBatch.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend, SamplerState.PointClamp, DepthStencilState.None, RasterizerState.CullNone, null, Matrix.Identity);
+					Draw.SpriteBatch.Draw(renderer.SmallLevelBuffer, offset, Color.White);
+					Draw.SpriteBatch.End();
+					
+					Engine.Instance.GraphicsDevice.SetRenderTarget(renderer.SmallLevelBuffer);
+					Engine.Instance.GraphicsDevice.Clear(Color.Transparent);
+
+					// Finish up the rest of them
+					GameplayRenderer.Begin();
+
+					continue;
+				}
+
+				entity.Render();
+			}
+		}
+
 		GameplayRenderer.End();
 
-		Vector2 offset = storedPlayer.ExactPosition - storedPlayer.Sprite.RenderPosition;
-
-		var state = MotionSmoothingHandler.Instance.GetState(storedPlayer) as IPositionSmoothingState;
-		if (state == null || Math.Abs(state.RealPositionHistory[0].X - state.RealPositionHistory[1].X) <
-			float.Epsilon)
-			offset.X = 0;
-		if (state == null || Math.Abs(state.RealPositionHistory[0].Y - state.RealPositionHistory[1].Y) <
-			float.Epsilon)
-			offset.Y = 0;
+		// Draw the stuff on top of Madeline
 
 		Engine.Instance.GraphicsDevice.SetRenderTarget(renderer.LargeLevelBuffer);
-        Draw.SpriteBatch.Begin(SpriteSortMode.Immediate, BlendState.AlphaBlend, SamplerState.PointClamp, DepthStencilState.None, RasterizerState.CullNone, null, Matrix.Identity);
-        Draw.SpriteBatch.Draw(renderer.SmallLevelBuffer, offset, Color.White);
+
+        Draw.SpriteBatch.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend, SamplerState.PointClamp, DepthStencilState.None, RasterizerState.CullNone, null, Matrix.Identity);
+        Draw.SpriteBatch.Draw(renderer.SmallLevelBuffer, Vector2.Zero, Color.White);
         Draw.SpriteBatch.End();
 
 		renderer.FixMatrices = false;
@@ -1076,24 +1111,6 @@ public class UnlockedCameraSmootherHires : ToggleableFeature<UnlockedCameraSmoot
 
         orig(self, scene);
     }
-
-	
-
-	private static On.Celeste.Player.orig_Render storedPlayerRenderOrig;
-	private static Player storedPlayer;
-
-	public static void Player_Render(On.Celeste.Player.orig_Render orig, Player self)
-	{
-		if (HiresRenderer.Instance is not { } renderer)
-		{
-			orig(self);
-			return;
-		}
-
-		storedPlayerRenderOrig ??= orig;
-		storedPlayer = self;
-		return;
-	}
 
 
 
