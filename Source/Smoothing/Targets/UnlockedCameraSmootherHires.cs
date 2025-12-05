@@ -761,7 +761,7 @@ public class UnlockedCameraSmootherHires : ToggleableFeature<UnlockedCameraSmoot
 		Engine.Instance.GraphicsDevice.SetRenderTarget(renderer.LargeLevelBuffer);
 
         Draw.SpriteBatch.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend, SamplerState.PointClamp, DepthStencilState.None, RasterizerState.CullNone, null, Matrix.Identity);
-        Draw.SpriteBatch.Draw(renderer.LargeGameplayBuffer, GetCameraOffset() * 6f, Color.White);
+        Draw.SpriteBatch.Draw(renderer.LargeTempBBuffer, GetCameraOffset() * 6f, Color.White);
         Draw.SpriteBatch.End();
     }
 
