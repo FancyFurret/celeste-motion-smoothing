@@ -79,6 +79,7 @@ public class UnlockedCameraSmootherHires : ToggleableFeature<UnlockedCameraSmoot
 
         On.Celeste.BackdropRenderer.Render += BackdropRenderer_Render;
         On.Celeste.GameplayRenderer.Render += GameplayRenderer_Render;
+        On.Celeste.LightingRenderer.Render += LightingRenderer_Render;
         On.Celeste.Distort.Render += Distort_Render;
 
         On.Celeste.Parallax.Render += Parallax_Render;
@@ -132,6 +133,7 @@ public class UnlockedCameraSmootherHires : ToggleableFeature<UnlockedCameraSmoot
 
         On.Celeste.BackdropRenderer.Render -= BackdropRenderer_Render;
         On.Celeste.GameplayRenderer.Render -= GameplayRenderer_Render;
+        On.Celeste.LightingRenderer.Render -= LightingRenderer_Render;
         On.Celeste.Distort.Render -= Distort_Render;
 
         On.Celeste.Parallax.Render -= Parallax_Render;
@@ -571,7 +573,7 @@ public class UnlockedCameraSmootherHires : ToggleableFeature<UnlockedCameraSmoot
         renderer.FixMatricesWithoutOffset = false;
         renderer.AllowParallaxOneBackdrops = false;
         renderer.CurrentlyRenderingBackground = true;
-        renderer.RenderDistort = false;
+        renderer.RenderDistortAndLighting = false;
 
         if (MotionSmoothingModule.Settings.RenderBackgroundHires)
         {
@@ -727,6 +729,7 @@ public class UnlockedCameraSmootherHires : ToggleableFeature<UnlockedCameraSmoot
         Draw.SpriteBatch.Draw(GameplayBuffers.Gameplay, Vector2.Zero, Color.White);
         Draw.SpriteBatch.End();
 
+        renderer.RenderDistortAndLighting = true;
 		renderer.FixMatrices = true;
         renderer.FixMatricesWithoutOffset = true;
 		level.Lighting.Render(level);
@@ -748,9 +751,8 @@ public class UnlockedCameraSmootherHires : ToggleableFeature<UnlockedCameraSmoot
         Engine.Instance.GraphicsDevice.SetRenderTarget(renderer.LargeTempBBuffer);
         Engine.Instance.GraphicsDevice.Clear(Color.Transparent);
 
-        renderer.RenderDistort = true;
 		Distort.Render(renderer.LargeGameplayBuffer, renderer.LargeTempABuffer, level.Displacement.HasDisplacement(level));
-        renderer.RenderDistort = false;
+        renderer.RenderDistortAndLighting = false;
 
 
 
@@ -759,7 +761,7 @@ public class UnlockedCameraSmootherHires : ToggleableFeature<UnlockedCameraSmoot
 		Engine.Instance.GraphicsDevice.SetRenderTarget(renderer.LargeLevelBuffer);
 
         Draw.SpriteBatch.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend, SamplerState.PointClamp, DepthStencilState.None, RasterizerState.CullNone, null, Matrix.Identity);
-        Draw.SpriteBatch.Draw(renderer.LargeTempBBuffer, GetCameraOffset() * 6f, Color.White);
+        Draw.SpriteBatch.Draw(renderer.LargeGameplayBuffer, GetCameraOffset() * 6f, Color.White);
         Draw.SpriteBatch.End();
     }
 
@@ -1127,6 +1129,22 @@ public class UnlockedCameraSmootherHires : ToggleableFeature<UnlockedCameraSmoot
         orig(self, scene);
     }
 
+    private static void LightingRenderer_Render(On.Celeste.LightingRenderer.orig_Render orig, LightingRenderer self, Scene scene)
+    {
+        if (HiresRenderer.Instance is not { } renderer)
+		{
+			orig(self, scene);
+			return;
+		}
+
+        if (!MotionSmoothingModule.Settings.RenderMadelineWithSubpixels || renderer.RenderDistortAndLighting)
+        {
+            // We do this ourselves in DrawDisplacedGameplayWithOffset, so no need to
+            // do duplicate work here.
+            orig(self, scene);
+        }
+    }
+
     private static void Distort_Render(On.Celeste.Distort.orig_Render orig, Texture2D source, Texture2D map, bool hasDistortion)
     {
         if (HiresRenderer.Instance is not { } renderer)
@@ -1137,7 +1155,7 @@ public class UnlockedCameraSmootherHires : ToggleableFeature<UnlockedCameraSmoot
 
         // We do this ourselves in DrawDisplacedGameplayWithOffset, so no need to
         // do duplicate work here.
-        if (!MotionSmoothingModule.Settings.RenderMadelineWithSubpixels || renderer.RenderDistort)
+        if (!MotionSmoothingModule.Settings.RenderMadelineWithSubpixels || renderer.RenderDistortAndLighting)
         {
             orig(source, map, hasDistortion);
         }

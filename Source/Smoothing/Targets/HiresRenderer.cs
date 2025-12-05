@@ -23,7 +23,7 @@ public class HiresRenderer : Renderer
     public bool CurrentlyRenderingBackground = false;
     public bool UseModifiedBlur = true;
     public bool DisableFloorFunctions = false;
-    public bool RenderDistort = true;
+    public bool RenderDistortAndLighting = true;
 
     private static VirtualRenderTarget OriginalLevelBuffer = null;
     private static VirtualRenderTarget OriginalTempABuffer = null;
