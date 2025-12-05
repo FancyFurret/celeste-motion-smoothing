@@ -43,7 +43,7 @@ public class MotionSmoothingSettings : EverestModuleSettings
     private int _preferredFrameRate = 120;
     private UnlockCameraStrategy _unlockCameraStrategy = UnlockCameraStrategy.Hires;
     private bool _renderBackgroundHires = true;
-    private bool _renderMadelineWithSubpixels = false;
+    private bool _renderMadelineWithSubpixels = true;
     private UnlockCameraMode _unlockCameraMode = UnlockCameraMode.Extend;
     private SmoothingMode _smoothingMode = SmoothingMode.Extrapolate;
     private UpdateMode _updateMode = UpdateMode.Interval;
@@ -252,7 +252,7 @@ public class MotionSmoothingSettings : EverestModuleSettings
             "whether Madeline is drawn at her exact subpixel position\n" +
             "(i.e. offset from the pixel grid). When not moving, Madeline\n" +
             "will always be drawn aligned to the grid, so that information\n" +
-            "about subpixels cannot be gleaned. This effect is minor.\n"
+            "about subpixels cannot be gleaned.\n"
         );
     }
 

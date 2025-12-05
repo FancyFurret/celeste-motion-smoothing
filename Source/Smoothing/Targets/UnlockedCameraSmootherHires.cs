@@ -79,6 +79,7 @@ public class UnlockedCameraSmootherHires : ToggleableFeature<UnlockedCameraSmoot
 
         On.Celeste.BackdropRenderer.Render += BackdropRenderer_Render;
         On.Celeste.GameplayRenderer.Render += GameplayRenderer_Render;
+        On.Celeste.Distort.Render += Distort_Render;
 		
         IL.Celeste.Glitch.Apply += GlitchApplyHook;
 
@@ -133,6 +134,7 @@ public class UnlockedCameraSmootherHires : ToggleableFeature<UnlockedCameraSmoot
 
         On.Celeste.BackdropRenderer.Render -= BackdropRenderer_Render;
         On.Celeste.GameplayRenderer.Render -= GameplayRenderer_Render;
+        On.Celeste.Distort.Render -= Distort_Render;
 
         IL.Celeste.Glitch.Apply -= GlitchApplyHook;
 
@@ -557,6 +559,7 @@ public class UnlockedCameraSmootherHires : ToggleableFeature<UnlockedCameraSmoot
         renderer.FixMatricesWithoutOffset = false;
         renderer.AllowParallaxOneBackdrops = false;
         renderer.CurrentlyRenderingBackground = true;
+        renderer.RenderDistort = false;
 
         if (MotionSmoothingModule.Settings.RenderBackgroundHires)
         {
@@ -731,7 +734,9 @@ public class UnlockedCameraSmootherHires : ToggleableFeature<UnlockedCameraSmoot
         Engine.Instance.GraphicsDevice.SetRenderTarget(renderer.LargeTempBBuffer);
         Engine.Instance.GraphicsDevice.Clear(Color.Transparent);
 
+        renderer.RenderDistort = true;
 		Distort.Render(renderer.LargeGameplayBuffer, renderer.LargeTempABuffer, level.Displacement.HasDisplacement(level));
+        renderer.RenderDistort = false;
 
 
 
@@ -1060,7 +1065,7 @@ public class UnlockedCameraSmootherHires : ToggleableFeature<UnlockedCameraSmoot
 
 
 
-    public static void BackdropRenderer_Render(On.Celeste.BackdropRenderer.orig_Render orig, BackdropRenderer self, Scene scene)
+    private static void BackdropRenderer_Render(On.Celeste.BackdropRenderer.orig_Render orig, BackdropRenderer self, Scene scene)
     {
         if (HiresRenderer.Instance is not { } renderer || scene is not Level level || !renderer.CurrentlyRenderingBackground || MotionSmoothingModule.Settings.RenderBackgroundHires)
         {
@@ -1096,7 +1101,7 @@ public class UnlockedCameraSmootherHires : ToggleableFeature<UnlockedCameraSmoot
         Engine.Instance.GraphicsDevice.SetRenderTarget(GameplayBuffers.Level);
     }
 
-    public static void GameplayRenderer_Render(On.Celeste.GameplayRenderer.orig_Render orig, GameplayRenderer self, Scene scene)
+    private static void GameplayRenderer_Render(On.Celeste.GameplayRenderer.orig_Render orig, GameplayRenderer self, Scene scene)
     {
         if (MotionSmoothingModule.Settings.RenderMadelineWithSubpixels)
         {
@@ -1106,6 +1111,22 @@ public class UnlockedCameraSmootherHires : ToggleableFeature<UnlockedCameraSmoot
         }
 
         orig(self, scene);
+    }
+
+    private static void Distort_Render(On.Celeste.Distort.orig_Render orig, Texture2D source, Texture2D map, bool hasDistortion)
+    {
+        if (HiresRenderer.Instance is not { } renderer)
+		{
+			orig(source, map, hasDistortion);
+			return;
+		}
+
+        // We do this ourselves in DrawDisplacedGameplayWithOffset, so no need to
+        // do duplicate work here.
+        if (!MotionSmoothingModule.Settings.RenderMadelineWithSubpixels || renderer.RenderDistort)
+        {
+            orig(source, map, hasDistortion);
+        }
     }
 
 

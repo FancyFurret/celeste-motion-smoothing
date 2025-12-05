@@ -1,9 +1,5 @@
 using Microsoft.Xna.Framework;
-using Microsoft.Xna.Framework.Graphics;
 using Monocle;
-using VanillaSaveData = Celeste.SaveData;
-using System;
-using System.IO;
 
 namespace Celeste.Mod.MotionSmoothing.Smoothing.Targets;
 
@@ -27,6 +23,7 @@ public class HiresRenderer : Renderer
     public bool CurrentlyRenderingBackground = false;
     public bool UseModifiedBlur = true;
     public bool DisableFloorFunctions = false;
+    public bool RenderDistort = true;
 
     private static VirtualRenderTarget OriginalLevelBuffer = null;
     private static VirtualRenderTarget OriginalTempABuffer = null;
