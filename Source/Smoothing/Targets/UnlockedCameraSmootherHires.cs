@@ -661,7 +661,9 @@ public class UnlockedCameraSmootherHires : ToggleableFeature<UnlockedCameraSmoot
 		{
 			if (entity.Visible && !entity.TagCheck(Tags.HUD | TagsExt.SubHUD))
 			{
-				if (entity is Player player)
+                var player = MotionSmoothingHandler.Instance.Player;
+
+				if (entity == player || player?.Holding?.Entity == entity)
 				{
 					// Render the things below the player
 					GameplayRenderer.End();
@@ -684,7 +686,7 @@ public class UnlockedCameraSmootherHires : ToggleableFeature<UnlockedCameraSmoot
 					entity.Render();
 
 					GameplayRenderer.End();
-                    var state = MotionSmoothingHandler.Instance.GetState(player) as IPositionSmoothingState;
+                    var state = MotionSmoothingHandler.Instance.GetState(entity) as IPositionSmoothingState;
 					Vector2 offset = state.SmoothedRealPosition - state.SmoothedRealPosition.Round();
 	
 					if (Math.Abs(player.Speed.X) < float.Epsilon)
