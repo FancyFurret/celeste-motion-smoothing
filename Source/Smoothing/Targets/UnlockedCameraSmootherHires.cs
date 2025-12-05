@@ -80,8 +80,6 @@ public class UnlockedCameraSmootherHires : ToggleableFeature<UnlockedCameraSmoot
         On.Celeste.BackdropRenderer.Render += BackdropRenderer_Render;
         On.Celeste.GameplayRenderer.Render += GameplayRenderer_Render;
         On.Celeste.Distort.Render += Distort_Render;
-		
-        IL.Celeste.Glitch.Apply += GlitchApplyHook;
 
         On.Celeste.Parallax.Render += Parallax_Render;
         On.Celeste.Godrays.Update += Godrays_Update;
@@ -135,8 +133,6 @@ public class UnlockedCameraSmootherHires : ToggleableFeature<UnlockedCameraSmoot
         On.Celeste.BackdropRenderer.Render -= BackdropRenderer_Render;
         On.Celeste.GameplayRenderer.Render -= GameplayRenderer_Render;
         On.Celeste.Distort.Render -= Distort_Render;
-
-        IL.Celeste.Glitch.Apply -= GlitchApplyHook;
 
         On.Celeste.Parallax.Render -= Parallax_Render;
 		On.Celeste.Godrays.Update -= Godrays_Update;
@@ -298,6 +294,22 @@ public class UnlockedCameraSmootherHires : ToggleableFeature<UnlockedCameraSmoot
         {
             cursor.EmitLdarg(0); // Load "this"
             cursor.EmitDelegate(AfterBloomApply);
+        }
+
+
+
+        if (cursor.TryGotoNext(MoveType.Before,
+            instr => instr.MatchCall(typeof(Glitch), "Apply")))
+        {
+            cursor.EmitDelegate(DisableFixMatrices);
+            cursor.EmitDelegate(HiresRenderer.EnableLargeTempABuffer);
+        }
+
+        if (cursor.TryGotoNext(MoveType.After,
+            instr => instr.MatchCall(typeof(Glitch), "Apply")))
+        {
+            cursor.EmitDelegate(EnableFixMatricesWithScale);
+            cursor.EmitDelegate(HiresRenderer.DisableLargeTempABuffer);
         }
 
 
@@ -1285,49 +1297,6 @@ public class UnlockedCameraSmootherHires : ToggleableFeature<UnlockedCameraSmoot
             // Add another pixel to the border size, so it covers up the empty pixels on the right/bottom
             cursor.EmitLdcI4(HiresPixelSize);
             cursor.EmitAdd();
-        }
-    }
-
-
-
-    private static void Glitch_Apply(On.Celeste.Glitch.orig_Apply orig, VirtualRenderTarget source, float timer, float seed, float amplitude)
-    {
-        if (HiresRenderer.Instance is not { } renderer) return;
-
-        if (Glitch.Value > 0f && CoreModule.Settings.AllowGlitch)
-        {
-            Effect fxGlitch = GFX.FxGlitch;
-            Vector2 value = new Vector2(Engine.Graphics.GraphicsDevice.Viewport.Width, Engine.Graphics.GraphicsDevice.Viewport.Height);
-            fxGlitch.Parameters["dimensions"].SetValue(value);
-            fxGlitch.Parameters["amplitude"].SetValue(amplitude);
-            fxGlitch.Parameters["minimum"].SetValue(-1f);
-            fxGlitch.Parameters["glitch"].SetValue(Glitch.Value);
-            fxGlitch.Parameters["timer"].SetValue(timer);
-            fxGlitch.Parameters["seed"].SetValue(seed);
-            VirtualRenderTarget tempA = renderer.LargeTempABuffer; // Buffer modified
-            Engine.Instance.GraphicsDevice.SetRenderTarget(tempA);
-            Engine.Instance.GraphicsDevice.Clear(Color.Transparent);
-            Draw.SpriteBatch.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend, SamplerState.PointClamp, DepthStencilState.Default, RasterizerState.CullNone, fxGlitch);
-            Draw.SpriteBatch.Draw((RenderTarget2D)source, Vector2.Zero, Color.White);
-            Draw.SpriteBatch.End();
-            Engine.Instance.GraphicsDevice.SetRenderTarget(source);
-            Engine.Instance.GraphicsDevice.Clear(Color.Transparent);
-            Draw.SpriteBatch.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend, SamplerState.PointClamp, DepthStencilState.Default, RasterizerState.CullNone, fxGlitch);
-            Draw.SpriteBatch.Draw((RenderTarget2D)tempA, Vector2.Zero, Color.White);
-            Draw.SpriteBatch.End();
-        }
-    }
-
-    private static void GlitchApplyHook(ILContext il)
-    {
-        var cursor = new ILCursor(il);
-
-        // Replace GameplayBuffers.TempA with the large temp A one
-        if (cursor.TryGotoNext(MoveType.After,
-            instr => instr.MatchLdsfld(typeof(GameplayBuffers), "TempA")))
-        {
-            cursor.EmitPop();
-            cursor.EmitDelegate(GetLargeTempABuffer);
         }
     }
 
