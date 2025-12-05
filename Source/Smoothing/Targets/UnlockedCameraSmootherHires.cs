@@ -1,4 +1,3 @@
-using Celeste.Mod.Core;
 using Celeste.Mod.MotionSmoothing.Interop;
 using Celeste.Mod.MotionSmoothing.Smoothing.States;
 using Celeste.Mod.MotionSmoothing.Utilities;
@@ -79,7 +78,6 @@ public class UnlockedCameraSmootherHires : ToggleableFeature<UnlockedCameraSmoot
 
         On.Celeste.BackdropRenderer.Render += BackdropRenderer_Render;
         On.Celeste.GameplayRenderer.Render += GameplayRenderer_Render;
-        On.Celeste.LightingRenderer.Render += LightingRenderer_Render;
         On.Celeste.Distort.Render += Distort_Render;
 
 		On.Celeste.Glitch.Apply += Glitch_Apply;
@@ -135,7 +133,6 @@ public class UnlockedCameraSmootherHires : ToggleableFeature<UnlockedCameraSmoot
 
         On.Celeste.BackdropRenderer.Render -= BackdropRenderer_Render;
         On.Celeste.GameplayRenderer.Render -= GameplayRenderer_Render;
-        On.Celeste.LightingRenderer.Render -= LightingRenderer_Render;
         On.Celeste.Distort.Render -= Distort_Render;
 
 		On.Celeste.Glitch.Apply -= Glitch_Apply;
@@ -1028,21 +1025,11 @@ public class UnlockedCameraSmootherHires : ToggleableFeature<UnlockedCameraSmoot
 		
 		// Now call this the large gameplay buffer in case other hooks reference it.
 		HiresRenderer.EnableLargeGameplayBuffer();
-    }
+		Engine.Instance.GraphicsDevice.SetRenderTarget(GameplayBuffers.Gameplay);
 
-    private static void LightingRenderer_Render(On.Celeste.LightingRenderer.orig_Render orig, LightingRenderer self, Scene scene)
-    {
-        if (HiresRenderer.Instance is not { } renderer || !MotionSmoothingModule.Settings.RenderMadelineWithSubpixels)
-        {
-			orig(self, scene);
-            return;
-        }
-
+		// Very important! Some things live the SJ expert lobby draw into this buffer going forward
 		renderer.FixMatrices = true;
 		renderer.FixMatricesWithoutOffset = true;
-		orig(self, scene);
-		renderer.FixMatrices = false;
-		renderer.FixMatricesWithoutOffset = false;
     }
 
     private static void Distort_Render(On.Celeste.Distort.orig_Render orig, Texture2D source, Texture2D map, bool hasDistortion)
