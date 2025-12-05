@@ -82,6 +82,8 @@ public class UnlockedCameraSmootherHires : ToggleableFeature<UnlockedCameraSmoot
         On.Celeste.LightingRenderer.Render += LightingRenderer_Render;
         On.Celeste.Distort.Render += Distort_Render;
 
+		On.Celeste.Glitch.Apply += Glitch_Apply;
+
         On.Celeste.Parallax.Render += Parallax_Render;
         On.Celeste.Godrays.Update += Godrays_Update;
 
@@ -136,6 +138,8 @@ public class UnlockedCameraSmootherHires : ToggleableFeature<UnlockedCameraSmoot
         On.Celeste.LightingRenderer.Render -= LightingRenderer_Render;
         On.Celeste.Distort.Render -= Distort_Render;
 
+		On.Celeste.Glitch.Apply -= Glitch_Apply;
+
         On.Celeste.Parallax.Render -= Parallax_Render;
 		On.Celeste.Godrays.Update -= Godrays_Update;
 
@@ -151,7 +155,7 @@ public class UnlockedCameraSmootherHires : ToggleableFeature<UnlockedCameraSmoot
         foreach (var hook in _hooks)
             hook.Dispose();
 
-        HiresRenderer.DisableLargeLevelBuffer();
+        HiresRenderer.Destroy();
 		DisableHiresDistort();
     }
 
@@ -272,23 +276,6 @@ public class UnlockedCameraSmootherHires : ToggleableFeature<UnlockedCameraSmoot
             }
         }
 
-        // Add delegates before and Distort.Render
-        if (cursor.TryGotoNext(MoveType.Before,
-            instr => instr.MatchCall(typeof(Distort), "Render")))
-        {
-            cursor.EmitLdarg(0); // Load "this"
-            cursor.EmitDelegate(BeforeDistortRender);
-        }
-
-        cursor.Index = 0;
-
-        if (cursor.TryGotoNext(MoveType.After,
-            instr => instr.MatchCall(typeof(Distort), "Render")))
-        {
-            cursor.EmitLdarg(0); // Load "this"
-            cursor.EmitDelegate(DrawDisplacedGameplayWithOffset);
-        }
-
 
 
         if (cursor.TryGotoNext(MoveType.After,
@@ -296,22 +283,6 @@ public class UnlockedCameraSmootherHires : ToggleableFeature<UnlockedCameraSmoot
         {
             cursor.EmitLdarg(0); // Load "this"
             cursor.EmitDelegate(AfterBloomApply);
-        }
-
-
-
-        if (cursor.TryGotoNext(MoveType.Before,
-            instr => instr.MatchCall(typeof(Glitch), "Apply")))
-        {
-            cursor.EmitDelegate(DisableFixMatrices);
-            cursor.EmitDelegate(HiresRenderer.EnableLargeTempABuffer);
-        }
-
-        if (cursor.TryGotoNext(MoveType.After,
-            instr => instr.MatchCall(typeof(Glitch), "Apply")))
-        {
-            cursor.EmitDelegate(EnableFixMatricesWithScale);
-            cursor.EmitDelegate(HiresRenderer.DisableLargeTempABuffer);
         }
 
 
@@ -440,10 +411,7 @@ public class UnlockedCameraSmootherHires : ToggleableFeature<UnlockedCameraSmoot
         AfterLevelClear(self); // Inserted
         self.Background.Render(self);
         
-
-        BeforeDistortRender(self); // Inserted
         Distort.Render((RenderTarget2D)GameplayBuffers.Gameplay, (RenderTarget2D)GameplayBuffers.Displacement, self.Displacement.HasDisplacement(self));
-        DrawDisplacedGameplayWithOffset(self); //Inserted
 
         self.Bloom.Apply(GameplayBuffers.Level, self);
         AfterBloomApply(self); // Inserted
@@ -573,7 +541,6 @@ public class UnlockedCameraSmootherHires : ToggleableFeature<UnlockedCameraSmoot
         renderer.FixMatricesWithoutOffset = false;
         renderer.AllowParallaxOneBackdrops = false;
         renderer.CurrentlyRenderingBackground = true;
-        renderer.RenderDistortAndLighting = false;
 
         if (MotionSmoothingModule.Settings.RenderBackgroundHires)
         {
@@ -586,7 +553,12 @@ public class UnlockedCameraSmootherHires : ToggleableFeature<UnlockedCameraSmoot
             HiresRenderer.DisableLargeLevelBuffer();
         }
 
-        Engine.Instance.GraphicsDevice.Clear(Color.Transparent); 
+		if (MotionSmoothingModule.Settings.RenderMadelineWithSubpixels)
+		{
+			HiresRenderer.DisableLargeGameplayBuffer();
+		}
+
+		Engine.Instance.GraphicsDevice.Clear(Color.Transparent);
     }
 
     private static void AfterLevelClear(Level level)
@@ -609,160 +581,6 @@ public class UnlockedCameraSmootherHires : ToggleableFeature<UnlockedCameraSmoot
             renderer.DisableFloorFunctions = false;
             renderer.FixMatrices = false;
         }
-    }
-
-    private static void BeforeDistortRender(Level level)
-    {
-        if (HiresRenderer.Instance is not { } renderer) return;
-
-        renderer.DisableFloorFunctions = false;
-        renderer.FixMatrices = false;
-        renderer.FixMatricesWithoutOffset = false;
-
-        if (MotionSmoothingModule.Settings.RenderBackgroundHires)
-        {
-            UnsmoothCameraPosition(level);
-        }
-        
-
-        // Reset to the usual Level buffer (but clear it) so the Distort.Render call that comes after renders into it
-        Engine.Instance.GraphicsDevice.SetRenderTarget(renderer.SmallLevelBuffer);
-        Engine.Instance.GraphicsDevice.Clear(Color.Transparent);
-    }
-
-    private static void DrawDisplacedGameplayWithOffset(Level level)
-    {
-        if (HiresRenderer.Instance is not { } renderer) return;
-
-        if (!MotionSmoothingModule.Settings.RenderMadelineWithSubpixels)
-        {
-            // Everything we need is already in renderer.SmallLevelBuffer, so just draw that in and get out.
-            renderer.FixMatrices = true;
-
-		    Engine.Instance.GraphicsDevice.SetRenderTarget(renderer.LargeLevelBuffer);
-
-            Draw.SpriteBatch.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend, SamplerState.PointClamp, DepthStencilState.None, RasterizerState.CullNone, null, Matrix.Identity);
-            Draw.SpriteBatch.Draw(renderer.SmallLevelBuffer, Vector2.Zero, Color.White);
-            Draw.SpriteBatch.End();
-
-            renderer.FixMatrices = false;
-
-            return;
-        }
-
-
-
-		Engine.Instance.GraphicsDevice.SetRenderTarget(renderer.LargeGameplayBuffer);
-		Engine.Instance.GraphicsDevice.Clear(Color.Transparent);
-
-		Engine.Instance.GraphicsDevice.SetRenderTarget(GameplayBuffers.Gameplay);
-		Engine.Instance.GraphicsDevice.Clear(Color.Transparent);
-		GameplayRenderer.Begin();
-
-		foreach (Entity entity in level.Entities)
-		{
-			if (entity.Visible && !entity.TagCheck(Tags.HUD | TagsExt.SubHUD))
-			{
-                var player = MotionSmoothingHandler.Instance.Player;
-
-				if (entity == player || player?.Holding?.Entity == entity)
-				{
-					// Render the things below the player
-					GameplayRenderer.End();
-
-					Engine.Instance.GraphicsDevice.SetRenderTarget(renderer.LargeGameplayBuffer);
-
-					Draw.SpriteBatch.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend, SamplerState.PointClamp, DepthStencilState.None, RasterizerState.CullNone, null, renderer.ScaleMatrix);
-					Draw.SpriteBatch.Draw(GameplayBuffers.Gameplay, Vector2.Zero, Color.White);
-					Draw.SpriteBatch.End();
-
-					Engine.Instance.GraphicsDevice.SetRenderTarget(GameplayBuffers.Gameplay);
-					Engine.Instance.GraphicsDevice.Clear(Color.Transparent);
-
-					GameplayRenderer.Begin();
-
-
-
-
-					// Now render the player and copy that in at subpixel-precise position
-					entity.Render();
-
-					GameplayRenderer.End();
-                    var state = MotionSmoothingHandler.Instance.GetState(entity) as IPositionSmoothingState;
-					Vector2 offset = state.SmoothedRealPosition - state.SmoothedRealPosition.Round();
-	
-					if (Math.Abs(player.Speed.X) < float.Epsilon)
-					{
-						offset.X = 0;
-					}
-
-					if (Math.Abs(player.Speed.Y) < float.Epsilon)
-					{
-						offset.Y = 0;
-					}
-
-					Engine.Instance.GraphicsDevice.SetRenderTarget(renderer.LargeGameplayBuffer);
-					Draw.SpriteBatch.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend, SamplerState.PointClamp, DepthStencilState.None, RasterizerState.CullNone, null, renderer.ScaleMatrix);
-					Draw.SpriteBatch.Draw(GameplayBuffers.Gameplay, offset, Color.White);
-					Draw.SpriteBatch.End();
-					
-					Engine.Instance.GraphicsDevice.SetRenderTarget(GameplayBuffers.Gameplay);
-					Engine.Instance.GraphicsDevice.Clear(Color.Transparent);
-
-					// Finish up the rest of them
-					GameplayRenderer.Begin();
-
-					continue;
-				}
-
-				entity.Render();
-			}
-		}
-
-		GameplayRenderer.End();
-
-		// Draw the stuff on top of Madeline
-
-		Engine.Instance.GraphicsDevice.SetRenderTarget(renderer.LargeGameplayBuffer);
-	
-        Draw.SpriteBatch.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend, SamplerState.PointClamp, DepthStencilState.None, RasterizerState.CullNone, null, renderer.ScaleMatrix);
-        Draw.SpriteBatch.Draw(GameplayBuffers.Gameplay, Vector2.Zero, Color.White);
-        Draw.SpriteBatch.End();
-
-        renderer.RenderDistortAndLighting = true;
-		renderer.FixMatrices = true;
-        renderer.FixMatricesWithoutOffset = true;
-		level.Lighting.Render(level);
-		renderer.FixMatrices = false;
-        renderer.FixMatricesWithoutOffset = false;
-
-
-
-        // Now apply distortion. We use TempA for the nearest-neighbor scaled
-        // distortion buffer and TempB for the output.
-
-        Engine.Instance.GraphicsDevice.SetRenderTarget(renderer.LargeTempABuffer);
-        Engine.Instance.GraphicsDevice.Clear(Color.Transparent);
-	
-        Draw.SpriteBatch.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend, SamplerState.PointClamp, DepthStencilState.None, RasterizerState.CullNone, null, renderer.ScaleMatrix);
-        Draw.SpriteBatch.Draw(GameplayBuffers.Displacement, Vector2.Zero, Color.White);
-        Draw.SpriteBatch.End();
-
-        Engine.Instance.GraphicsDevice.SetRenderTarget(renderer.LargeTempBBuffer);
-        Engine.Instance.GraphicsDevice.Clear(Color.Transparent);
-
-		Distort.Render(renderer.LargeGameplayBuffer, renderer.LargeTempABuffer, level.Displacement.HasDisplacement(level));
-        renderer.RenderDistortAndLighting = false;
-
-
-
-		renderer.FixMatrices = false;
-
-		Engine.Instance.GraphicsDevice.SetRenderTarget(renderer.LargeLevelBuffer);
-
-        Draw.SpriteBatch.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend, SamplerState.PointClamp, DepthStencilState.None, RasterizerState.CullNone, null, Matrix.Identity);
-        Draw.SpriteBatch.Draw(renderer.LargeTempBBuffer, GetCameraOffset() * 6f, Color.White);
-        Draw.SpriteBatch.End();
     }
 
     private static void AfterBloomApply(Level level)
@@ -1119,47 +937,193 @@ public class UnlockedCameraSmootherHires : ToggleableFeature<UnlockedCameraSmoot
 
     private static void GameplayRenderer_Render(On.Celeste.GameplayRenderer.orig_Render orig, GameplayRenderer self, Scene scene)
     {
-        if (MotionSmoothingModule.Settings.RenderMadelineWithSubpixels)
+		if (HiresRenderer.Instance is not { } renderer || !MotionSmoothingModule.Settings.RenderMadelineWithSubpixels || scene is not Level level)
         {
-            // We do this ourselves in DrawDisplacedGameplayWithOffset, so no need to
-            // do duplicate work here.
+			orig(self, scene);
             return;
         }
 
-        orig(self, scene);
+		// If we're rendering with subpixels, we need to draw everything at 6x. We do
+		// this by recreating the gameplay rendering loop, and every time we encounter
+		// an entity that needs to be rendered at a fractional position, we draw everything
+		// we have to renderer.LargeGameplayBuffer, clear GameplayBuffers.Gameplay, draw
+		// the single sprite at a precise position, clear it again, and then keep going.
+
+		Engine.Instance.GraphicsDevice.SetRenderTarget(renderer.LargeGameplayBuffer);
+		Engine.Instance.GraphicsDevice.Clear(Color.Transparent);
+
+		Engine.Instance.GraphicsDevice.SetRenderTarget(GameplayBuffers.Gameplay);
+		GameplayRenderer.Begin();
+
+		foreach (Entity entity in level.Entities)
+		{
+			if (entity.Visible && !entity.TagCheck(Tags.HUD | TagsExt.SubHUD))
+			{
+                var player = MotionSmoothingHandler.Instance.Player;
+
+				if (entity == player || player?.Holding?.Entity == entity)
+				{
+					// Render the things below this entity
+					GameplayRenderer.End();
+
+					Engine.Instance.GraphicsDevice.SetRenderTarget(renderer.LargeGameplayBuffer);
+
+					Draw.SpriteBatch.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend, SamplerState.PointClamp, DepthStencilState.None, RasterizerState.CullNone, null, renderer.ScaleMatrix);
+					Draw.SpriteBatch.Draw(GameplayBuffers.Gameplay, Vector2.Zero, Color.White);
+					Draw.SpriteBatch.End();
+
+					Engine.Instance.GraphicsDevice.SetRenderTarget(GameplayBuffers.Gameplay);
+					Engine.Instance.GraphicsDevice.Clear(Color.Transparent);
+
+					GameplayRenderer.Begin();
+
+
+
+
+					// Now render just this entity and copy it in at subpixel-precise position
+					entity.Render();
+
+					GameplayRenderer.End();
+                    var state = MotionSmoothingHandler.Instance.GetState(entity) as IPositionSmoothingState;
+					Vector2 offset = state.SmoothedRealPosition - state.SmoothedRealPosition.Round();
+	
+					if (Math.Abs(player.Speed.X) < float.Epsilon)
+					{
+						offset.X = 0;
+					}
+
+					if (Math.Abs(player.Speed.Y) < float.Epsilon)
+					{
+						offset.Y = 0;
+					}
+
+					Engine.Instance.GraphicsDevice.SetRenderTarget(renderer.LargeGameplayBuffer);
+					Draw.SpriteBatch.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend, SamplerState.PointClamp, DepthStencilState.None, RasterizerState.CullNone, null, renderer.ScaleMatrix);
+					Draw.SpriteBatch.Draw(GameplayBuffers.Gameplay, offset, Color.White);
+					Draw.SpriteBatch.End();
+					
+					Engine.Instance.GraphicsDevice.SetRenderTarget(GameplayBuffers.Gameplay);
+					Engine.Instance.GraphicsDevice.Clear(Color.Transparent);
+
+					// Keep going for things above this entity
+					GameplayRenderer.Begin();
+
+					continue;
+				}
+
+				entity.Render();
+			}
+		}
+
+		GameplayRenderer.End();
+
+		// Draw the topmost things.
+		Engine.Instance.GraphicsDevice.SetRenderTarget(renderer.LargeGameplayBuffer);
+	
+        Draw.SpriteBatch.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend, SamplerState.PointClamp, DepthStencilState.None, RasterizerState.CullNone, null, renderer.ScaleMatrix);
+        Draw.SpriteBatch.Draw(GameplayBuffers.Gameplay, Vector2.Zero, Color.White);
+        Draw.SpriteBatch.End();
+
+
+		
+		// Now call this the large gameplay buffer in case other hooks reference it.
+		HiresRenderer.EnableLargeGameplayBuffer();
     }
 
     private static void LightingRenderer_Render(On.Celeste.LightingRenderer.orig_Render orig, LightingRenderer self, Scene scene)
     {
-        if (HiresRenderer.Instance is not { } renderer)
-		{
-			orig(self, scene);
-			return;
-		}
-
-        if (!MotionSmoothingModule.Settings.RenderMadelineWithSubpixels || renderer.RenderDistortAndLighting)
+        if (HiresRenderer.Instance is not { } renderer || !MotionSmoothingModule.Settings.RenderMadelineWithSubpixels)
         {
-            // We do this ourselves in DrawDisplacedGameplayWithOffset, so no need to
-            // do duplicate work here.
-            orig(self, scene);
+			orig(self, scene);
+            return;
         }
+
+		renderer.FixMatrices = true;
+		renderer.FixMatricesWithoutOffset = true;
+		orig(self, scene);
+		renderer.FixMatrices = false;
+		renderer.FixMatricesWithoutOffset = false;
     }
 
     private static void Distort_Render(On.Celeste.Distort.orig_Render orig, Texture2D source, Texture2D map, bool hasDistortion)
     {
-        if (HiresRenderer.Instance is not { } renderer)
-		{
+		if (HiresRenderer.Instance is not { } renderer || Engine.Scene is not Level level)
+        {
 			orig(source, map, hasDistortion);
+            return;
+        }
+		
+		renderer.FixMatrices = false;
+		renderer.DisableFloorFunctions = false;
+		renderer.FixMatricesWithoutOffset = false;
+
+		if (MotionSmoothingModule.Settings.RenderBackgroundHires)
+        {
+            UnsmoothCameraPosition(level);
+        }
+
+		var renderTargets = Draw.SpriteBatch.GraphicsDevice.GetRenderTargets();
+
+
+
+		if (!MotionSmoothingModule.Settings.RenderMadelineWithSubpixels)
+		{
+			// If we're not doing subpixel rendering, then we don't need to do that much.
+			Engine.Instance.GraphicsDevice.SetRenderTarget(renderer.SmallLevelBuffer);
+			Engine.Instance.GraphicsDevice.Clear(Color.Transparent);
+			
+			orig(source, map, hasDistortion);
+
+			Engine.Instance.GraphicsDevice.SetRenderTargets(renderTargets);
+			renderer.FixMatrices = true;
+
+			Draw.SpriteBatch.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend, SamplerState.PointClamp, DepthStencilState.None, RasterizerState.CullNone, null, Matrix.Identity);
+			Draw.SpriteBatch.Draw(renderer.SmallLevelBuffer, Vector2.Zero, Color.White);
+			Draw.SpriteBatch.End();
+
+			renderer.FixMatrices = false;
+
 			return;
 		}
 
-        // We do this ourselves in DrawDisplacedGameplayWithOffset, so no need to
-        // do duplicate work here.
-        if (!MotionSmoothingModule.Settings.RenderMadelineWithSubpixels || renderer.RenderDistortAndLighting)
-        {
-            orig(source, map, hasDistortion);
-        }
+
+
+		
+
+		renderer.FixMatrices = false;
+
+		// Scale up the distortion map into LargeTempA
+		Engine.Instance.GraphicsDevice.SetRenderTarget(renderer.LargeTempABuffer);
+        Engine.Instance.GraphicsDevice.Clear(Color.Transparent);
+	
+        Draw.SpriteBatch.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend, SamplerState.PointClamp, DepthStencilState.None, RasterizerState.CullNone, null, renderer.ScaleMatrix);
+        Draw.SpriteBatch.Draw(map, Vector2.Zero, Color.White);
+        Draw.SpriteBatch.End();
+
+		// Now draw this into LargeTempB
+		Engine.Instance.GraphicsDevice.SetRenderTarget(renderer.LargeTempBBuffer);
+        Engine.Instance.GraphicsDevice.Clear(Color.Transparent);
+		orig(source, renderer.LargeTempABuffer, hasDistortion);
+
+		// Finally, draw this back into whatever we were supposed to be drawing to, but with offset.
+		Engine.Instance.GraphicsDevice.SetRenderTargets(renderTargets);
+		Draw.SpriteBatch.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend, SamplerState.PointClamp, DepthStencilState.None, RasterizerState.CullNone, null, Matrix.Identity);
+        Draw.SpriteBatch.Draw(renderer.LargeTempBBuffer, GetCameraOffset() * 6f, Color.White);
+        Draw.SpriteBatch.End();
     }
+
+
+
+	private static void Glitch_Apply(On.Celeste.Glitch.orig_Apply orig, VirtualRenderTarget source, float timer, float seed, float amplitude)
+	{
+		DisableFixMatrices();
+		HiresRenderer.EnableLargeTempABuffer();
+
+		orig(source, timer, seed, amplitude);
+
+		EnableFixMatricesWithScale();
+		HiresRenderer.DisableLargeTempABuffer();
+	}
 
 
 	private static void Godrays_Update(On.Celeste.Godrays.orig_Update orig, Godrays self, Scene scene)

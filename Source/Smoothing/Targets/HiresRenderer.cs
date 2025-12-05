@@ -23,9 +23,9 @@ public class HiresRenderer : Renderer
     public bool CurrentlyRenderingBackground = false;
     public bool UseModifiedBlur = true;
     public bool DisableFloorFunctions = false;
-    public bool RenderDistortAndLighting = true;
 
-    private static VirtualRenderTarget OriginalLevelBuffer = null;
+    private static VirtualRenderTarget OriginalGameplayBuffer = null;
+	private static VirtualRenderTarget OriginalLevelBuffer = null;
     private static VirtualRenderTarget OriginalTempABuffer = null;
 
     public HiresRenderer(
@@ -50,6 +50,25 @@ public class HiresRenderer : Renderer
     public static void Load()
     {
 
+    }
+
+	public static void EnableLargeGameplayBuffer()
+    {
+        if (Instance == null || GameplayBuffers.Gameplay == Instance.LargeGameplayBuffer)
+        {
+            return;
+        }
+
+        OriginalGameplayBuffer = GameplayBuffers.Gameplay;
+        GameplayBuffers.Gameplay = Instance.LargeGameplayBuffer;
+    }
+
+    public static void DisableLargeGameplayBuffer()
+    {
+        if (OriginalGameplayBuffer == null) { return; }
+
+        GameplayBuffers.Gameplay = OriginalGameplayBuffer;
+        OriginalGameplayBuffer = null;
     }
 
     public static void EnableLargeLevelBuffer()
@@ -110,11 +129,9 @@ public class HiresRenderer : Renderer
 
     public static void Destroy()
     {
-        if (OriginalLevelBuffer != null)
-        {
-            GameplayBuffers.Level = OriginalLevelBuffer;
-            OriginalLevelBuffer = null;
-        }
+        DisableLargeLevelBuffer();
+		DisableLargeGameplayBuffer();
+		DisableLargeTempABuffer();
 
         if (Instance != null)
         {
