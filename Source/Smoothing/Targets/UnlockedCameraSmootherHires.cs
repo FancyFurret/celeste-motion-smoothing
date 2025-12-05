@@ -653,7 +653,7 @@ public class UnlockedCameraSmootherHires : ToggleableFeature<UnlockedCameraSmoot
 		Engine.Instance.GraphicsDevice.SetRenderTarget(renderer.LargeGameplayBuffer);
 		Engine.Instance.GraphicsDevice.Clear(Color.Transparent);
 
-		Engine.Instance.GraphicsDevice.SetRenderTarget(renderer.SmallLevelBuffer);
+		Engine.Instance.GraphicsDevice.SetRenderTarget(GameplayBuffers.Gameplay);
 		Engine.Instance.GraphicsDevice.Clear(Color.Transparent);
 		GameplayRenderer.Begin();
 
@@ -671,10 +671,10 @@ public class UnlockedCameraSmootherHires : ToggleableFeature<UnlockedCameraSmoot
 					Engine.Instance.GraphicsDevice.SetRenderTarget(renderer.LargeGameplayBuffer);
 
 					Draw.SpriteBatch.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend, SamplerState.PointClamp, DepthStencilState.None, RasterizerState.CullNone, null, renderer.ScaleMatrix);
-					Draw.SpriteBatch.Draw(renderer.SmallLevelBuffer, Vector2.Zero, Color.White);
+					Draw.SpriteBatch.Draw(GameplayBuffers.Gameplay, Vector2.Zero, Color.White);
 					Draw.SpriteBatch.End();
 
-					Engine.Instance.GraphicsDevice.SetRenderTarget(renderer.SmallLevelBuffer);
+					Engine.Instance.GraphicsDevice.SetRenderTarget(GameplayBuffers.Gameplay);
 					Engine.Instance.GraphicsDevice.Clear(Color.Transparent);
 
 					GameplayRenderer.Begin();
@@ -701,10 +701,10 @@ public class UnlockedCameraSmootherHires : ToggleableFeature<UnlockedCameraSmoot
 
 					Engine.Instance.GraphicsDevice.SetRenderTarget(renderer.LargeGameplayBuffer);
 					Draw.SpriteBatch.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend, SamplerState.PointClamp, DepthStencilState.None, RasterizerState.CullNone, null, renderer.ScaleMatrix);
-					Draw.SpriteBatch.Draw(renderer.SmallLevelBuffer, offset, Color.White);
+					Draw.SpriteBatch.Draw(GameplayBuffers.Gameplay, offset, Color.White);
 					Draw.SpriteBatch.End();
 					
-					Engine.Instance.GraphicsDevice.SetRenderTarget(renderer.SmallLevelBuffer);
+					Engine.Instance.GraphicsDevice.SetRenderTarget(GameplayBuffers.Gameplay);
 					Engine.Instance.GraphicsDevice.Clear(Color.Transparent);
 
 					// Finish up the rest of them
@@ -724,7 +724,7 @@ public class UnlockedCameraSmootherHires : ToggleableFeature<UnlockedCameraSmoot
 		Engine.Instance.GraphicsDevice.SetRenderTarget(renderer.LargeGameplayBuffer);
 	
         Draw.SpriteBatch.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend, SamplerState.PointClamp, DepthStencilState.None, RasterizerState.CullNone, null, renderer.ScaleMatrix);
-        Draw.SpriteBatch.Draw(renderer.SmallLevelBuffer, Vector2.Zero, Color.White);
+        Draw.SpriteBatch.Draw(GameplayBuffers.Gameplay, Vector2.Zero, Color.White);
         Draw.SpriteBatch.End();
 
 		renderer.FixMatrices = true;
