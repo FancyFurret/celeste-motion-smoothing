@@ -2,14 +2,12 @@
 using System.Collections.Generic;
 using System.Reflection;
 using System.Runtime.InteropServices;
-using System.Diagnostics.CodeAnalysis;
 using Celeste.Mod.MotionSmoothing.FrameUncap;
 using Celeste.Mod.MotionSmoothing.Interop;
 using Celeste.Mod.MotionSmoothing.Smoothing;
 using Celeste.Mod.MotionSmoothing.Smoothing.Targets;
 using Celeste.Mod.MotionSmoothing.Utilities;
 using Celeste.Pico8;
-using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using Monocle;
 using MonoMod.ModInterop;
@@ -67,6 +65,7 @@ public class MotionSmoothingModule : EverestModule
 
         typeof(MotionSmoothingExports).ModInterop();
         typeof(GravityHelperImports).ModInterop();
+        typeof(SpeedrunToolImports).ModInterop();
         CelesteTasInterop.Load();
 
         UpdateEveryNTicks.Load();

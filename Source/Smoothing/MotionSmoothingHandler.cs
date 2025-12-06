@@ -28,6 +28,12 @@ public class MotionSmoothingHandler : ToggleableFeature<MotionSmoothingHandler>
     private long _lastTicks;
     private bool _positionsWereUpdated;
 
+    public override void Load()
+    {
+        base.Load();
+        SpeedrunToolImports.RegisterSaveLoadAction?.Invoke(null, (_, _) => SmoothAllObjects(), null, null, null, null);
+    }
+
     public override void Enable()
     {
         base.Enable();
