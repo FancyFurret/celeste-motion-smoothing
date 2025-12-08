@@ -1395,7 +1395,8 @@ public class UnlockedCameraSmootherHires : ToggleableFeature<UnlockedCameraSmoot
 			}
 
 			// ...unless we're drawing something to the screen. Note: this invariably hooks when
-			// we draw GameplayBuffers.Level, which is why we leave its scale matrix alone.
+			// we draw GameplayBuffers.Level the usual time, which is why we don't get rid of the
+			// 6x scale in GetHiresDisplayMatrix().
 			else
 			{
 				orig(self, texture, sourceX, sourceY, sourceW, sourceH, destinationX, destinationY, destinationW / 6, destinationH / 6, color, originX, originY, rotationSin, rotationCos, depth, effects);
