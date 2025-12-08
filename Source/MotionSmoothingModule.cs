@@ -52,7 +52,7 @@ public class MotionSmoothingModule : EverestModule
 
     private MotionSmoothingHandler MotionSmoothing { get; } = new();
     private UnlockedCameraSmoother UnlockedCameraSmoother { get; } = new();
-    private UnlockedCameraSmootherHires UnlockedCameraSmootherHires { get; } = new();
+    private HiresCameraSmoother HiresCameraSmoother { get; } = new();
     private ActorPushTracker ActorPushTracker { get; } = new();
     private UpdateAtDraw UpdateAtDraw { get; } = new();
     private MotionSmoothingInputHandler InputHandler { get; } = new();
@@ -71,7 +71,7 @@ public class MotionSmoothingModule : EverestModule
         UpdateEveryNTicks.Load();
         MotionSmoothing.Load();
         UnlockedCameraSmoother.Load();
-        UnlockedCameraSmootherHires.Load();
+        HiresCameraSmoother.Load();
         ActorPushTracker.Load();
         UpdateAtDraw.Load();
         InputHandler.Load();
@@ -94,7 +94,7 @@ public class MotionSmoothingModule : EverestModule
         UpdateEveryNTicks.Unload();
         MotionSmoothing.Unload();
         UnlockedCameraSmoother.Unload();
-        UnlockedCameraSmootherHires.Unload();
+        HiresCameraSmoother.Unload();
         ActorPushTracker.Unload();
         UpdateAtDraw.Unload();
         InputHandler.Unload();
@@ -125,7 +125,7 @@ public class MotionSmoothingModule : EverestModule
 
             MotionSmoothing.Disable();
             UnlockedCameraSmoother.Disable();
-            UnlockedCameraSmootherHires.Disable();
+            HiresCameraSmoother.Disable();
             ActorPushTracker.Disable();
             UpdateAtDraw.Disable();
             DebugRenderFix.Disable();
@@ -155,7 +155,7 @@ public class MotionSmoothingModule : EverestModule
             ActorPushTracker.Disable();
             UpdateAtDraw.Disable();
             UnlockedCameraSmoother.Disable();
-            UnlockedCameraSmootherHires.Disable();
+            HiresCameraSmoother.Disable();
             return;
         }
 
@@ -168,30 +168,30 @@ public class MotionSmoothingModule : EverestModule
         if (Settings.UnlockCameraStrategy == UnlockCameraStrategy.Hires)
         {
             UnlockedCameraSmoother.Disable();
-            UnlockedCameraSmootherHires.Enable();
+            HiresCameraSmoother.Enable();
 
 			if (Settings.RenderMadelineWithSubpixels)
 			{
-				UnlockedCameraSmootherHires.EnableHiresDistort();
+				HiresCameraSmoother.EnableHiresDistort();
 			}
 
 			else
 			{
-				UnlockedCameraSmootherHires.DisableHiresDistort();
+				HiresCameraSmoother.DisableHiresDistort();
 				Smoothing.Targets.HiresRenderer.DisableLargeGameplayBuffer();
 			}
         }
 
         else if (Settings.UnlockCameraStrategy == UnlockCameraStrategy.Unlock)
         {
-            UnlockedCameraSmootherHires.Disable();
+            HiresCameraSmoother.Disable();
             UnlockedCameraSmoother.Enable();
         }
         
         else
         {
             UnlockedCameraSmoother.Disable();
-            UnlockedCameraSmootherHires.Disable();
+            HiresCameraSmoother.Disable();
         }
     }
 

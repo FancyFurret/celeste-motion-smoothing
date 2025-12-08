@@ -54,7 +54,7 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
         {
             var cameraState = (MotionSmoothingHandler.Instance.GetState(level.Camera) as IPositionSmoothingState)!;
             var pixelOffset = cameraState.SmoothedRealPosition.Floor() - cameraState.SmoothedRealPosition;
-            return pixelOffset;
+            return SaveData.Instance.Assists.MirrorMode ? -pixelOffset : pixelOffset;
         }
 
         return Vector2.Zero;

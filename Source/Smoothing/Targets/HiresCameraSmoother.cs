@@ -13,7 +13,7 @@ using System.Linq;
 
 namespace Celeste.Mod.MotionSmoothing.Smoothing.Targets;
 
-public class UnlockedCameraSmootherHires : ToggleableFeature<UnlockedCameraSmootherHires>
+public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 {
     private const float ZoomScaleMultiplier = 181f / 180f;
     private const int HiresPixelSize = 1080 / 180;
