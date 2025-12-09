@@ -1428,7 +1428,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
         var currentRenderTarget = renderTargets[0].RenderTarget;
 
-        if (currentRenderTarget != renderer.LargeLevelBuffer.Target)
+        if (!_largeTextures.Contains(currentRenderTarget))
         {
             return Matrix.Identity;
         }
