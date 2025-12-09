@@ -232,7 +232,7 @@ public class MotionSmoothingSettings : EverestModuleSettings
     public void CreateRenderMadelineWithSubpixelsEntry(TextMenu menu, bool inGame)
     {
         _renderMadelineWithSubpixelsItem = new TextMenu.OnOff(
-            "Render Madeline at Subpixel Position",
+            "Render Madeline with Subpixel Precision",
             _renderMadelineWithSubpixels
         );
 
@@ -252,9 +252,10 @@ public class MotionSmoothingSettings : EverestModuleSettings
             menu,
             "Only applies if Smooth Camera is set to Hires. Determines\n" +
             "whether Madeline is drawn at her exact subpixel position\n" +
-            "(i.e. offset from the pixel grid). When not moving, Madeline\n" +
-            "will always be drawn aligned to the grid, so that information\n" +
-            "about subpixels cannot be gleaned.\n"
+            "(i.e. offset from the pixel grid). This makes Madeline's\n" +
+			"sprite appear much more smooth and clear when moving.\n" +
+            "When not moving, Madeline will always be drawn aligned to the\n" +
+            "grid, so that information about her subpixels cannot be gleaned.\n"
         );
     }
 
@@ -309,6 +310,8 @@ public class MotionSmoothingSettings : EverestModuleSettings
             bool shouldDisableRenderBackgroundHires = UnlockCameraStrategy != UnlockCameraStrategy.Hires;
             _renderBackgroundHiresItem.Disabled = shouldDisableRenderBackgroundHires;
             _renderBackgroundHiresItem.Selectable = !shouldDisableRenderBackgroundHires;
+			_renderMadelineWithSubpixelsItem.Disabled = shouldDisableRenderBackgroundHires;
+			_renderMadelineWithSubpixelsItem.Selectable = !shouldDisableRenderBackgroundHires;
         }
     }
 
