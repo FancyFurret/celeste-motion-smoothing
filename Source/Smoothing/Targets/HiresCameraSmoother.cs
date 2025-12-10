@@ -131,6 +131,10 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
 		AddHook(new Hook(typeof(SpriteBatch).GetMethod("End", Type.EmptyTypes)!, SpriteBatch_End));
 
+        AddHook(new Hook(typeof(GraphicsDevice).GetMethod("SetRenderTargets",
+            new[] { typeof(RenderTargetBinding[])
+        })!, GraphicsDevice_SetRenderTargets));
+
         HookDrawVertices<VertexPositionColor>();
         HookDrawVertices<VertexPositionColorTexture>();
         HookDrawVertices<LightingRenderer.VertexPositionColorMaskTexture>();
@@ -1314,24 +1318,6 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
             return;
         }
 
-		var renderTargets = Draw.SpriteBatch.GraphicsDevice.GetRenderTargets();
-
-        if (renderTargets == null || renderTargets.Length == 0)
-        {
-			 _currentRenderTarget = null;
-            orig(self, sortMode, blendState, samplerState, depthStencilState, rasterizerState, effect, transformMatrix);
-            return;
-        }
-
-        _currentRenderTarget = renderTargets[0].RenderTarget;
-
-        // If there's a large version of this, then we use that instead.
-        if (_largeExternalTextureMap.TryGetValue(_currentRenderTarget, out VirtualRenderTarget largeRenderTarget))
-        {
-            _currentRenderTarget = largeRenderTarget.Target;
-            Engine.Instance.GraphicsDevice.SetRenderTarget(largeRenderTarget);
-        }
-
 
 
         if (!renderer.FixMatrices)
@@ -1374,6 +1360,31 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 		}
 
         orig(self, sortMode, blendState, samplerState, depthStencilState, rasterizerState, effect, transformMatrix);
+    }
+
+    private delegate void orig_SetRenderTargets(GraphicsDevice self, RenderTargetBinding[] renderTargets);
+
+    private static void GraphicsDevice_SetRenderTargets(orig_SetRenderTargets orig, GraphicsDevice self, RenderTargetBinding[] renderTargetBindings)
+    {
+        if (renderTargetBindings == null || renderTargetBindings.Length == 0)
+        {
+            _currentRenderTarget = null;
+            orig(self, renderTargetBindings);
+            return;
+        }
+
+        for (int i = 0; i < renderTargetBindings.Length; i++)
+        {
+            // If there's a large version of this, then we use that instead.
+            if (_largeExternalTextureMap.TryGetValue(renderTargetBindings[i].RenderTarget, out VirtualRenderTarget largeRenderTarget))
+            {
+                renderTargetBindings[i] = new RenderTargetBinding(largeRenderTarget.Target);
+            }
+        }
+
+        _currentRenderTarget = renderTargetBindings[0].RenderTarget;
+
+        orig(self, renderTargetBindings);
     }
 
 	private delegate void orig_PushSprite(SpriteBatch self, Texture2D texture, float sourceX, float sourceY, float sourceW, float sourceH, float destinationX, float destinationY, float destinationW, float destinationH, Color color, float originX, float originY, float rotationSin, float rotationCos, float depth, byte effects);
