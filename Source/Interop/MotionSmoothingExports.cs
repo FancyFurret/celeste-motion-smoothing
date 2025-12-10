@@ -18,4 +18,10 @@ public static class MotionSmoothingExports
     {
         MotionSmoothingModule.Instance.EnabledActions.Add(action);
     }
+
+    public static void DisableHiResSetting() {
+        if (MotionSmoothingModule.Settings.UnlockCameraStrategy == UnlockCameraStrategy.Hires) {
+            MotionSmoothingModule.Settings.UnlockCameraStrategy = UnlockCameraStrategy.Off;
+        }
+    }
 }
