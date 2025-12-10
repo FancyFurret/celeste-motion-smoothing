@@ -22,12 +22,14 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 	private static bool _currentlyScaling = false;
 	private static Texture _currentRenderTarget;
 
-	// This stores references to all textures that are supposed to be
-	// scaled by 6x. We initialize it with our large level, gameplay,
-	// and TempA buffers, and whenever any of those gets drawn into another
-	// buffer, we add it to this set. When a buffer gets drawn into a large
-	// buffer, we scale it by 6x, *unless* it's in this set.
-	private static HashSet<Texture> _largeTextures = new HashSet<Texture>();
+	// This maps references to all external textures (i.e. created by other mods)
+    // that are supposed to be scaled by 6x. We hot-swap those with large buffers
+    // when they get other large buffers drawn into them.
+	private static Dictionary<Texture, VirtualRenderTarget> _largeExternalTextureMap = new Dictionary<Texture, VirtualRenderTarget>();
+
+    // This is a set containing just the large versions of large textures, but
+    // we also include the three that we enlarge (Level, Gameplay, and TempA).
+    private static HashSet<Texture> _largeTextures = new HashSet<Texture>();
 
 	private static Effect _fxHiresDistort;
 	private static Effect _fxOrigDistort;
@@ -1323,6 +1325,13 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
         _currentRenderTarget = renderTargets[0].RenderTarget;
 
+        // If there's a large version of this, then we use that instead.
+        if (_largeExternalTextureMap.TryGetValue(_currentRenderTarget, out VirtualRenderTarget largeRenderTarget))
+        {
+            _currentRenderTarget = largeRenderTarget.Target;
+            Engine.Instance.GraphicsDevice.SetRenderTarget(largeRenderTarget);
+        }
+
 
 
         if (!renderer.FixMatrices)
@@ -1377,34 +1386,66 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 			return;
 		}
 
+        // If you're drawing the small version of this texture, no you're not!
+        if (_largeExternalTextureMap.TryGetValue(texture, out VirtualRenderTarget largeRenderTarget))
+        {
+            texture = largeRenderTarget.Target;
+        }
+
+        // We handle scaling when the target is large in the Begin hook, so the only things
+        // we're handling here are when the *source* is large.
 		if (_largeTextures.Contains(texture))
 		{
-			// If we're drawing something large and it's going to be scaled,
-			// undo that scaling to avoid drawing at 36x.
-			if (_currentlyScaling)
+			// If we're drawing something large and it's going to be scaled, we need to
+            // not do that scaling to avoid drawing at 36x. Similarly, drawing something
+			// large to the screen should also get unscaled. That's because if a buffer
+            // has become 6x larger, then it definitely used to have a scaling matrix,
+            // and so now it ought not to.
+			if (_currentlyScaling || _currentRenderTarget == null)
 			{
-				orig(self, texture, sourceX, sourceY, sourceW, sourceH, destinationX, destinationY, destinationW / 6, destinationH / 6, color, originX, originY, rotationSin, rotationCos, depth, effects);
+				orig(self, texture, sourceX, sourceY, sourceW, sourceH, destinationX / 6, destinationY / 6, destinationW / 6, destinationH / 6, color, originX, originY, rotationSin, rotationCos, depth, effects);
 				return;
 			}
 
-			// On the other hand, if we're drawing something large into something currently
-			// *not* considered large, that target should from now on be considered large.
-			else if (_currentRenderTarget != null)
-			{
-				_largeTextures.Add(_currentRenderTarget);
-			}
+            if (_currentRenderTarget is not Texture2D texture2D)
+            {
+                orig(self, texture, sourceX, sourceY, sourceW, sourceH, destinationX, destinationY, destinationW, destinationH, color, originX, originY, rotationSin, rotationCos, depth, effects);
+                return;
+            }
 
-			// ...unless we're drawing something to the screen. Note: this invariably hooks when
-			// we draw GameplayBuffers.Level the usual time, which is why we don't get rid of the
-			// 6x scale in GetHiresDisplayMatrix().
-			else
-			{
-				orig(self, texture, sourceX, sourceY, sourceW, sourceH, destinationX, destinationY, destinationW / 6, destinationH / 6, color, originX, originY, rotationSin, rotationCos, depth, effects);
-				return;
-			}
+             // If we get to this point, then we're drawing something large into something
+            // small. Danger! We need to replace that small buffer with a larger one.
+            var largeTarget = HotCreateLargeBuffer(texture2D);
+            if (largeTarget == null)
+            {
+                orig(self, texture, sourceX, sourceY, sourceW, sourceH, destinationX, destinationY, destinationW, destinationH, color, originX, originY, rotationSin, rotationCos, depth, effects);
+                return;
+            }
+
+            // If we successfully got a result, we now need to work with that buffer -- as the target!
+            // Draw.SpriteBatch.End();
+            // Engine.Instance.GraphicsDevice.SetRenderTarget(largeTarget);
+            // Draw.SpriteBatch.Begin();
 		}
 
         orig(self, texture, sourceX, sourceY, sourceW, sourceH, destinationX, destinationY, destinationW, destinationH, color, originX, originY, rotationSin, rotationCos, depth, effects);
+    }
+
+    private static VirtualRenderTarget HotCreateLargeBuffer(Texture2D smallTexture)
+    {
+        // We cap the dimensions here since the maximum allowable texture is
+        // 4096x4096 (and this is close to that at 6x)
+        if (smallTexture.Width > 640 || smallTexture.Height > 640)
+        {
+            return null;
+        }
+
+        VirtualRenderTarget largeTarget = GameplayBuffers.Create(smallTexture.Width * 6, smallTexture.Height * 6);
+
+        _largeExternalTextureMap[smallTexture] = largeTarget;
+        _largeTextures.Add(largeTarget.Target);
+
+        return largeTarget;
     }
 
 	private static void SpriteBatch_End(Action<SpriteBatch> orig, SpriteBatch self)
