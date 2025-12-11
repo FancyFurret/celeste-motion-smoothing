@@ -9,18 +9,22 @@ using MonoMod.Cil;
 using MonoMod.RuntimeDetour;
 using System;
 using System.Collections.Generic;
-using System.Linq;
+using System.Reflection;
 
 namespace Celeste.Mod.MotionSmoothing.Smoothing.Targets;
 
 public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 {
-    private const float ZoomScaleMultiplier = 181f / 180f;
+    private const float ZoomScaleMultiplier = 180f / 180f;
     private const int HiresPixelSize = 1080 / 180;
 
 	// Flag set by the SpriteBatch.Begin hook when it it currently scaling by 6x.
 	private static bool _currentlyScaling = false;
 	private static Texture _currentRenderTarget;
+
+    private static readonly FieldInfo _beginCalledField = typeof(SpriteBatch)
+	.GetField("beginCalled", BindingFlags.NonPublic | BindingFlags.Instance);
+    private static (SpriteSortMode, BlendState, SamplerState, DepthStencilState, RasterizerState, Effect, Matrix)? _lastSpriteBatchBeginParams;
 
 	// This maps references to all external textures (i.e. created by other mods)
     // that are supposed to be scaled by 6x. We hot-swap those with large buffers
@@ -424,6 +428,12 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
             cursor.EmitLdloca(9);
             cursor.EmitDelegate(MultiplyVectors);
         }
+
+        if (cursor.TryGotoNext(MoveType.Before,
+            instr => instr.MatchLdfld(typeof(Level), "HudRenderer")))
+        {
+            cursor.EmitDelegate(DrawDebugBuffers);
+        }
     }
 
     private static void Level_Render(On.Celeste.Level.orig_Render orig, Level self)
@@ -562,6 +572,31 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
         Draw.SpriteBatch.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend, SamplerState.PointClamp, DepthStencilState.Default, RasterizerState.CullNone, ColorGrade.Effect, GetHiresDisplayMatrix()); // Matrix modified
         Draw.SpriteBatch.Draw((RenderTarget2D)GameplayBuffers.Level, vector3 + vector4, GameplayBuffers.Level.Bounds, Color.White, 0f, vector3, scale, SaveData.Instance.Assists.MirrorMode ? SpriteEffects.FlipHorizontally : SpriteEffects.None, 0f);
         Draw.SpriteBatch.End();
+    }
+
+    private static void DrawDebugBuffers()
+    {
+        if (HiresRenderer.Instance is not { } renderer) return;
+
+        int index = 0;
+        Engine.Instance.GraphicsDevice.SetRenderTarget(null);
+
+        foreach (var (smallTexture, largeTarget) in _largeExternalTextureMap)
+        {
+            if (smallTexture is not Texture2D texture2d)
+            {
+                return;
+            }
+            Draw.SpriteBatch.Begin(SpriteSortMode.Immediate, BlendState.Opaque, SamplerState.LinearClamp, DepthStencilState.Default, RasterizerState.CullNone, null, Matrix.CreateScale(6f));
+            Draw.Rect(0, 0, 320, 180, Color.Gray);
+            Draw.SpriteBatch.Draw(largeTarget, Vector2.Zero, Color.White);
+            Draw.SpriteBatch.Draw(texture2d, Vector2.Zero, Color.White);
+            Draw.SpriteBatch.End();
+
+            index++;
+        }
+
+        Console.WriteLine(index);
     }
 
     private static void PrepareLevelRender(Level level)
@@ -1308,8 +1343,47 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
     }
 
 
+    
+    private delegate void orig_SetRenderTargets(GraphicsDevice self, RenderTargetBinding[] renderTargets);
 
-    private static void SpriteBatch_Begin(Action<SpriteBatch, SpriteSortMode, BlendState, SamplerState, DepthStencilState, RasterizerState, Effect, Matrix> orig, SpriteBatch self, SpriteSortMode sortMode, BlendState blendState,
+    private static void GraphicsDevice_SetRenderTargets(orig_SetRenderTargets orig, GraphicsDevice self, RenderTargetBinding[] renderTargetBindings)
+    {
+        if (renderTargetBindings == null || renderTargetBindings.Length == 0)
+        {
+            _currentRenderTarget = null;
+            orig(self, renderTargetBindings);
+            return;
+        }
+
+        for (int i = 0; i < renderTargetBindings.Length; i++)
+        {
+            // If there's a large version of this, then we use that instead.
+            if (_largeExternalTextureMap.TryGetValue(renderTargetBindings[i].RenderTarget, out VirtualRenderTarget largeRenderTarget))
+            {
+                renderTargetBindings[i] = new RenderTargetBinding(largeRenderTarget.Target);
+            }
+        }
+
+        if (_currentRenderTarget != renderTargetBindings[0].RenderTarget)
+        {
+            if ((bool)_beginCalledField.GetValue(Draw.SpriteBatch) && _lastSpriteBatchBeginParams is var (sortMode, blendState, samplerState, depthStencilState, rasterizerState, effect, matrix))
+            {
+                Draw.SpriteBatch.End();
+                Draw.SpriteBatch.Begin(sortMode, blendState, samplerState, depthStencilState, rasterizerState, effect, matrix);
+            }
+        }
+
+        _currentRenderTarget = renderTargetBindings[0].RenderTarget;
+        
+        orig(self, renderTargetBindings);
+    }
+
+
+
+    private delegate void orig_SpriteBatch_Begin(SpriteBatch self, SpriteSortMode sortMode, BlendState blendState,
+        SamplerState samplerState, DepthStencilState depthStencilState, RasterizerState rasterizerState, Effect effect, Matrix transformMatrix);
+
+    private static void SpriteBatch_Begin(orig_SpriteBatch_Begin orig, SpriteBatch self, SpriteSortMode sortMode, BlendState blendState,
         SamplerState samplerState, DepthStencilState depthStencilState, RasterizerState rasterizerState, Effect effect, Matrix transformMatrix)
     {
         if (HiresRenderer.Instance is not { } renderer)
@@ -1317,6 +1391,8 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
             orig(self, sortMode, blendState, samplerState, depthStencilState, rasterizerState, effect, transformMatrix);
             return;
         }
+
+        _lastSpriteBatchBeginParams = (sortMode, blendState, samplerState, depthStencilState, rasterizerState, effect, transformMatrix);
 
 
 
@@ -1362,36 +1438,11 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
         orig(self, sortMode, blendState, samplerState, depthStencilState, rasterizerState, effect, transformMatrix);
     }
 
-    private delegate void orig_SetRenderTargets(GraphicsDevice self, RenderTargetBinding[] renderTargets);
-
-    private static void GraphicsDevice_SetRenderTargets(orig_SetRenderTargets orig, GraphicsDevice self, RenderTargetBinding[] renderTargetBindings)
-    {
-        if (renderTargetBindings == null || renderTargetBindings.Length == 0)
-        {
-            _currentRenderTarget = null;
-            orig(self, renderTargetBindings);
-            return;
-        }
-
-        for (int i = 0; i < renderTargetBindings.Length; i++)
-        {
-            // If there's a large version of this, then we use that instead.
-            if (_largeExternalTextureMap.TryGetValue(renderTargetBindings[i].RenderTarget, out VirtualRenderTarget largeRenderTarget))
-            {
-                renderTargetBindings[i] = new RenderTargetBinding(largeRenderTarget.Target);
-            }
-        }
-
-        _currentRenderTarget = renderTargetBindings[0].RenderTarget;
-
-        orig(self, renderTargetBindings);
-    }
-
 	private delegate void orig_PushSprite(SpriteBatch self, Texture2D texture, float sourceX, float sourceY, float sourceW, float sourceH, float destinationX, float destinationY, float destinationW, float destinationH, Color color, float originX, float originY, float rotationSin, float rotationCos, float depth, byte effects);
 
 	private static void PushSpriteHook(orig_PushSprite orig, SpriteBatch self, Texture2D texture, float sourceX, float sourceY, float sourceW, float sourceH, float destinationX, float destinationY, float destinationW, float destinationH, Color color, float originX, float originY, float rotationSin, float rotationCos, float depth, byte effects)
     {
-		if (HiresRenderer.Instance is not { } renderer)
+		if (HiresRenderer.Instance is not { } renderer || texture == null)
 		{
 			orig(self, texture, sourceX, sourceY, sourceW, sourceH, destinationX, destinationY, destinationW, destinationH, color, originX, originY, rotationSin, rotationCos, depth, effects);
 			return;
@@ -1401,6 +1452,11 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
         if (_largeExternalTextureMap.TryGetValue(texture, out VirtualRenderTarget largeRenderTarget))
         {
             texture = largeRenderTarget.Target;
+        }
+
+        if (texture == renderer.LargeLevelBuffer.Target)
+        {
+            Console.WriteLine(_largeTextures.Contains(texture).ToString() + " " + _currentlyScaling.ToString());
         }
 
         // We handle scaling when the target is large in the Begin hook, so the only things
@@ -1426,17 +1482,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
              // If we get to this point, then we're drawing something large into something
             // small. Danger! We need to replace that small buffer with a larger one.
-            var largeTarget = HotCreateLargeBuffer(texture2D);
-            if (largeTarget == null)
-            {
-                orig(self, texture, sourceX, sourceY, sourceW, sourceH, destinationX, destinationY, destinationW, destinationH, color, originX, originY, rotationSin, rotationCos, depth, effects);
-                return;
-            }
-
-            // If we successfully got a result, we now need to work with that buffer -- as the target!
-            // Draw.SpriteBatch.End();
-            // Engine.Instance.GraphicsDevice.SetRenderTarget(largeTarget);
-            // Draw.SpriteBatch.Begin();
+            HotCreateLargeBuffer(texture2D);
 		}
 
         orig(self, texture, sourceX, sourceY, sourceW, sourceH, destinationX, destinationY, destinationW, destinationH, color, originX, originY, rotationSin, rotationCos, depth, effects);
