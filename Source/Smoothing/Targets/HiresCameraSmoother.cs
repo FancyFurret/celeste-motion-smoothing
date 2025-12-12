@@ -23,6 +23,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 	private static Texture _currentRenderTarget;
 
     private static bool _offsetDrawing = false;
+    private static bool _scaleSpriteBatchBeginMatrices = true;
 
     private static readonly FieldInfo _beginCalledField = typeof(SpriteBatch)
 	.GetField("beginCalled", BindingFlags.NonPublic | BindingFlags.Instance);
@@ -609,6 +610,9 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
     {
         if (HiresRenderer.Instance is not { } renderer) return;
 
+        _offsetDrawing = false;
+        _scaleSpriteBatchBeginMatrices = true;
+
         renderer.FixMatricesWithoutOffset = false;
         renderer.AllowParallaxOneBackdrops = false;
         renderer.CurrentlyRenderingBackground = true;
@@ -672,19 +676,37 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
         vector4 *= 6f;
     }
 
-    private static void DisableFixMatrices()
+
+
+    private static void DisableScaleSpriteBatchBeginMatrices()
     {
         if (HiresRenderer.Instance is not { } renderer) return;
 
-        renderer.FixMatrices = false;
+        _scaleSpriteBatchBeginMatrices = false;
     }
 
-    private static void EnableFixMatrices()
+    private static void EnableScaleSpriteBatchBeginMatrices()
     {
         if (HiresRenderer.Instance is not { } renderer) return;
 
-        renderer.FixMatrices = true;
+        _scaleSpriteBatchBeginMatrices = true;
     }
+
+    private static void DisableOffsetDrawing()
+    {
+        if (HiresRenderer.Instance is not { } renderer) return;
+
+        _offsetDrawing = false;
+    }
+
+    private static void EnableOffsetDrawing()
+    {
+        if (HiresRenderer.Instance is not { } renderer) return;
+
+        _offsetDrawing = true;
+    }
+
+
 
     private static Matrix GetScaleMatrix()
     {
@@ -717,8 +739,6 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
         return renderer.ScaleMatrix * level.Camera.Matrix;
     }
-
-
 
     private static Matrix GetHiresDisplayMatrix()
     {
@@ -754,52 +774,6 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
             cursor.EmitPop();
             cursor.EmitDelegate(GetLargeTempBBuffer);
         }
-
-
-
-        if (cursor.TryGotoNext(MoveType.After,
-            instr => instr.MatchCall(typeof(GaussianBlur), "Blur")))
-        {
-            cursor.EmitDelegate(EnableFixMatrices);
-        }
-
-        // Start from the end of the method
-        cursor.Index = cursor.Instrs.Count - 1;
-
-        // Search backwards for the two different renders and exempt them from upscaling
-        // if (cursor.TryGotoPrev(MoveType.Before,
-        //     instr => instr.MatchLdsfld(typeof(BloomRenderer), "BlurredScreenToMask"),
-        //     instr => instr.MatchCallvirt<SpriteBatch>("Begin")))
-        // {
-        //     if (cursor.TryGotoNext(MoveType.Before,
-        //         instr => instr.MatchCallvirt<SpriteBatch>("Begin")))
-        //     {
-        //         cursor.EmitDelegate(DisableFixMatrices);
-        //     }
-
-        //     if (cursor.TryGotoNext(MoveType.After,
-        //         instr => instr.MatchCallvirt<SpriteBatch>("Begin")))
-        //     {
-        //         cursor.EmitDelegate(EnableFixMatricesForBloom);
-        //     }
-        // }
-
-        // if (cursor.TryGotoNext(MoveType.Before,
-        //     instr => instr.MatchLdsfld(typeof(BloomRenderer), "AdditiveMaskToScreen"),
-        //     instr => instr.MatchCallvirt<SpriteBatch>("Begin")))
-        // {
-        //     if (cursor.TryGotoNext(MoveType.Before,
-        //         instr => instr.MatchCallvirt<SpriteBatch>("Begin")))
-        //     {
-        //         cursor.EmitDelegate(DisableFixMatrices);
-        //     }
-
-        //     if (cursor.TryGotoNext(MoveType.After,
-        //         instr => instr.MatchCallvirt<SpriteBatch>("Begin")))
-        //     {
-        //         cursor.EmitDelegate(EnableFixMatricesForBloom);
-        //     }
-        // }
     }
 
 
@@ -821,7 +795,6 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
         VirtualRenderTarget tempA = GameplayBuffers.TempA;
         Texture2D texture = ModifiedBlur((RenderTarget2D)target, GameplayBuffers.TempA, renderer.LargeTempBBuffer); // Argument modified
-        EnableFixMatrices(); // Inserted
         List<Component> components = scene.Tracker.GetComponents<BloomPoint>();
         List<Component> components2 = scene.Tracker.GetComponents<EffectCutout>();
         Engine.Instance.GraphicsDevice.SetRenderTarget(tempA);
@@ -1151,12 +1124,10 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
 	private static void Glitch_Apply(On.Celeste.Glitch.orig_Apply orig, VirtualRenderTarget source, float timer, float seed, float amplitude)
 	{
-		DisableFixMatrices();
 		HiresRenderer.EnableLargeTempABuffer();
 
 		orig(source, timer, seed, amplitude);
 
-		EnableFixMatrices();
 		HiresRenderer.DisableLargeTempABuffer();
 	}
 
@@ -1365,7 +1336,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
     private static void SpriteBatch_Begin(orig_SpriteBatch_Begin orig, SpriteBatch self, SpriteSortMode sortMode, BlendState blendState,
         SamplerState samplerState, DepthStencilState depthStencilState, RasterizerState rasterizerState, Effect effect, Matrix transformMatrix)
     {
-        if (HiresRenderer.Instance is not { } renderer)
+        if (HiresRenderer.Instance is not { } renderer || !_scaleSpriteBatchBeginMatrices)
         {
             orig(self, sortMode, blendState, samplerState, depthStencilState, rasterizerState, effect, transformMatrix);
             return;
@@ -1472,6 +1443,8 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
         _largeExternalTextureMap[smallTexture] = largeTarget;
         _largeTextures.Add(largeTarget.Target);
+
+        Console.WriteLine("Hot creating large buffer!");
 
         return largeTarget;
     }
