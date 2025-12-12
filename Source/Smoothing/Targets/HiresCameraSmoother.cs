@@ -22,6 +22,8 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 	private static bool _currentlyScaling = false;
 	private static Texture _currentRenderTarget;
 
+    private static bool _offsetDrawing = false;
+
     private static readonly FieldInfo _beginCalledField = typeof(SpriteBatch)
 	.GetField("beginCalled", BindingFlags.NonPublic | BindingFlags.Instance);
     private static (SpriteSortMode, BlendState, SamplerState, DepthStencilState, RasterizerState, Effect, Matrix)? _lastSpriteBatchBeginParams;
@@ -122,6 +124,8 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 			_largeTextures.Clear();
 			_largeTextures.Add(renderer.LargeLevelBuffer.Target);
 			_largeTextures.Add(renderer.LargeGameplayBuffer.Target);
+            _largeTextures.Add(renderer.LargeTempABuffer.Target);
+            _largeTextures.Add(renderer.LargeTempBBuffer.Target);
         }
 
         AddHook(new Hook(typeof(SpriteBatch).GetMethod("Begin",
@@ -201,6 +205,8 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 			_largeTextures.Clear();
 			_largeTextures.Add(renderer.LargeLevelBuffer.Target);
 			_largeTextures.Add(renderer.LargeGameplayBuffer.Target);
+            _largeTextures.Add(renderer.LargeTempABuffer.Target);
+            _largeTextures.Add(renderer.LargeTempBBuffer.Target);
         }
 
         orig(self);
@@ -589,7 +595,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
             //     return;
             // }
 
-            // Draw.SpriteBatch.Begin(SpriteSortMode.Immediate, BlendState.Opaque, SamplerState.LinearClamp, DepthStencilState.Default, RasterizerState.CullNone, null);
+            // Draw.SpriteBatch.Begin(SpriteSortMode.Deferred, BlendState.Opaque, SamplerState.LinearClamp, DepthStencilState.Default, RasterizerState.CullNone, null);
             // Draw.Rect(0, 0, 320, 180, Color.Gray);
             // Draw.SpriteBatch.Draw(largeTarget, Vector2.Zero, Color.White);
             // Draw.SpriteBatch.Draw(texture2d, Vector2.Zero, Color.White);
@@ -597,15 +603,12 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
             index++;
         }
-
-        Console.WriteLine(index);
     }
 
     private static void PrepareLevelRender(Level level)
     {
         if (HiresRenderer.Instance is not { } renderer) return;
 
-        renderer.FixMatrices = false;
         renderer.FixMatricesWithoutOffset = false;
         renderer.AllowParallaxOneBackdrops = false;
         renderer.CurrentlyRenderingBackground = true;
@@ -639,22 +642,21 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
         if (MotionSmoothingModule.Settings.RenderBackgroundHires)
         {
             renderer.DisableFloorFunctions = true;
-            renderer.FixMatrices = true;
-            renderer.FixMatricesWithoutOffset = false;
+            renderer.FixMatricesWithoutOffset = true;
             SmoothCameraPosition(level);
         }
 
         else
         {
             renderer.DisableFloorFunctions = false;
-            renderer.FixMatrices = false;
+            renderer.FixMatricesWithoutOffset = true;
         }
     }
 
     private static void AfterBloomApply(Level level)
     {
         HiresRenderer.DisableLargeTempABuffer(); // Inserted
-        EnableFixMatricesWithScale(); // Inserted
+        // EnableFixMatrices(); // Inserted
     }
 
     private static void BeforeDrawToScreen(Level level)
@@ -677,20 +679,11 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
         renderer.FixMatrices = false;
     }
 
-    private static void EnableFixMatricesWithScale()
+    private static void EnableFixMatrices()
     {
         if (HiresRenderer.Instance is not { } renderer) return;
 
         renderer.FixMatrices = true;
-        renderer.ScaleMatricesForBloom = false;
-    }
-
-    private static void EnableFixMatricesForBloom()
-    {
-        if (HiresRenderer.Instance is not { } renderer) return;
-
-        renderer.FixMatrices = true;
-        renderer.ScaleMatricesForBloom = true;
     }
 
     private static Matrix GetScaleMatrix()
@@ -726,17 +719,6 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
     }
 
 
-    // This one needs the camera matrix out in front to work properly.
-    private static Matrix GetOffsetScaledCameraMatrixForBloom(Level level)
-    {
-        if (HiresRenderer.Instance is not { } renderer) return level.Camera.Matrix;
-
-        Vector2 offset = GetCameraOffset();
-
-        return level.Camera.Matrix * Matrix.CreateTranslation(offset.X, offset.Y, 0f) * renderer.ScaleMatrix;
-    }
-
-
 
     private static Matrix GetHiresDisplayMatrix()
     {
@@ -748,22 +730,6 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 		// Note that we leave the scale intact here! That's because the SpriteBatch.Draw
 		// hook will strip it off later.
         return Matrix.CreateScale(6f * ZoomScaleMultiplier) * Engine.ScreenMatrix;
-    }
-
-
-
-    private static VirtualRenderTarget GetLargeLevelBuffer()
-    {
-        if (HiresRenderer.Instance is not { } renderer) return GameplayBuffers.Level;
-
-        return renderer.LargeLevelBuffer;
-    }
-
-    private static VirtualRenderTarget GetLargeTempABuffer()
-    {
-        if (HiresRenderer.Instance is not { } renderer) return GameplayBuffers.TempA;
-
-        return renderer.LargeTempABuffer;
     }
 
     private static VirtualRenderTarget GetLargeTempBBuffer()
@@ -794,46 +760,46 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
         if (cursor.TryGotoNext(MoveType.After,
             instr => instr.MatchCall(typeof(GaussianBlur), "Blur")))
         {
-            cursor.EmitDelegate(EnableFixMatricesForBloom);
+            cursor.EmitDelegate(EnableFixMatrices);
         }
 
         // Start from the end of the method
         cursor.Index = cursor.Instrs.Count - 1;
 
         // Search backwards for the two different renders and exempt them from upscaling
-        if (cursor.TryGotoPrev(MoveType.Before,
-            instr => instr.MatchLdsfld(typeof(BloomRenderer), "BlurredScreenToMask"),
-            instr => instr.MatchCallvirt<SpriteBatch>("Begin")))
-        {
-            if (cursor.TryGotoNext(MoveType.Before,
-                instr => instr.MatchCallvirt<SpriteBatch>("Begin")))
-            {
-                cursor.EmitDelegate(DisableFixMatrices);
-            }
+        // if (cursor.TryGotoPrev(MoveType.Before,
+        //     instr => instr.MatchLdsfld(typeof(BloomRenderer), "BlurredScreenToMask"),
+        //     instr => instr.MatchCallvirt<SpriteBatch>("Begin")))
+        // {
+        //     if (cursor.TryGotoNext(MoveType.Before,
+        //         instr => instr.MatchCallvirt<SpriteBatch>("Begin")))
+        //     {
+        //         cursor.EmitDelegate(DisableFixMatrices);
+        //     }
 
-            if (cursor.TryGotoNext(MoveType.After,
-                instr => instr.MatchCallvirt<SpriteBatch>("Begin")))
-            {
-                cursor.EmitDelegate(EnableFixMatricesForBloom);
-            }
-        }
+        //     if (cursor.TryGotoNext(MoveType.After,
+        //         instr => instr.MatchCallvirt<SpriteBatch>("Begin")))
+        //     {
+        //         cursor.EmitDelegate(EnableFixMatricesForBloom);
+        //     }
+        // }
 
-        if (cursor.TryGotoNext(MoveType.Before,
-            instr => instr.MatchLdsfld(typeof(BloomRenderer), "AdditiveMaskToScreen"),
-            instr => instr.MatchCallvirt<SpriteBatch>("Begin")))
-        {
-            if (cursor.TryGotoNext(MoveType.Before,
-                instr => instr.MatchCallvirt<SpriteBatch>("Begin")))
-            {
-                cursor.EmitDelegate(DisableFixMatrices);
-            }
+        // if (cursor.TryGotoNext(MoveType.Before,
+        //     instr => instr.MatchLdsfld(typeof(BloomRenderer), "AdditiveMaskToScreen"),
+        //     instr => instr.MatchCallvirt<SpriteBatch>("Begin")))
+        // {
+        //     if (cursor.TryGotoNext(MoveType.Before,
+        //         instr => instr.MatchCallvirt<SpriteBatch>("Begin")))
+        //     {
+        //         cursor.EmitDelegate(DisableFixMatrices);
+        //     }
 
-            if (cursor.TryGotoNext(MoveType.After,
-                instr => instr.MatchCallvirt<SpriteBatch>("Begin")))
-            {
-                cursor.EmitDelegate(EnableFixMatricesForBloom);
-            }
-        }
+        //     if (cursor.TryGotoNext(MoveType.After,
+        //         instr => instr.MatchCallvirt<SpriteBatch>("Begin")))
+        //     {
+        //         cursor.EmitDelegate(EnableFixMatricesForBloom);
+        //     }
+        // }
     }
 
 
@@ -855,7 +821,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
         VirtualRenderTarget tempA = GameplayBuffers.TempA;
         Texture2D texture = ModifiedBlur((RenderTarget2D)target, GameplayBuffers.TempA, renderer.LargeTempBBuffer); // Argument modified
-        EnableFixMatricesForBloom(); // Inserted
+        EnableFixMatrices(); // Inserted
         List<Component> components = scene.Tracker.GetComponents<BloomPoint>();
         List<Component> components2 = scene.Tracker.GetComponents<EffectCutout>();
         Engine.Instance.GraphicsDevice.SetRenderTarget(tempA);
@@ -908,15 +874,11 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
         Draw.Rect(-10f, -10f, 340f, 200f, Color.White * self.Base);
         Draw.SpriteBatch.End();
 
-        DisableFixMatrices(); // Inserted
         Draw.SpriteBatch.Begin(SpriteSortMode.Deferred, BloomRenderer.BlurredScreenToMask);
-        EnableFixMatricesForBloom(); // Inserted
         Draw.SpriteBatch.Draw(texture, Vector2.Zero, Color.White);
         Draw.SpriteBatch.End();
         Engine.Instance.GraphicsDevice.SetRenderTarget(target);
-        DisableFixMatrices(); // Inserted
         Draw.SpriteBatch.Begin(SpriteSortMode.Deferred, BloomRenderer.AdditiveMaskToScreen);
-        EnableFixMatricesForBloom(); // Inserted
         for (int i = 0; (float)i < self.Strength; i++)
         {
             float num2 = (((float)i < self.Strength - 1f) ? 1f : (self.Strength - (float)i));
@@ -977,14 +939,18 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
             return;
         }
 
+
+        renderer.AllowParallaxOneBackdrops = false;
         orig(self, scene);
 
         // Go to the large level buffer for compositing time.
         Engine.Instance.GraphicsDevice.SetRenderTarget(renderer.LargeLevelBuffer);
         Engine.Instance.GraphicsDevice.Clear(Color.Transparent);
-        // Draw the background upscaled out of GameplayBuffers.Level
-        Draw.SpriteBatch.Begin(SpriteSortMode.Immediate, BlendState.Opaque, SamplerState.PointClamp, DepthStencilState.None, RasterizerState.CullNone, null, renderer.ScaleMatrix);
-        // Draw the non-parallax one backgrounds upscaled
+
+        renderer.FixMatricesWithoutOffset = true;
+        // Draw the background into GameplayBuffers.Level. It'll get upscaled for us automatically.
+        Draw.SpriteBatch.Begin(SpriteSortMode.Deferred, BlendState.Opaque, SamplerState.PointClamp, DepthStencilState.None, RasterizerState.CullNone, null, Matrix.Identity);
+        // Draw the non-parallax one backgrounds.
         Draw.SpriteBatch.Draw(GameplayBuffers.Level, Vector2.Zero, Color.White);
         Draw.SpriteBatch.End();
 
@@ -992,16 +958,12 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
         // Now draw the parallax-one backgrounds
         renderer.AllowParallaxOneBackdrops = true;
-        renderer.FixMatrices = true;
 
         orig(self, scene);
 
-        renderer.AllowParallaxOneBackdrops = false;
         renderer.CurrentlyRenderingBackground = false;
 
         HiresRenderer.EnableLargeLevelBuffer();
-        renderer.FixMatricesWithoutOffset = true;
-
         Engine.Instance.GraphicsDevice.SetRenderTarget(GameplayBuffers.Level);
     }
 
@@ -1038,7 +1000,9 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
 					Engine.Instance.GraphicsDevice.SetRenderTarget(renderer.LargeGameplayBuffer);
 
-					Draw.SpriteBatch.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend, SamplerState.PointClamp, DepthStencilState.None, RasterizerState.CullNone, null, renderer.ScaleMatrix);
+                    // The upscaling will happen automatically whenever we draw into the large
+                    // gameplay buffer, so we don't add a scale matrix.
+					Draw.SpriteBatch.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend, SamplerState.PointClamp, DepthStencilState.None, RasterizerState.CullNone, null, Matrix.Identity);
 					Draw.SpriteBatch.Draw(GameplayBuffers.Gameplay, Vector2.Zero, Color.White);
 					Draw.SpriteBatch.End();
 
@@ -1068,7 +1032,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 					}
 
 					Engine.Instance.GraphicsDevice.SetRenderTarget(renderer.LargeGameplayBuffer);
-					Draw.SpriteBatch.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend, SamplerState.PointClamp, DepthStencilState.None, RasterizerState.CullNone, null, renderer.ScaleMatrix);
+					Draw.SpriteBatch.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend, SamplerState.PointClamp, DepthStencilState.None, RasterizerState.CullNone, null, Matrix.Identity);
 					Draw.SpriteBatch.Draw(GameplayBuffers.Gameplay, offset, Color.White);
 					Draw.SpriteBatch.End();
 					
@@ -1090,7 +1054,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 		// Draw the topmost things.
 		Engine.Instance.GraphicsDevice.SetRenderTarget(renderer.LargeGameplayBuffer);
 	
-        Draw.SpriteBatch.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend, SamplerState.PointClamp, DepthStencilState.None, RasterizerState.CullNone, null, renderer.ScaleMatrix);
+        Draw.SpriteBatch.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend, SamplerState.PointClamp, DepthStencilState.None, RasterizerState.CullNone, null, Matrix.Identity);
         Draw.SpriteBatch.Draw(GameplayBuffers.Gameplay, Vector2.Zero, Color.White);
         Draw.SpriteBatch.End();
 
@@ -1101,7 +1065,6 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 		Engine.Instance.GraphicsDevice.SetRenderTarget(GameplayBuffers.Gameplay);
 
 		// Very important! Some things live the SJ expert lobby draw into this buffer going forward
-		renderer.FixMatrices = true;
 		renderer.FixMatricesWithoutOffset = true;
     }
 
@@ -1113,9 +1076,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
             return;
         }
 		
-		renderer.FixMatrices = false;
 		renderer.DisableFloorFunctions = false;
-		renderer.FixMatricesWithoutOffset = false;
 
 		if (MotionSmoothingModule.Settings.RenderBackgroundHires)
         {
@@ -1135,13 +1096,12 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 			orig(source, map, hasDistortion);
 
 			Engine.Instance.GraphicsDevice.SetRenderTargets(renderTargets);
-			renderer.FixMatrices = true;
 
+            _offsetDrawing = true;
 			Draw.SpriteBatch.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend, SamplerState.PointClamp, DepthStencilState.None, RasterizerState.CullNone, null, Matrix.Identity);
 			Draw.SpriteBatch.Draw(renderer.SmallLevelBuffer, Vector2.Zero, Color.White);
 			Draw.SpriteBatch.End();
-
-			renderer.FixMatrices = false;
+            _offsetDrawing = false;
 
 			return;
 		}
@@ -1150,26 +1110,22 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
 		
 
-		renderer.FixMatrices = false;
-
-		// Scale up the distortion map into LargeTempA
+		// Draw the distortion map into LargeTempA. It will get scaled automatically.
 		Engine.Instance.GraphicsDevice.SetRenderTarget(renderer.LargeTempABuffer);
         Engine.Instance.GraphicsDevice.Clear(Color.Transparent);
 	
-        Draw.SpriteBatch.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend, SamplerState.PointClamp, DepthStencilState.None, RasterizerState.CullNone, null, renderer.ScaleMatrix);
+        Draw.SpriteBatch.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend, SamplerState.PointClamp, DepthStencilState.None, RasterizerState.CullNone, null, Matrix.Identity);
         Draw.SpriteBatch.Draw(map, Vector2.Zero, Color.White);
         Draw.SpriteBatch.End();
 
-		// Now draw this into LargeTempB
-		Engine.Instance.GraphicsDevice.SetRenderTarget(renderer.LargeTempBBuffer);
-        Engine.Instance.GraphicsDevice.Clear(Color.Transparent);
-		orig(source, renderer.LargeTempABuffer, hasDistortion);
-
-		// Finally, draw this back into whatever we were supposed to be drawing to, but with offset.
+		// Now draw this into whatever we were supposed to be drawing into, *with offset*.
+        // Distort.Render draws source, which in this case is the large gameplay buffer.
+        // That's totally fine, since it's big drawing into big, and so the scale will
+        // get removed, leaving only the offset.
+        _offsetDrawing = true;
 		Engine.Instance.GraphicsDevice.SetRenderTargets(renderTargets);
-		Draw.SpriteBatch.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend, SamplerState.PointClamp, DepthStencilState.None, RasterizerState.CullNone, null, Matrix.Identity);
-        Draw.SpriteBatch.Draw(renderer.LargeTempBBuffer, GetCameraOffset() * 6f, Color.White);
-        Draw.SpriteBatch.End();
+		orig(source, renderer.LargeTempABuffer, hasDistortion);
+        _offsetDrawing = false;
     }
 
 
@@ -1181,7 +1137,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
 		orig(source, timer, seed, amplitude);
 
-		EnableFixMatricesWithScale();
+		EnableFixMatrices();
 		HiresRenderer.DisableLargeTempABuffer();
 	}
 
@@ -1401,43 +1357,13 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
         // For reasons I haven't fully understood, all of these
         // coming scale matrices *must* be precomposed to work properly.
 
-        if (_currentRenderTarget == renderer.LargeTempABuffer.Target)
+        // If we're drawing to a large target, scale.
+        if (_largeTextures.Contains(_currentRenderTarget))
         {
-            if (renderer.FixMatrices && renderer.ScaleMatricesForBloom)
-            {
-                transformMatrix = transformMatrix * GetOffsetScaleMatrix();
+            transformMatrix = transformMatrix * renderer.ScaleMatrix;
 
-                _currentlyScaling = true;
-            }
+            _currentlyScaling = true;
         }
-
-        // Otherwise, only modify the matrix if we're rendering to the one buffer that's bigger than things expect.
-        else if (_currentRenderTarget == renderer.LargeLevelBuffer.Target || _currentRenderTarget == renderer.LargeGameplayBuffer.Target)
-        {
-            if (renderer.FixMatrices)
-            {
-                if (renderer.FixMatricesWithoutOffset)
-                {
-                    transformMatrix = transformMatrix * renderer.ScaleMatrix;
-                }
-
-                else
-                {
-                    transformMatrix = transformMatrix * GetOffsetScaleMatrix();
-                }
-
-                _currentlyScaling = true;
-            }
-        }
-
-        // We don't check for renderer.FixMatrices here, since these buffers should always
-        // have things scaled when drawing into them.
-		else if (_largeTextures.Contains(_currentRenderTarget))
-		{
-			transformMatrix = transformMatrix * renderer.ScaleMatrix;
-
-			_currentlyScaling = true;
-		}
 
         orig(self, sortMode, blendState, samplerState, depthStencilState, rasterizerState, effect, transformMatrix);
     }
@@ -1475,11 +1401,21 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
                     {
                         Draw.SpriteBatch.End();
                         Draw.SpriteBatch.Begin(sortMode, blendState, samplerState, depthStencilState, rasterizerState, effect, matrix * Matrix.CreateScale(1f / 6f));
+
+                        if (_offsetDrawing)
+                        {
+                            Vector2 offset = GetCameraOffset();
+                            destinationX += offset.X * 6f;
+                            destinationY += offset.Y * 6f;
+                        }
+
                         orig(self, texture, sourceX, sourceY, sourceW, sourceH, destinationX, destinationY, destinationW, destinationH, color, originX, originY, rotationSin, rotationCos, depth, effects);
+
                         Draw.SpriteBatch.End();
                         Draw.SpriteBatch.Begin(sortMode, blendState, samplerState, depthStencilState, rasterizerState, effect, matrix);
                     }
                 }
+
                 return;
 			}
 
@@ -1493,6 +1429,13 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
             // small. Danger! We need to replace that small buffer with a larger one.
             HotCreateLargeBuffer(texture2D);
 		}
+
+        if (_offsetDrawing)
+        {
+            Vector2 offset = GetCameraOffset();
+            destinationX += offset.X;
+            destinationY += offset.Y;
+        }
 
         orig(self, texture, sourceX, sourceY, sourceW, sourceH, destinationX, destinationY, destinationW, destinationH, color, originX, originY, rotationSin, rotationCos, depth, effects);
     }
