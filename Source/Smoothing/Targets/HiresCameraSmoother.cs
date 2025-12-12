@@ -933,9 +933,28 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
     private static void BackdropRenderer_Render(On.Celeste.BackdropRenderer.orig_Render orig, BackdropRenderer self, Scene scene)
     {
-        if (HiresRenderer.Instance is not { } renderer || scene is not Level level || !renderer.CurrentlyRenderingBackground || MotionSmoothingModule.Settings.RenderBackgroundHires)
+        if (HiresRenderer.Instance is not { } renderer || scene is not Level level)
         {
             orig(self, scene);
+            return;
+        }
+
+        // The foreground gets rendered with an offset to move with the gameplay.
+        if (!renderer.CurrentlyRenderingBackground)
+        {
+            _offsetDrawing = true;
+            orig(self, scene);
+            _offsetDrawing = false;
+            return;
+        }
+
+        // When rendering the background Hires, we don't need to composite anything
+        // ourselves.
+        if (MotionSmoothingModule.Settings.RenderBackgroundHires)
+        {
+            // The background very much does *not* get an offset.
+            orig(self, scene);
+            renderer.CurrentlyRenderingBackground = false;
             return;
         }
 
