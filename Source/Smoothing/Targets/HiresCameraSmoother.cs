@@ -395,35 +395,30 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
             cursor.EmitDelegate(BeforeDrawToScreen);
         }
 
-        // Uncomment to replace the declaration of the scale matrix. In vanilla, this is only used to render
-        // the level buffer, so it has no effect (we change that below). In modded, this *shouldn't* need
-        // to happen, since code that draws to GameplayBuffers.Level gets hooked and drawn at 6x, and code that
-        // draws to the screen should already expect to draw at 6x.
+        // Replce the definition of the scale matrix
 
-        //if (cursor.TryGotoNext(MoveType.After,
-        //    instr => instr.MatchCallvirt<GraphicsDevice>("set_Viewport")))
-        //{
-        //    // Find the pattern and position cursor right before stloc.2
-        //    if (cursor.TryGotoNext(MoveType.Before,
-        //        i => i.MatchLdcR4(6f)
-        //    ))
-        //    {
-        //        if (cursor.TryGotoNext(MoveType.Before,
-        //            i => i.MatchStloc(2)
-        //        ))
-        //        {
-        //            cursor.Emit(OpCodes.Pop);
-        //            cursor.EmitDelegate(GetHiresDisplayMatrix);
-        //        }
-        //    }
-        //}
+        if (cursor.TryGotoNext(MoveType.After,
+           instr => instr.MatchCallvirt<GraphicsDevice>("set_Viewport")))
+        {
+           // Find the pattern and position cursor right before stloc.2
+           if (cursor.TryGotoNext(MoveType.Before,
+               i => i.MatchLdcR4(6f)
+           ))
+           {
+               if (cursor.TryGotoNext(MoveType.Before,
+                   i => i.MatchStloc(2)
+               ))
+               {
+                   cursor.Emit(OpCodes.Pop);
+                   cursor.EmitDelegate(GetHiresDisplayMatrix);
+               }
+           }
+        }
 
-        // Ditch the 6x scale and replace it with the much milder 181/180.
+        // Multiply the offset vectors.
         if (cursor.TryGotoNext(MoveType.Before,
             instr => instr.MatchCallvirt(typeof(SpriteBatch), "Begin")))
         {
-            cursor.Emit(OpCodes.Pop);
-            cursor.EmitDelegate(GetHiresDisplayMatrix);
             cursor.EmitLdloca(5);
             cursor.EmitLdloca(9);
             cursor.EmitDelegate(MultiplyVectors);
@@ -493,7 +488,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
         Engine.Instance.GraphicsDevice.SetRenderTarget(null);
         Engine.Instance.GraphicsDevice.Clear(Color.Black);
         Engine.Instance.GraphicsDevice.Viewport = Engine.Viewport;
-        Matrix matrix = Matrix.CreateScale(6f) * Engine.ScreenMatrix;
+        Matrix matrix = GetHiresDisplayMatrix(); // Matrix modified
         Vector2 vector = new Vector2(320f, 180f);
         Vector2 vector2 = vector / self.ZoomTarget;
         Vector2 vector3 = (self.ZoomTarget != 1f) ? ((self.ZoomFocusPoint - vector2 / 2f) / (vector - vector2) * vector) : Vector2.Zero; // Zoom focus point multiplied by 6
@@ -517,7 +512,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
         vector3 *= 6f; // Vector scaled
         vector4 *= 6f; // Vector scaled
-        Draw.SpriteBatch.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend, SamplerState.PointClamp, DepthStencilState.Default, RasterizerState.CullNone, ColorGrade.Effect, GetHiresDisplayMatrix()); // Matrix modified
+        Draw.SpriteBatch.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend, SamplerState.PointClamp, DepthStencilState.Default, RasterizerState.CullNone, ColorGrade.Effect, matrix); // Matrix modified
         Draw.SpriteBatch.Draw((RenderTarget2D)GameplayBuffers.Level, vector3 + vector4, GameplayBuffers.Level.Bounds, Color.White, 0f, vector3, scale, SaveData.Instance.Assists.MirrorMode ? SpriteEffects.FlipHorizontally : SpriteEffects.None, 0f);
         Draw.SpriteBatch.End();
 
