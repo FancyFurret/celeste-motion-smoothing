@@ -25,6 +25,8 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
     private static bool _offsetDrawing = false;
     private static bool _scaleSpriteBatchBeginMatrices = true;
 
+    private static bool _useModifiedGaussianBlur = false;
+
     private static readonly FieldInfo _beginCalledField = typeof(SpriteBatch)
 	.GetField("beginCalled", BindingFlags.NonPublic | BindingFlags.Instance);
     private static (SpriteSortMode, BlendState, SamplerState, DepthStencilState, RasterizerState, Effect, Matrix)? _lastSpriteBatchBeginParams;
@@ -96,6 +98,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
         // On.Celeste.Level.Render += Level_Render;
         IL.Celeste.Level.Render += LevelRenderHook;
 
+        On.Celeste.BloomRenderer.Apply += BloomRenderer_Apply;
         IL.Celeste.BloomRenderer.Apply += BloomRendererApplyHook;
         On.Celeste.GaussianBlur.Blur += GaussianBlur_Blur;
 
@@ -166,6 +169,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
         // On.Celeste.Level.Render -= Level_Render;
         IL.Celeste.Level.Render -= LevelRenderHook;
 
+        On.Celeste.BloomRenderer.Apply -= BloomRenderer_Apply;
         IL.Celeste.BloomRenderer.Apply -= BloomRendererApplyHook;
         On.Celeste.GaussianBlur.Blur -= GaussianBlur_Blur;
 
@@ -612,15 +616,17 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
         _offsetDrawing = false;
         _scaleSpriteBatchBeginMatrices = true;
+        _useModifiedGaussianBlur = false;
 
         renderer.FixMatricesWithoutOffset = false;
         renderer.AllowParallaxOneBackdrops = false;
         renderer.CurrentlyRenderingBackground = true;
 
+        ComputeSmoothedCameraData(level);
+
         if (MotionSmoothingModule.Settings.RenderBackgroundHires)
         {
             HiresRenderer.EnableLargeLevelBuffer();
-            ComputeSmoothedCameraData(level);
         }
 
         else
@@ -680,29 +686,21 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
     private static void DisableScaleSpriteBatchBeginMatrices()
     {
-        if (HiresRenderer.Instance is not { } renderer) return;
-
         _scaleSpriteBatchBeginMatrices = false;
     }
 
     private static void EnableScaleSpriteBatchBeginMatrices()
     {
-        if (HiresRenderer.Instance is not { } renderer) return;
-
         _scaleSpriteBatchBeginMatrices = true;
     }
 
     private static void DisableOffsetDrawing()
     {
-        if (HiresRenderer.Instance is not { } renderer) return;
-
         _offsetDrawing = false;
     }
 
     private static void EnableOffsetDrawing()
     {
-        if (HiresRenderer.Instance is not { } renderer) return;
-
         _offsetDrawing = true;
     }
 
@@ -761,110 +759,42 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
 
 
+    private static void BloomRenderer_Apply(On.Celeste.BloomRenderer.orig_Apply orig, BloomRenderer self, VirtualRenderTarget target, Scene scene)
+    {
+        HiresRenderer.EnableLargeTempABuffer();
+        HiresRenderer.EnableLargeTempBBuffer();
+        _useModifiedGaussianBlur = true;
+
+        orig(self, target, scene);
+
+        _useModifiedGaussianBlur = false;
+        HiresRenderer.DisableLargeTempABuffer();
+        HiresRenderer.DisableLargeTempBBuffer();
+    }
+
+    // Effect cutouts need to be offset in order for them not to jitter.
     private static void BloomRendererApplyHook(ILContext il)
     {
         var cursor = new ILCursor(il);
 
-        cursor.EmitDelegate(HiresRenderer.EnableLargeTempABuffer);
-
-        // Replace TempB
         if (cursor.TryGotoNext(MoveType.After,
-            instr => instr.MatchLdsfld(typeof(GameplayBuffers), "TempB")))
+            instr => instr.MatchCall(typeof(GaussianBlur), "Blur")))
         {
-            cursor.EmitPop();
-            cursor.EmitDelegate(GetLargeTempBBuffer);
-        }
-    }
-
-
-
-    private static void BloomRenderer_Apply(On.Celeste.BloomRenderer.orig_Apply orig, BloomRenderer self, VirtualRenderTarget target, Scene scene)
-    {
-        if (HiresRenderer.Instance is not { } renderer)
-        {
-            orig(self, target, scene);
-            return;
+            cursor.EmitDelegate(EnableOffsetDrawing);
         }
 
-        if (!(self.Strength > 0f))
+        if (cursor.TryGotoNext(MoveType.After,
+            instr => instr.MatchLdsfld(typeof(BloomRenderer), "BlurredScreenToMask")))
         {
-            return;
+            cursor.EmitDelegate(DisableOffsetDrawing);
         }
-
-        HiresRenderer.EnableLargeTempABuffer();
-
-        VirtualRenderTarget tempA = GameplayBuffers.TempA;
-        Texture2D texture = ModifiedBlur((RenderTarget2D)target, GameplayBuffers.TempA, renderer.LargeTempBBuffer); // Argument modified
-        List<Component> components = scene.Tracker.GetComponents<BloomPoint>();
-        List<Component> components2 = scene.Tracker.GetComponents<EffectCutout>();
-        Engine.Instance.GraphicsDevice.SetRenderTarget(tempA);
-        Engine.Instance.GraphicsDevice.Clear(Color.Transparent);
-        if (self.Base < 1f)
-        {
-            Camera camera = (scene as Level).Camera;
-            Draw.SpriteBatch.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend, SamplerState.PointClamp, DepthStencilState.None, RasterizerState.CullNone, null, camera.Matrix);
-            float num = 1f / (float)self.gradient.Width;
-            foreach (Component item in components)
-            {
-                BloomPoint bloomPoint = item as BloomPoint;
-                if (bloomPoint.Visible && !(bloomPoint.Radius <= 0f) && !(bloomPoint.Alpha <= 0f))
-                {
-                    self.gradient.DrawCentered(bloomPoint.Entity.Position + bloomPoint.Position, Color.White * bloomPoint.Alpha, bloomPoint.Radius * 2f * num);
-                }
-            }
-
-            foreach (CustomBloom component in scene.Tracker.GetComponents<CustomBloom>())
-            {
-                if (component.Visible && component.OnRenderBloom != null)
-                {
-                    component.OnRenderBloom();
-                }
-            }
-
-            foreach (Entity entity in scene.Tracker.GetEntities<SeekerBarrier>())
-            {
-                Draw.Rect(entity.Collider, Color.White);
-            }
-
-            Draw.SpriteBatch.End();
-            if (components2.Count > 0)
-            {
-                Draw.SpriteBatch.Begin(SpriteSortMode.Deferred, BloomRenderer.CutoutBlendstate, SamplerState.PointClamp, null, null, null, camera.Matrix);
-                foreach (Component item2 in components2)
-                {
-                    EffectCutout effectCutout = item2 as EffectCutout;
-                    if (effectCutout.Visible)
-                    {
-                        Draw.Rect(effectCutout.Left, effectCutout.Top, effectCutout.Right - effectCutout.Left, effectCutout.Bottom - effectCutout.Top, Color.White * (1f - effectCutout.Alpha));
-                    }
-                }
-
-                Draw.SpriteBatch.End();
-            }
-        }
-
-        Draw.SpriteBatch.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend);
-        Draw.Rect(-10f, -10f, 340f, 200f, Color.White * self.Base);
-        Draw.SpriteBatch.End();
-
-        Draw.SpriteBatch.Begin(SpriteSortMode.Deferred, BloomRenderer.BlurredScreenToMask);
-        Draw.SpriteBatch.Draw(texture, Vector2.Zero, Color.White);
-        Draw.SpriteBatch.End();
-        Engine.Instance.GraphicsDevice.SetRenderTarget(target);
-        Draw.SpriteBatch.Begin(SpriteSortMode.Deferred, BloomRenderer.AdditiveMaskToScreen);
-        for (int i = 0; (float)i < self.Strength; i++)
-        {
-            float num2 = (((float)i < self.Strength - 1f) ? 1f : (self.Strength - (float)i));
-            Draw.SpriteBatch.Draw((RenderTarget2D)tempA, Vector2.Zero, Color.White * num2);
-        }
-        Draw.SpriteBatch.End();
     }
 
 
 
     private static Texture2D GaussianBlur_Blur(On.Celeste.GaussianBlur.orig_Blur orig, Texture2D texture, VirtualRenderTarget temp, VirtualRenderTarget output, float fade, bool clear, GaussianBlur.Samples samples, float sampleScale, GaussianBlur.Direction direction, float alpha)
     {
-        if (HiresRenderer.Instance is not { } renderer || !renderer.UseModifiedBlur)
+        if (!_useModifiedGaussianBlur)
         {
             return orig(texture, temp, output, fade, clear, samples, sampleScale, direction, alpha);
         }
@@ -1374,6 +1304,17 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
             texture = largeRenderTarget.Target;
         }
 
+        float offsetDestinationX = destinationX;
+        float offsetDestinationY = destinationY;
+
+        // Apply the offset if needed
+        if (_offsetDrawing)
+        {
+            Vector2 offset = GetCameraOffset();
+            offsetDestinationX = destinationX + offset.X * (_currentlyScaling ? 1 : 6);
+            offsetDestinationY = destinationY + offset.Y * (_currentlyScaling ? 1 : 6);
+        }
+
         // We handle scaling when the target is large in the Begin hook, so the only things
         // we're handling here are when the *source* is large.
 		if (_largeTextures.Contains(texture))
@@ -1395,11 +1336,11 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
                         if (_offsetDrawing)
                         {
                             Vector2 offset = GetCameraOffset();
-                            destinationX += offset.X * 6f;
-                            destinationY += offset.Y * 6f;
+                            offsetDestinationX = destinationX + offset.X * 6;
+                            offsetDestinationY = destinationY + offset.Y * 6;
                         }
 
-                        orig(self, texture, sourceX, sourceY, sourceW, sourceH, destinationX, destinationY, destinationW, destinationH, color, originX, originY, rotationSin, rotationCos, depth, effects);
+                        orig(self, texture, sourceX, sourceY, sourceW, sourceH, offsetDestinationX, offsetDestinationY, destinationW, destinationH, color, originX, originY, rotationSin, rotationCos, depth, effects);
 
                         Draw.SpriteBatch.End();
                         Draw.SpriteBatch.Begin(sortMode, blendState, samplerState, depthStencilState, rasterizerState, effect, matrix);
@@ -1411,7 +1352,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
             if (_currentRenderTarget is not Texture2D texture2D)
             {
-                orig(self, texture, sourceX, sourceY, sourceW, sourceH, destinationX, destinationY, destinationW, destinationH, color, originX, originY, rotationSin, rotationCos, depth, effects);
+                orig(self, texture, sourceX, sourceY, sourceW, sourceH, offsetDestinationX, offsetDestinationY, destinationW, destinationH, color, originX, originY, rotationSin, rotationCos, depth, effects);
                 return;
             }
 
@@ -1420,14 +1361,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
             HotCreateLargeBuffer(texture2D);
 		}
 
-        if (_offsetDrawing)
-        {
-            Vector2 offset = GetCameraOffset();
-            destinationX += offset.X;
-            destinationY += offset.Y;
-        }
-
-        orig(self, texture, sourceX, sourceY, sourceW, sourceH, destinationX, destinationY, destinationW, destinationH, color, originX, originY, rotationSin, rotationCos, depth, effects);
+        orig(self, texture, sourceX, sourceY, sourceW, sourceH, offsetDestinationX, offsetDestinationY, destinationW, destinationH, color, originX, originY, rotationSin, rotationCos, depth, effects);
     }
 
     private static VirtualRenderTarget HotCreateLargeBuffer(Texture2D smallTexture)
