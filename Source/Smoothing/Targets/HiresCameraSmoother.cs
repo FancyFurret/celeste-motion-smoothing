@@ -145,6 +145,8 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
                 typeof(DepthStencilState), typeof(RasterizerState), typeof(Effect), typeof(Matrix)
             })!, SpriteBatch_Begin));
 
+        HookSpriteBatchDraw();
+
 		AddHook(new Hook(typeof(SpriteBatch).GetMethod("PushSprite", MotionSmoothingModule.AllFlags)!,
             PushSpriteHook));
 
@@ -1279,6 +1281,84 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
         orig(self, sortMode, blendState, samplerState, depthStencilState, rasterizerState, effect, transformMatrix);
     }
 
+
+    // These are all five overloads that take a source rectangle. If, and only if, it's
+    // specified when drawing a large texture, it needs to be scaled.
+    private void HookSpriteBatchDraw()
+    {
+        AddHook(new Hook(typeof(SpriteBatch).GetMethod("Draw", new[] { typeof(Texture2D), typeof(Vector2), typeof(Rectangle?), typeof(Color) })!, SpriteBatch_Draw1));
+
+        AddHook(new Hook(typeof(SpriteBatch).GetMethod("Draw", new[] { typeof(Texture2D), typeof(Vector2), typeof(Rectangle?), typeof(Color), typeof(float), typeof(Vector2), typeof(float), typeof(SpriteEffects), typeof(float) })!, SpriteBatch_Draw2));
+
+        AddHook(new Hook(typeof(SpriteBatch).GetMethod("Draw", new[] { typeof(Texture2D), typeof(Vector2), typeof(Rectangle?), typeof(Color), typeof(float), typeof(Vector2), typeof(Vector2), typeof(SpriteEffects), typeof(float) })!, SpriteBatch_Draw3));
+
+        AddHook(new Hook(typeof(SpriteBatch).GetMethod("Draw", new[] { typeof(Texture2D), typeof(Rectangle), typeof(Rectangle?), typeof(Color) })!, SpriteBatch_Draw4));
+
+        AddHook(new Hook(typeof(SpriteBatch).GetMethod("Draw", new[] { typeof(Texture2D), typeof(Rectangle), typeof(Rectangle?), typeof(Color), typeof(float), typeof(Vector2), typeof(SpriteEffects), typeof(float) })!, SpriteBatch_Draw5));
+    }
+
+    private static void SpriteBatch_Draw1(Action<SpriteBatch, Texture2D, Vector2, Rectangle?, Color> orig, SpriteBatch self, Texture2D texture, Vector2 position, Rectangle? sourceRectangle, Color color)
+    {
+        if (sourceRectangle is Rectangle rect && (_largeTextures.Contains(texture) || _largeExternalTextureMap.ContainsKey(texture)))
+        {
+            Rectangle scaledRect = new Rectangle(6 * rect.X, 6 * rect.Y, 6 * rect.Width, 6 * rect.Height);
+            orig(self, texture, position, scaledRect, color);
+            return;
+        }
+
+        orig(self, texture, position, sourceRectangle, color);
+    }
+
+    private static void SpriteBatch_Draw2(Action<SpriteBatch, Texture2D, Vector2, Rectangle?, Color, float, Vector2, float, SpriteEffects, float> orig, SpriteBatch self, Texture2D texture, Vector2 position, Rectangle? sourceRectangle, Color color, float rotation, Vector2 origin, float scale, SpriteEffects effects, float layerDepth)
+    {
+        if (sourceRectangle is Rectangle rect && (_largeTextures.Contains(texture) || _largeExternalTextureMap.ContainsKey(texture)))
+        {
+            Rectangle scaledRect = new Rectangle(6 * rect.X, 6 * rect.Y, 6 * rect.Width, 6 * rect.Height);
+            orig(self, texture, position, scaledRect, color, rotation, origin, scale, effects, layerDepth);
+            return;
+        }
+
+        orig(self, texture, position, sourceRectangle, color, rotation, origin, scale, effects, layerDepth);
+    }
+
+    private static void SpriteBatch_Draw3(Action<SpriteBatch, Texture2D, Vector2, Rectangle?, Color, float, Vector2, Vector2, SpriteEffects, float> orig, SpriteBatch self, Texture2D texture, Vector2 position, Rectangle? sourceRectangle, Color color, float rotation, Vector2 origin, Vector2 scale, SpriteEffects effects, float layerDepth)
+    {
+        if (sourceRectangle is Rectangle rect && (_largeTextures.Contains(texture) || _largeExternalTextureMap.ContainsKey(texture)))
+        {
+            Rectangle scaledRect = new Rectangle(6 * rect.X, 6 * rect.Y, 6 * rect.Width, 6 * rect.Height);
+            orig(self, texture, position, scaledRect, color, rotation, origin, scale, effects, layerDepth);
+            return;
+        }
+
+        orig(self, texture, position, sourceRectangle, color, rotation, origin, scale, effects, layerDepth);
+    }
+
+    private static void SpriteBatch_Draw4(Action<SpriteBatch, Texture2D, Rectangle, Rectangle?, Color> orig, SpriteBatch self, Texture2D texture, Rectangle destinationRectangle, Rectangle? sourceRectangle, Color color)
+    {
+        if (sourceRectangle is Rectangle rect && (_largeTextures.Contains(texture) || _largeExternalTextureMap.ContainsKey(texture)))
+        {
+            Rectangle scaledRect = new Rectangle(6 * rect.X, 6 * rect.Y, 6 * rect.Width, 6 * rect.Height);
+            orig(self, texture, destinationRectangle, scaledRect, color);
+            return;
+        }
+
+        orig(self, texture, destinationRectangle, sourceRectangle, color);
+    }
+
+    private static void SpriteBatch_Draw5(Action<SpriteBatch, Texture2D, Rectangle, Rectangle?, Color, float, Vector2, SpriteEffects, float> orig, SpriteBatch self, Texture2D texture, Rectangle destinationRectangle, Rectangle? sourceRectangle, Color color, float rotation, Vector2 origin, SpriteEffects effects, float layerDepth)
+    {
+        if (sourceRectangle is Rectangle rect && (_largeTextures.Contains(texture) || _largeExternalTextureMap.ContainsKey(texture)))
+        {
+            Rectangle scaledRect = new Rectangle(6 * rect.X, 6 * rect.Y, 6 * rect.Width, 6 * rect.Height);
+            orig(self, texture, destinationRectangle, scaledRect, color, rotation, origin, effects, layerDepth);
+            return;
+        }
+
+        orig(self, texture, destinationRectangle, sourceRectangle, color, rotation, origin, effects, layerDepth);
+    }
+
+
+
 	private delegate void orig_PushSprite(SpriteBatch self, Texture2D texture, float sourceX, float sourceY, float sourceW, float sourceH, float destinationX, float destinationY, float destinationW, float destinationH, Color color, float originX, float originY, float rotationSin, float rotationCos, float depth, byte effects);
 
 	private static void PushSpriteHook(orig_PushSprite orig, SpriteBatch self, Texture2D texture, float sourceX, float sourceY, float sourceW, float sourceH, float destinationX, float destinationY, float destinationW, float destinationH, Color color, float originX, float originY, float rotationSin, float rotationCos, float depth, byte effects)
@@ -1298,7 +1378,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
         float offsetDestinationX = destinationX;
         float offsetDestinationY = destinationY;
 
-        // Apply the offset if needed
+        // Apply the subpixel offset if needed
         if (_offsetDrawing)
         {
             Vector2 offset = GetCameraOffset();
@@ -1355,6 +1435,8 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
         orig(self, texture, sourceX, sourceY, sourceW, sourceH, offsetDestinationX, offsetDestinationY, destinationW, destinationH, color, originX, originY, rotationSin, rotationCos, depth, effects);
     }
 
+
+
     private static VirtualRenderTarget HotCreateLargeBuffer(Texture2D smallTexture)
     {
         // We cap the dimensions here since the maximum allowable texture is
@@ -1373,6 +1455,8 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
         return largeTarget;
     }
+
+
 
 	private static void SpriteBatch_End(Action<SpriteBatch> orig, SpriteBatch self)
 	{
