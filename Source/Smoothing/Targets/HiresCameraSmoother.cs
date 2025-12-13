@@ -454,8 +454,6 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
     {
         PrepareLevelRender(self); // Inserted
 
-        if (HiresRenderer.Instance is not { } renderer) return;
-
         Engine.Instance.GraphicsDevice.SetRenderTarget(GameplayBuffers.Gameplay);
         Engine.Instance.GraphicsDevice.Clear(Color.Transparent);
         self.GameplayRenderer.Render(self);
@@ -561,7 +559,6 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
         Engine.Instance.GraphicsDevice.SetRenderTarget(null);
         Engine.Instance.GraphicsDevice.Clear(Color.Black);
         Engine.Instance.GraphicsDevice.Viewport = Engine.Viewport;
-        Matrix matrix = Matrix.CreateScale(6f) * Engine.ScreenMatrix;
         Vector2 vector = new Vector2(1920f, 1080f); // Vector multiplied by 6
         Vector2 vector2 = vector / (self.ZoomTarget * 6f); // zoom multiplied by 6
         Vector2 vector3 = ((self.ZoomTarget != 1f) ? (((self.ZoomFocusPoint * 6f) - vector2 / 2f) / (vector - vector2) * vector) : Vector2.Zero); // Zoom focus point multiplied by 6
@@ -590,8 +587,6 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
     private static void DrawDebugBuffers()
     {
-        if (HiresRenderer.Instance is not { } renderer) return;
-
         int index = 0;
         Engine.Instance.GraphicsDevice.SetRenderTarget(null);
 
@@ -620,8 +615,6 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
     private static void PrepareLevelRender(Level level)
     {
-        if (HiresRenderer.Instance is not { } renderer) return;
-
         _offsetDrawing = false;
         _scaleSpriteBatchBeginMatrices = true;
         _useModifiedGaussianBlur = false;
@@ -651,11 +644,6 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
     private static void AfterLevelClear(Level level)
     {
-        if (HiresRenderer.Instance is not { } renderer)
-        {
-            return;
-        }
-
         if (MotionSmoothingModule.Settings.RenderBackgroundHires)
         {
             _disableFloorFunctions = true;
@@ -681,8 +669,6 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
     private static void MultiplyVectors(ref Vector2 vector3, ref Vector2 vector4)
     {
-        if (HiresRenderer.Instance is not { } renderer) return;
-
         vector3 *= 6f;
         vector4 *= 6f;
     }
@@ -1120,7 +1106,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
     public static void Parallax_Render(On.Celeste.Parallax.orig_Render orig, Parallax self, Scene scene)
     {
-        if (HiresRenderer.Instance is not { } renderer || MotionSmoothingModule.Settings.RenderBackgroundHires)
+        if (MotionSmoothingModule.Settings.RenderBackgroundHires)
         {
             orig(self, scene);
             return;
@@ -1259,7 +1245,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
     private static void SpriteBatch_Begin(orig_SpriteBatch_Begin orig, SpriteBatch self, SpriteSortMode sortMode, BlendState blendState,
         SamplerState samplerState, DepthStencilState depthStencilState, RasterizerState rasterizerState, Effect effect, Matrix transformMatrix)
     {
-        if (HiresRenderer.Instance is not { } renderer || !_scaleSpriteBatchBeginMatrices)
+        if (!_scaleSpriteBatchBeginMatrices)
         {
             orig(self, sortMode, blendState, samplerState, depthStencilState, rasterizerState, effect, transformMatrix);
             return;
@@ -1267,8 +1253,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
         _lastSpriteBatchBeginParams = (sortMode, blendState, samplerState, depthStencilState, rasterizerState, effect, transformMatrix);
 
-        // For reasons I haven't fully understood, all of these
-        // coming scale matrices *must* be precomposed to work properly.
+        
 
         // If we're drawing to a large target, scale.
         if (_largeTextures.Contains(_currentRenderTarget))
@@ -1363,7 +1348,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
 	private static void PushSpriteHook(orig_PushSprite orig, SpriteBatch self, Texture2D texture, float sourceX, float sourceY, float sourceW, float sourceH, float destinationX, float destinationY, float destinationW, float destinationH, Color color, float originX, float originY, float rotationSin, float rotationCos, float depth, byte effects)
     {
-		if (HiresRenderer.Instance is not { } renderer || texture == null)
+        if (texture == null)
 		{
 			orig(self, texture, sourceX, sourceY, sourceW, sourceH, destinationX, destinationY, destinationW, destinationH, color, originX, originY, rotationSin, rotationCos, depth, effects);
 			return;
@@ -1374,6 +1359,21 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
         {
             texture = largeRenderTarget.Target;
         }
+
+
+
+        // In the very niche case where we're drawing a large texture to the screen with an offset
+        // (e.g. SJ's color grade masks), that offset needs to be scaled.
+        if (_currentRenderTarget == null && _largeTextures.Contains(texture))
+        {
+            // Vector2 destination = new Vector2(destinationX, destinationY);
+            // Console.WriteLine(Vector2.Transform(destination, _matrix).ToString());
+            // Console.WriteLine(Vector2.Transform(destination * 6, InverseScaleMatrix * _matrix).ToString());
+            destinationX *= 6;//= level.Camera.Position.X + (destinationX - level.Camera.Position.X) * 6;
+            destinationY *= 6;//= level.Camera.Position.Y + (destinationY - level.Camera.Position.Y) * 6;
+        }
+
+
 
         float offsetDestinationX = destinationX;
         float offsetDestinationY = destinationY;
@@ -1402,7 +1402,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
                     if (_lastSpriteBatchBeginParams is var (sortMode, blendState, samplerState, depthStencilState, rasterizerState, effect, matrix))
                     {
                         Draw.SpriteBatch.End();
-                        Draw.SpriteBatch.Begin(sortMode, blendState, samplerState, depthStencilState, rasterizerState, effect, matrix * InverseScaleMatrix);
+                        Draw.SpriteBatch.Begin(sortMode, blendState, samplerState, depthStencilState, rasterizerState, effect, InverseScaleMatrix * matrix);
 
                         if (_offsetDrawing)
                         {
@@ -1544,7 +1544,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
     private static Vector2 FloorHook(orig_Floor orig, Vector2 self)
     {
-        if (HiresRenderer.Instance is not { } renderer || !_disableFloorFunctions)
+        if (!_disableFloorFunctions)
         {
             return orig(self);
         }
@@ -1556,7 +1556,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
     private static Vector2 CeilingHook(orig_Ceiling orig, Vector2 self)
     {
-        if (HiresRenderer.Instance is not { } renderer || !_disableFloorFunctions)
+        if (!_disableFloorFunctions)
         {
             return orig(self);
         }
@@ -1568,7 +1568,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
     private static Vector2 RoundHook(orig_Round orig, Vector2 self)
     {
-        if (HiresRenderer.Instance is not { } renderer || !_disableFloorFunctions)
+        if (!_disableFloorFunctions)
         {
             return orig(self);
         }
