@@ -434,15 +434,6 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
            }
         }
 
-        // Multiply the offset vectors.
-        if (cursor.TryGotoNext(MoveType.Before,
-            instr => instr.MatchCallvirt(typeof(SpriteBatch), "Begin")))
-        {
-            cursor.EmitLdloca(5);
-            cursor.EmitLdloca(9);
-            cursor.EmitDelegate(MultiplyVectors);
-        }
-
         if (cursor.TryGotoNext(MoveType.Before,
             instr => instr.MatchLdfld(typeof(Level), "HudRenderer")))
         {
@@ -665,12 +656,6 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
     private static void BeforeDrawToScreen(Level level)
     {
         // DisableFixMatrices();
-    }
-
-    private static void MultiplyVectors(ref Vector2 vector3, ref Vector2 vector4)
-    {
-        vector3 *= 6f;
-        vector4 *= 6f;
     }
 
 
@@ -1369,8 +1354,11 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
             // Vector2 destination = new Vector2(destinationX, destinationY);
             // Console.WriteLine(Vector2.Transform(destination, _matrix).ToString());
             // Console.WriteLine(Vector2.Transform(destination * 6, InverseScaleMatrix * _matrix).ToString());
+            Console.WriteLine(originX + " " + originY);
             destinationX *= 6;//= level.Camera.Position.X + (destinationX - level.Camera.Position.X) * 6;
             destinationY *= 6;//= level.Camera.Position.Y + (destinationY - level.Camera.Position.Y) * 6;
+            originX *= 6;
+            originY *= 6;
         }
 
 
