@@ -14,16 +14,6 @@ public class HiresRenderer : Renderer
 
     public VirtualRenderTarget SmallLevelBuffer { get; }
 
-    public Matrix ScaleMatrix;
-
-    public bool FixMatrices = false;
-    public bool FixMatricesWithoutOffset = false;
-    public bool ScaleMatricesForBloom = true;
-    public bool AllowParallaxOneBackdrops = false;
-    public bool CurrentlyRenderingBackground = false;
-    public bool UseModifiedBlur = true;
-    public bool DisableFloorFunctions = false;
-
     private static VirtualRenderTarget OriginalGameplayBuffer = null;
 	private static VirtualRenderTarget OriginalLevelBuffer = null;
     private static VirtualRenderTarget OriginalTempABuffer = null;
@@ -43,8 +33,6 @@ public class HiresRenderer : Renderer
         LargeTempBBuffer = largeTempBBuffer;
 
         SmallLevelBuffer = smallLevelBuffer;
-
-        ScaleMatrix = Matrix.CreateScale(6f);
 
         Visible = true;
     }
