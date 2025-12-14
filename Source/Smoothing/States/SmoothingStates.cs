@@ -60,7 +60,14 @@ public class ComponentSmoothingState : PositionSmoothingState<GraphicsComponent>
         {
             // Boosters use the player's draw position, not real position, so make sure we smooth with the player's 
             // real position instead
-            var player = MotionSmoothingHandler.Instance.Player;
+            var player = MotionSmoothingHandler.Instance?.Player;
+
+            // This addresses a crash when dying with a golden around bubbles.
+            if (player is not Player)
+            {
+                return obj.Position;
+            }
+
             if ((player.StateMachine.State == 2 || player.StateMachine.state == 5) && booster.BoostingPlayer)
             {
                 var playerRealCenterX = player.ExactPosition.X + (player.Collider?.Center.X ?? 0);
