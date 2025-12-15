@@ -14,19 +14,11 @@ public class HiresRenderer : Renderer
 
     public VirtualRenderTarget SmallLevelBuffer { get; }
 
-    public Matrix ScaleMatrix;
-
-    public bool FixMatrices = false;
-    public bool FixMatricesWithoutOffset = false;
-    public bool ScaleMatricesForBloom = true;
-    public bool AllowParallaxOneBackdrops = false;
-    public bool CurrentlyRenderingBackground = false;
-    public bool UseModifiedBlur = true;
-    public bool DisableFloorFunctions = false;
-
     private static VirtualRenderTarget OriginalGameplayBuffer = null;
 	private static VirtualRenderTarget OriginalLevelBuffer = null;
     private static VirtualRenderTarget OriginalTempABuffer = null;
+
+    private static VirtualRenderTarget OriginalTempBBuffer = null;
 
     public HiresRenderer(
         VirtualRenderTarget largeGameplayBuffer,
@@ -41,8 +33,6 @@ public class HiresRenderer : Renderer
         LargeTempBBuffer = largeTempBBuffer;
 
         SmallLevelBuffer = smallLevelBuffer;
-
-        ScaleMatrix = Matrix.CreateScale(6f);
 
         Visible = true;
     }
@@ -99,7 +89,6 @@ public class HiresRenderer : Renderer
 
         OriginalTempABuffer = GameplayBuffers.TempA;
         GameplayBuffers.TempA = Instance.LargeTempABuffer;
-        Instance.UseModifiedBlur = true;
     }
 
     public static void DisableLargeTempABuffer()
@@ -108,7 +97,25 @@ public class HiresRenderer : Renderer
 
         GameplayBuffers.TempA = OriginalTempABuffer;
         OriginalTempABuffer = null;
-        Instance.UseModifiedBlur = false;
+    }
+
+    public static void EnableLargeTempBBuffer()
+    {
+        if (Instance == null || GameplayBuffers.TempB == Instance.LargeTempBBuffer)
+        {
+            return;
+        }
+
+        OriginalTempBBuffer = GameplayBuffers.TempB;
+        GameplayBuffers.TempB = Instance.LargeTempBBuffer;
+    }
+
+    public static void DisableLargeTempBBuffer()
+    {
+        if (OriginalTempBBuffer == null) { return; }
+
+        GameplayBuffers.TempB = OriginalTempBBuffer;
+        OriginalTempBBuffer = null;
     }
 
     public static HiresRenderer Create()
@@ -132,6 +139,7 @@ public class HiresRenderer : Renderer
         DisableLargeLevelBuffer();
 		DisableLargeGameplayBuffer();
 		DisableLargeTempABuffer();
+        DisableLargeTempBBuffer();
 
         if (Instance != null)
         {
