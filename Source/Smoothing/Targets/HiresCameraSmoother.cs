@@ -372,6 +372,23 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
            instr => instr.MatchCallvirt<GraphicsDevice>("SetRenderTarget")))
         {
             cursor.EmitDelegate(EnableZoomDrawingToNull);
+
+            // Go after this to after we draw the level.
+            if (cursor.TryGotoNext(MoveType.Before,
+                instr => instr.MatchCallvirt<SpriteBatch>("End")))
+            {
+                // We offset anything drawn starting at this point. We'll turn this back off
+                // when we get to the subhud.
+                cursor.EmitDelegate(EnableOffsetDrawing);
+            }
+
+            if (cursor.TryGotoNext(MoveType.Before,
+                instr => instr.MatchLdfld(typeof(Level), "SubHudRenderer")))
+            {
+                // We offset anything drawn starting at this point. We'll turn this back off
+                // when we get to the subhud.
+                cursor.EmitDelegate(DisableOffsetDrawing);
+            }
         }
 
         // if (cursor.TryGotoNext(MoveType.Before,
@@ -1031,6 +1048,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
     }
 
 
+
     // These are all five overloads that take a source rectangle. If, and only if, it's
     // specified when drawing a large texture, it needs to be scaled. We can't really do
     // this in the PushSprite hook, because it would require scaling sourceW and
@@ -1153,8 +1171,18 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
         float offsetDestinationX = destinationX;
         float offsetDestinationY = destinationY;
 
-        // Apply the subpixel offset if needed. We only allow offsetting to our own buffers.
-        if (_offsetDrawing && _internalLargeTextures.Contains(_currentRenderTarget) && !_excludeFromOffsetDrawing.Contains(_currentRenderTarget))
+        // Apply the subpixel offset if needed. We only allow offsetting to our own buffers
+        // and rarely when drawing to the screen.
+        bool needToOffset = _offsetDrawing && (
+            (
+                _internalLargeTextures.Contains(_currentRenderTarget)
+                && !_excludeFromOffsetDrawing.Contains(_currentRenderTarget)
+            ) || (
+                _currentRenderTarget == null
+            )
+        );
+
+        if (needToOffset)
         {
             Vector2 offset = GetCameraOffset();
             offsetDestinationX = destinationX + offset.X * (_currentlyScaling ? 1 : 6);
