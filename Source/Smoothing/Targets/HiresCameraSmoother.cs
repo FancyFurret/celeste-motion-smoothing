@@ -20,6 +20,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
     private static Matrix ScaleMatrix = Matrix.CreateScale(6f);
     private static Matrix InverseScaleMatrix = Matrix.CreateScale(1f / 6f);
+    private static Matrix ZoomMatrix = Matrix.CreateScale(ZoomScaleMultiplier);
 
 	// Flag set by the SpriteBatch.Begin hook when it it currently scaling by 6x.
 	private static bool _currentlyScaling = false;
@@ -29,6 +30,11 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
     // Textures can be dded to this to prevent offset drawing when they are the target.
     private static HashSet<Texture> _excludeFromOffsetDrawing = new HashSet<Texture>();
     private static bool _scaleSpriteBatchBeginMatrices = true;
+
+    // When this is true (which we set it to right before we draw the level buffer to the screen),
+    // all calls to draw to the screen will get scaled by ZoomScaleMultiplier. This is necessary
+    // to hide gaps in the level and foreground and such. It also handles the HUD conveniently.
+    private static bool _zoomDrawingToNull = false;
 
     private static bool _useModifiedGaussianBlur = false;
     private static bool _currentlyRenderingBackground = false;
@@ -160,7 +166,6 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
         On.Celeste.HudRenderer.RenderContent += HudRenderer_RenderContent;
 
-        IL.Celeste.HiresRenderer.BeginRender += HiresRendererBeginRenderHook;
         IL.Celeste.TalkComponent.TalkComponentUI.Render += TalkComponentUiRenderHook;
         IL.Celeste.Lookout.Hud.Render += LookoutHudRenderHook;
 
@@ -230,7 +235,6 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
         On.Celeste.HudRenderer.RenderContent -= HudRenderer_RenderContent;
 
-        IL.Celeste.HiresRenderer.BeginRender -= HiresRendererBeginRenderHook;
         IL.Celeste.TalkComponent.TalkComponentUI.Render -= TalkComponentUiRenderHook;
         IL.Celeste.Lookout.Hud.Render -= LookoutHudRenderHook;
 
@@ -282,11 +286,6 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
         }
 
         return Vector2.Zero;
-    }
-
-    public static float GetCameraScale()
-    {
-        return ZoomScaleMultiplier;
     }
 
     public static Vector2 GetSmoothedCameraPosition()
@@ -367,24 +366,12 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
             }
         }
 
-        // Replce the definition of the scale matrix
-
-        if (cursor.TryGotoNext(MoveType.After,
-           instr => instr.MatchCallvirt<GraphicsDevice>("set_Viewport")))
+        // Go right before we switch the render target to the screen.
+        if (cursor.TryGotoNext(MoveType.Before,
+           instr => instr.MatchLdnull(),
+           instr => instr.MatchCallvirt<GraphicsDevice>("SetRenderTarget")))
         {
-           // Find the pattern and position cursor right before stloc.2
-           if (cursor.TryGotoNext(MoveType.Before,
-               i => i.MatchLdcR4(6f)
-           ))
-           {
-               if (cursor.TryGotoNext(MoveType.Before,
-                   i => i.MatchStloc(2)
-               ))
-               {
-                   cursor.Emit(OpCodes.Pop);
-                   cursor.EmitDelegate(GetHiresDisplayMatrix);
-               }
-           }
+            cursor.EmitDelegate(EnableZoomDrawingToNull);
         }
 
         // if (cursor.TryGotoNext(MoveType.Before,
@@ -426,6 +413,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
         _offsetDrawing = false;
         _excludeFromOffsetDrawing.Clear();
         _scaleSpriteBatchBeginMatrices = true;
+        _zoomDrawingToNull = false;
         _useModifiedGaussianBlur = false;
         _allowParallaxOneBackgrounds = false;
         _currentlyRenderingBackground = true;
@@ -465,12 +453,6 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
         }
     }
 
-    private static void AfterBloomApply(Level level)
-    {
-        HiresRenderer.DisableLargeTempABuffer(); // Inserted
-        // EnableFixMatrices(); // Inserted
-    }
-
 
 
     private static void DisableScaleSpriteBatchBeginMatrices()
@@ -491,6 +473,16 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
     private static void EnableOffsetDrawing()
     {
         _offsetDrawing = true;
+    }
+
+    private static void DisableZoomDrawingToNull()
+    {
+        _zoomDrawingToNull = false;
+    }
+
+    private static void EnableZoomDrawingToNull()
+    {
+        _zoomDrawingToNull = true;
     }
 
 
@@ -517,18 +509,6 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
     private static Matrix GetScaledCameraMatrix(Level level)
     {
         return ScaleMatrix * level.Camera.Matrix;
-    }
-
-    private static Matrix GetHiresDisplayMatrix()
-    {
-        if (SaveData.Instance.Assists.MirrorMode)
-        {
-            return Matrix.CreateTranslation(-1920, 0, 0) * Matrix.CreateScale(6f * ZoomScaleMultiplier) * Matrix.CreateTranslation(1920, 0, 0) * Engine.ScreenMatrix;
-        }
-
-		// Note that we leave the scale intact here! That's because the SpriteBatch.Draw
-		// hook will strip it off later.
-        return Matrix.CreateScale(6f * ZoomScaleMultiplier) * Engine.ScreenMatrix;
     }
 
     private static VirtualRenderTarget GetLargeTempBBuffer()
@@ -954,21 +934,6 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
         _disableFloorFunctions = false;
     }
 
-
-
-    private static void HiresRendererBeginRenderHook(ILContext il)
-    {
-        var cursor = new ILCursor(il);
-
-        // Scale the matrix for the HUD
-        if (cursor.TryGotoNext(MoveType.After, instr => instr.MatchLdloc0()))
-        {
-            cursor.EmitDelegate(GetCameraScale);
-            cursor.EmitCall(typeof(Matrix).GetMethod(nameof(Matrix.CreateScale), new[] { typeof(float) })!);
-            cursor.EmitCall(typeof(Matrix).GetMethod("op_Multiply", new[] { typeof(Matrix), typeof(Matrix) })!);
-        }
-    }
-
     // Despite having a fix for this more broadly by disaling Floor()s, some very
     // obscure places like the gate to Raspberry Roots in SJ still benefit from this more targeted fix
     private static void TalkComponentUiRenderHook(ILContext il)
@@ -1046,22 +1011,20 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
     private static void SpriteBatch_Begin(orig_SpriteBatch_Begin orig, SpriteBatch self, SpriteSortMode sortMode, BlendState blendState,
         SamplerState samplerState, DepthStencilState depthStencilState, RasterizerState rasterizerState, Effect effect, Matrix transformMatrix)
     {
-        if (!_scaleSpriteBatchBeginMatrices)
-        {
-            orig(self, sortMode, blendState, samplerState, depthStencilState, rasterizerState, effect, transformMatrix);
-            return;
-        }
-
         _lastSpriteBatchBeginParams = (sortMode, blendState, samplerState, depthStencilState, rasterizerState, effect, transformMatrix);
 
-        
-
         // If we're drawing to a large target, scale.
-        if (_largeTextures.Contains(_currentRenderTarget))
+        if (_scaleSpriteBatchBeginMatrices && _largeTextures.Contains(_currentRenderTarget))
         {
             transformMatrix = transformMatrix * ScaleMatrix;
 
             _currentlyScaling = true;
+        }
+
+        // If we're drawing to null, 
+        else if (_zoomDrawingToNull && _currentRenderTarget == null)
+        {
+            transformMatrix = transformMatrix * ZoomMatrix;
         }
 
         orig(self, sortMode, blendState, samplerState, depthStencilState, rasterizerState, effect, transformMatrix);
