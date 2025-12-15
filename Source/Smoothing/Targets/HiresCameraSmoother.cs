@@ -26,6 +26,8 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 	private static Texture _currentRenderTarget;
 
     private static bool _offsetDrawing = false;
+    // Textures can be dded to this to prevent offset drawing when they are the target.
+    private static HashSet<Texture> _excludeFromOffsetDrawing = new HashSet<Texture>();
     private static bool _scaleSpriteBatchBeginMatrices = true;
 
     private static bool _useModifiedGaussianBlur = false;
@@ -47,6 +49,8 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
     // We don't watch for when TempA is drawn somewhere since it doesn't have a
     // dedicated function and it 
     private static HashSet<Texture> _largeTextures = new HashSet<Texture>();
+
+    private static HashSet<Texture> _internalLargeTextures = new HashSet<Texture>();
 
 	private static Effect _fxHiresDistort;
 	private static Effect _fxOrigDistort;
@@ -136,11 +140,14 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
                 _largeExternalTextureMap.Remove(smallTexture);
             }
 
-			_largeTextures.Clear();
-			_largeTextures.Add(renderer.LargeLevelBuffer.Target);
-			_largeTextures.Add(renderer.LargeGameplayBuffer.Target);
-            _largeTextures.Add(renderer.LargeTempABuffer.Target);
-            _largeTextures.Add(renderer.LargeTempBBuffer.Target);
+            _internalLargeTextures.Clear();
+			_internalLargeTextures.Add(renderer.LargeLevelBuffer.Target);
+			_internalLargeTextures.Add(renderer.LargeGameplayBuffer.Target);
+            _internalLargeTextures.Add(renderer.LargeTempABuffer.Target);
+            _internalLargeTextures.Add(renderer.LargeTempBBuffer.Target);
+
+            _largeTextures.Clear();
+            _largeTextures.UnionWith(_internalLargeTextures);
         }
 
         AddHook(new Hook(typeof(SpriteBatch).GetMethod("Begin",
@@ -210,6 +217,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 		DisableHiresDistort();
 
         _largeTextures.Clear();
+        _internalLargeTextures.Clear();
 
         foreach (var (smallTexture, largeTarget) in _largeExternalTextureMap)
         {
@@ -227,11 +235,14 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 			var renderer = HiresRenderer.Create();
             level.Add(renderer);
 
-			_largeTextures.Clear();
-			_largeTextures.Add(renderer.LargeLevelBuffer.Target);
-			_largeTextures.Add(renderer.LargeGameplayBuffer.Target);
-            _largeTextures.Add(renderer.LargeTempABuffer.Target);
-            _largeTextures.Add(renderer.LargeTempBBuffer.Target);
+			_internalLargeTextures.Clear();
+			_internalLargeTextures.Add(renderer.LargeLevelBuffer.Target);
+			_internalLargeTextures.Add(renderer.LargeGameplayBuffer.Target);
+            _internalLargeTextures.Add(renderer.LargeTempABuffer.Target);
+            _internalLargeTextures.Add(renderer.LargeTempBBuffer.Target);
+
+            _largeTextures.Clear();
+            _largeTextures.UnionWith(_internalLargeTextures);
         }
 
         orig(self);
@@ -399,6 +410,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
     private static void PrepareLevelRender(Level level)
     {
         _offsetDrawing = false;
+        _excludeFromOffsetDrawing.Clear();
         _scaleSpriteBatchBeginMatrices = true;
         _useModifiedGaussianBlur = false;
         _allowParallaxOneBackgrounds = false;
@@ -519,9 +531,12 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
         HiresRenderer.EnableLargeTempABuffer();
         HiresRenderer.EnableLargeTempBBuffer();
         _useModifiedGaussianBlur = true;
+        // This fixes issues with offsets happening in SJ's bloom masks.
+        _excludeFromOffsetDrawing.Add(GameplayBuffers.Level.Target);
 
         orig(self, target, scene);
 
+        _excludeFromOffsetDrawing.Remove(GameplayBuffers.Level.Target);
         _useModifiedGaussianBlur = false;
         HiresRenderer.DisableLargeTempABuffer();
         HiresRenderer.DisableLargeTempBBuffer();
@@ -1161,8 +1176,8 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
         float offsetDestinationX = destinationX;
         float offsetDestinationY = destinationY;
 
-        // Apply the subpixel offset if needed
-        if (_offsetDrawing)
+        // Apply the subpixel offset if needed. We only allow offsetting to our own buffers.
+        if (_offsetDrawing && _internalLargeTextures.Contains(_currentRenderTarget) && !_excludeFromOffsetDrawing.Contains(_currentRenderTarget))
         {
             Vector2 offset = GetCameraOffset();
             offsetDestinationX = destinationX + offset.X * (_currentlyScaling ? 1 : 6);
@@ -1187,7 +1202,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
                         Draw.SpriteBatch.End();
                         Draw.SpriteBatch.Begin(sortMode, blendState, samplerState, depthStencilState, rasterizerState, effect, InverseScaleMatrix * matrix);
 
-                        if (_offsetDrawing)
+                        if (_offsetDrawing && _internalLargeTextures.Contains(_currentRenderTarget) && !_excludeFromOffsetDrawing.Contains(_currentRenderTarget))
                         {
                             Vector2 offset = GetCameraOffset();
                             offsetDestinationX = destinationX + offset.X * 6;
@@ -1225,7 +1240,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
                     Draw.SpriteBatch.End();
                     Draw.SpriteBatch.Begin(sortMode, blendState, samplerState, depthStencilState, rasterizerState, effect, InverseScaleMatrix * matrix);
 
-                    if (_offsetDrawing)
+                    if (_offsetDrawing && _internalLargeTextures.Contains(_currentRenderTarget) && !_excludeFromOffsetDrawing.Contains(_currentRenderTarget))
                     {
                         Vector2 offset = GetCameraOffset();
                         offsetDestinationX = destinationX + offset.X * 6;
