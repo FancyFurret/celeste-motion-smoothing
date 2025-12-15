@@ -45,11 +45,11 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 	private static Dictionary<Texture, VirtualRenderTarget> _largeExternalTextureMap = new Dictionary<Texture, VirtualRenderTarget>();
 
     // This is a set containing just the large versions of large textures, but
-    // we also include two of the three that we enlarge (Level and Gameplay).
-    // We don't watch for when TempA is drawn somewhere since it doesn't have a
-    // dedicated function and it 
+    // we also include the four that we enlarge (Level, Gameplay, TempA, and TempB).
     private static HashSet<Texture> _largeTextures = new HashSet<Texture>();
 
+    // Meanwhile this just contains the four textures we make and nothing else.
+    // Offsetting the camera position is only allowed when drawing into one of these.
     private static HashSet<Texture> _internalLargeTextures = new HashSet<Texture>();
 
 	private static Effect _fxHiresDistort;
@@ -101,6 +101,44 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 	}
 
 
+
+    public static void DestroyLargeExternalTextureData()
+	{
+        if (HiresRenderer.Instance is not { } renderer)
+        {
+            return;
+        }
+
+        foreach (var (smallTexture, largeTarget) in _largeExternalTextureMap)
+        {
+            largeTarget.Dispose();
+            _largeExternalTextureMap.Remove(smallTexture);
+        }
+
+        Logger.Log(LogLevel.Info, "MotionSmoothingModule", "Disposed all large external buffers");
+
+        _internalLargeTextures.Clear();
+        _largeTextures.Clear();
+	}
+
+    public static void CreateLargeExternalTextureData()
+	{
+        if (HiresRenderer.Instance is not { } renderer)
+        {
+            return;
+        }
+
+        DestroyLargeExternalTextureData();
+
+        _internalLargeTextures.Add(renderer.LargeLevelBuffer.Target);
+        _internalLargeTextures.Add(renderer.LargeGameplayBuffer.Target);
+        _internalLargeTextures.Add(renderer.LargeTempABuffer.Target);
+        _internalLargeTextures.Add(renderer.LargeTempBBuffer.Target);
+
+        _largeTextures.UnionWith(_internalLargeTextures);
+	}
+
+
     protected override void Hook()
     {
         base.Hook();
@@ -134,20 +172,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
             HiresRenderer.Destroy();
             var renderer = HiresRenderer.Create();
 
-            foreach (var (smallTexture, largeTarget) in _largeExternalTextureMap)
-            {
-                largeTarget.Dispose();
-                _largeExternalTextureMap.Remove(smallTexture);
-            }
-
-            _internalLargeTextures.Clear();
-			_internalLargeTextures.Add(renderer.LargeLevelBuffer.Target);
-			_internalLargeTextures.Add(renderer.LargeGameplayBuffer.Target);
-            _internalLargeTextures.Add(renderer.LargeTempABuffer.Target);
-            _internalLargeTextures.Add(renderer.LargeTempBBuffer.Target);
-
-            _largeTextures.Clear();
-            _largeTextures.UnionWith(_internalLargeTextures);
+            CreateLargeExternalTextureData();
         }
 
         AddHook(new Hook(typeof(SpriteBatch).GetMethod("Begin",
@@ -167,6 +192,8 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
         AddHook(new Hook(typeof(GraphicsDevice).GetMethod("SetRenderTargets",
             new[] { typeof(RenderTargetBinding[])
         })!, GraphicsDevice_SetRenderTargets));
+
+        AddHook(new Hook(typeof(VirtualRenderTarget).GetMethod("Dispose", Type.EmptyTypes)!, VirtualRenderTarget_Dispose));
 
         HookDrawVertices<VertexPositionColor>();
         HookDrawVertices<VertexPositionColorTexture>();
@@ -216,14 +243,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
         HiresRenderer.Destroy();
 		DisableHiresDistort();
 
-        _largeTextures.Clear();
-        _internalLargeTextures.Clear();
-
-        foreach (var (smallTexture, largeTarget) in _largeExternalTextureMap)
-        {
-            largeTarget.Dispose();
-            _largeExternalTextureMap.Remove(smallTexture);
-        }
+        DestroyLargeExternalTextureData();
     }
 
     private static void Scene_Begin(On.Monocle.Scene.orig_Begin orig, Scene self)
@@ -235,14 +255,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 			var renderer = HiresRenderer.Create();
             level.Add(renderer);
 
-			_internalLargeTextures.Clear();
-			_internalLargeTextures.Add(renderer.LargeLevelBuffer.Target);
-			_internalLargeTextures.Add(renderer.LargeGameplayBuffer.Target);
-            _internalLargeTextures.Add(renderer.LargeTempABuffer.Target);
-            _internalLargeTextures.Add(renderer.LargeTempBBuffer.Target);
-
-            _largeTextures.Clear();
-            _largeTextures.UnionWith(_internalLargeTextures);
+            CreateLargeExternalTextureData();
         }
 
         orig(self);
@@ -251,6 +264,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
     private static void Level_End(On.Celeste.Level.orig_End orig, Level self)
     {
         HiresRenderer.Destroy();
+        DestroyLargeExternalTextureData();
 
         orig(self);
     }
@@ -1308,7 +1322,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
             _largeTextures.Add(largeTarget.Target);
         }
 
-        Console.WriteLine($"Hot creating a {largeTarget.Target.Width}x{largeTarget.Target.Height} buffer!");
+        Logger.Log(LogLevel.Info, "MotionSmoothingModule", $"Hot created a {largeTarget.Target.Width}x{largeTarget.Target.Height} buffer! Total existing: {_largeExternalTextureMap.Count}");
 
         return largeTarget;
     }
@@ -1320,6 +1334,26 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 		_currentlyScaling = false;
 		orig(self);
 	}
+
+
+
+    // Dispose large textures when the small one is disposed.
+    private static void VirtualRenderTarget_Dispose(Action<VirtualRenderTarget> orig, VirtualRenderTarget self)
+    {
+        if (self.Target is Texture && _largeExternalTextureMap.TryGetValue(self.Target, out VirtualRenderTarget largeRenderTarget))
+        {
+            _largeExternalTextureMap.Remove(self.Target);
+
+            if (largeRenderTarget?.Target is Texture2D texture2D)
+            {
+                Logger.Log(LogLevel.Info, "MotionSmoothingModule", $"Disposing a {texture2D.Width}x{texture2D.Height} hot-created buffer. Total left: {_largeExternalTextureMap.Count}");
+
+                largeRenderTarget?.Dispose();
+            }
+        }
+
+        orig(self);
+    }
 
 
 
