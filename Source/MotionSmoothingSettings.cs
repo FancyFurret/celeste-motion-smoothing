@@ -65,32 +65,10 @@ public class MotionSmoothingSettings : EverestModuleSettings
         {
             _enabled = value;
 
-            if (!_enabled)
+            if (_frameRateMenuItem != null)
             {
-                _frameRate = 60;
-
-                if (_frameRateMenuItem != null)
-                {
-                    _frameRateMenuItem.Index = 60;
-                    _frameRateMenuItem.Disabled = true;
-                    _frameRateMenuItem.Selectable = false;
-                }
-
-                _enabled = true;
-                MotionSmoothingModule.Instance.ApplySettings();
-                _enabled = false;
-            }
-
-            else
-            {
-                _frameRate = _preferredFrameRate;
-
-                if (_frameRateMenuItem != null)
-                {
-                    _frameRateMenuItem.Index = _preferredFrameRate;
-                    _frameRateMenuItem.Disabled = false;
-                    _frameRateMenuItem.Selectable = true;
-                }
+                _frameRateMenuItem.Disabled = !_enabled;
+                _frameRateMenuItem.Selectable = _enabled;
             }
 
             MotionSmoothingModule.Instance.ApplySettings();
@@ -128,7 +106,6 @@ public class MotionSmoothingSettings : EverestModuleSettings
        
         if (!_enabled)
         {
-            _frameRate = 60;
             _frameRateMenuItem.Disabled = true;
             _frameRateMenuItem.Selectable = false;
         }

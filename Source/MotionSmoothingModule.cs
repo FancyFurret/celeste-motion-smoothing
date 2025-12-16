@@ -120,6 +120,8 @@ public class MotionSmoothingModule : EverestModule
 
         if (!Settings.Enabled)
         {
+            ApplyFramerate();
+
             UpdateEveryNTicks.Disable();
             DecoupledGameTick.Disable();
 
@@ -197,14 +199,16 @@ public class MotionSmoothingModule : EverestModule
 
     private void ApplyFramerate()
     {
+        int framerate = Settings.Enabled ? Settings.FrameRate : 60;
+
         var updateFps = 60.0;
         
         if (!InLevel)
         {
             // For TAS, just draw at 60 as well. Motion smoothing in the Overworld looks awful at the moment.
             // If we're not in a level, just use the target framerate
-            var drawFps = Settings.TasMode ? 60 : Settings.FrameRate;
-            updateFps = Settings.FrameRate;
+            var drawFps = Settings.TasMode ? 60 : framerate;
+            updateFps = framerate;
             if (Settings.TasMode) updateFps = 60;
             else if (Settings.GameSpeedModified && !Settings.GameSpeedInLevelOnly) updateFps = Settings.GameSpeed;
 
@@ -219,7 +223,7 @@ public class MotionSmoothingModule : EverestModule
         if (Settings.GameSpeedModified && !(level.Paused && Settings.GameSpeedInLevelOnly))
             updateFps = Settings.GameSpeed;
         
-        FrameUncapStrategy.SetTargetFramerate(updateFps, Settings.FrameRate);
+        FrameUncapStrategy.SetTargetFramerate(updateFps, framerate);
         if (DecoupledGameTick.Enabled)
             DecoupledGameTick.SetTargetDeltaTime(60);
     }

@@ -20,7 +20,7 @@ public class UpdateEveryNTicks : ToggleableFeature<UpdateEveryNTicks>, IFrameUnc
 
     protected override void Hook()
     {
-        // Make sure our hook runs first, so that when we block the original update, other mods hooks won't run either.
+        // Make sure our hook runs first, so that when we block the original update, other mods' hooks won't run either.
         MainThreadHelper.Schedule(() =>
         {
             using (new DetourConfigContext(new DetourConfig(
