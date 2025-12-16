@@ -190,7 +190,9 @@ public class MotionSmoothingSettings : EverestModuleSettings
             menu,
             "Only applies if Smooth Camera is set to Hires. Determines\n" +
             "whether the background is drawn at a 6x scale. This makes\n" +
-            "for a much smoother result (particularly with parallax)."
+            "for a much smoother result, particularly with parallax. It also\n" +
+            "fixes occasional slightly incorrect colors (for example in the\n" +
+            "checkpoints of Farewell)"
         );
     }
 
