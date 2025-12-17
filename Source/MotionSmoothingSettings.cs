@@ -192,7 +192,7 @@ public class MotionSmoothingSettings : EverestModuleSettings
             "whether the background is drawn at a 6x scale. This makes\n" +
             "for a much smoother result, particularly with parallax. It also\n" +
             "fixes occasional slightly incorrect colors (for example in the\n" +
-            "checkpoints of Farewell)"
+            "final checkpoints of Farewell)"
         );
     }
 
