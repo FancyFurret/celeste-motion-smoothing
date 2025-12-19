@@ -515,10 +515,10 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
     private static Matrix GetHiresDisplayMatrix()
     {
-        if (SaveData.Instance.Assists.MirrorMode)
-        {
-            return Matrix.CreateTranslation(-1920, 0, 0) * Matrix.CreateScale(6f * ZoomScaleMultiplier) * Matrix.CreateTranslation(1920, 0, 0) * Engine.ScreenMatrix;
-        }
+        // if (SaveData.Instance.Assists.MirrorMode)
+        // {
+        //     return Matrix.CreateTranslation(-1920, 0, 0) * Matrix.CreateScale(6f * ZoomScaleMultiplier) * Engine.ScreenMatrix * Matrix.CreateTranslation(1920, 0, 0);
+        // }
 
 		// Note that we leave the scale intact here! That's because the SpriteBatch.Draw
 		// hook will strip it off later.
@@ -1086,8 +1086,12 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
     private static void SpriteBatch_Draw1(Action<SpriteBatch, Texture2D, Vector2, Rectangle?, Color> orig, SpriteBatch self, Texture2D texture, Vector2 position, Rectangle? sourceRectangle, Color color)
     {
-        if (sourceRectangle is Rectangle rect && _largeTextures.Contains(texture))
-        {
+        if (
+			sourceRectangle is Rectangle rect
+			&& _largeTextures.Contains(texture)
+			&& rect.Right <= texture.Width / 6
+			&& rect.Bottom <= texture.Height / 6
+		) {
             Rectangle scaledRect = new Rectangle(6 * rect.X, 6 * rect.Y, 6 * rect.Width, 6 * rect.Height);
             orig(self, texture, position, scaledRect, color);
             return;
@@ -1098,8 +1102,12 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
     private static void SpriteBatch_Draw2(Action<SpriteBatch, Texture2D, Vector2, Rectangle?, Color, float, Vector2, float, SpriteEffects, float> orig, SpriteBatch self, Texture2D texture, Vector2 position, Rectangle? sourceRectangle, Color color, float rotation, Vector2 origin, float scale, SpriteEffects effects, float layerDepth)
     {
-        if (sourceRectangle is Rectangle rect && _largeTextures.Contains(texture))
-        {
+        if (
+			sourceRectangle is Rectangle rect
+			&& _largeTextures.Contains(texture)
+			&& rect.Right <= texture.Width / 6
+			&& rect.Bottom <= texture.Height / 6
+		) {
             Rectangle scaledRect = new Rectangle(6 * rect.X, 6 * rect.Y, 6 * rect.Width, 6 * rect.Height);
             orig(self, texture, position, scaledRect, color, rotation, origin, scale, effects, layerDepth);
             return;
@@ -1110,8 +1118,12 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
     private static void SpriteBatch_Draw3(Action<SpriteBatch, Texture2D, Vector2, Rectangle?, Color, float, Vector2, Vector2, SpriteEffects, float> orig, SpriteBatch self, Texture2D texture, Vector2 position, Rectangle? sourceRectangle, Color color, float rotation, Vector2 origin, Vector2 scale, SpriteEffects effects, float layerDepth)
     {
-        if (sourceRectangle is Rectangle rect && _largeTextures.Contains(texture))
-        {
+        if (
+			sourceRectangle is Rectangle rect
+			&& _largeTextures.Contains(texture)
+			&& rect.Right <= texture.Width / 6
+			&& rect.Bottom <= texture.Height / 6
+		) {
             Rectangle scaledRect = new Rectangle(6 * rect.X, 6 * rect.Y, 6 * rect.Width, 6 * rect.Height);
             orig(self, texture, position, scaledRect, color, rotation, origin, scale, effects, layerDepth);
             return;
@@ -1122,8 +1134,12 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
     private static void SpriteBatch_Draw4(Action<SpriteBatch, Texture2D, Rectangle, Rectangle?, Color> orig, SpriteBatch self, Texture2D texture, Rectangle destinationRectangle, Rectangle? sourceRectangle, Color color)
     {
-        if (sourceRectangle is Rectangle rect && _largeTextures.Contains(texture))
-        {
+        if (
+			sourceRectangle is Rectangle rect
+			&& _largeTextures.Contains(texture)
+			&& rect.Right <= texture.Width / 6
+			&& rect.Bottom <= texture.Height / 6
+		) {
             Rectangle scaledRect = new Rectangle(6 * rect.X, 6 * rect.Y, 6 * rect.Width, 6 * rect.Height);
             orig(self, texture, destinationRectangle, scaledRect, color);
             return;
@@ -1134,8 +1150,12 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
     private static void SpriteBatch_Draw5(Action<SpriteBatch, Texture2D, Rectangle, Rectangle?, Color, float, Vector2, SpriteEffects, float> orig, SpriteBatch self, Texture2D texture, Rectangle destinationRectangle, Rectangle? sourceRectangle, Color color, float rotation, Vector2 origin, SpriteEffects effects, float layerDepth)
     {
-        if (sourceRectangle is Rectangle rect && _largeTextures.Contains(texture))
-        {
+        if (
+			sourceRectangle is Rectangle rect
+			&& _largeTextures.Contains(texture)
+			&& rect.Right <= texture.Width / 6
+			&& rect.Bottom <= texture.Height / 6
+		) {
             Rectangle scaledRect = new Rectangle(6 * rect.X, 6 * rect.Y, 6 * rect.Width, 6 * rect.Height);
             orig(self, texture, destinationRectangle, scaledRect, color, rotation, origin, effects, layerDepth);
             return;
@@ -1168,10 +1188,9 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
             originY *= 6;
         }
 
-
-
         // If instead we're drawing a natively large texture to a large one or the screen with an offset
         // (e.g. SJ's color grade masks or TempA to its bloom masks), that offset needs to be scaled.
+		// We do *not* scale the width and height because we aren't changing the size of the texture!
         else if ((_currentRenderTarget == null || _currentlyScaling) && _largeTextures.Contains(texture))
         {
             destinationX *= 6;
@@ -1245,7 +1264,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
                 // Since we're drawing something large into the new large buffer,
                 // we ditch the scale exactly like above.
                 if (_lastSpriteBatchBeginParams is var (sortMode, blendState, samplerState, depthStencilState, rasterizerState, effect, matrix))
-                {
+                {	
                     Draw.SpriteBatch.End();
                     Draw.SpriteBatch.Begin(sortMode, blendState, samplerState, depthStencilState, rasterizerState, effect, InverseScaleMatrix * matrix);
 
