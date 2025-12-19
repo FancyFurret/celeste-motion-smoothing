@@ -515,11 +515,6 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
     private static Matrix GetHiresDisplayMatrix()
     {
-        // if (SaveData.Instance.Assists.MirrorMode)
-        // {
-        //     return Matrix.CreateTranslation(-1920, 0, 0) * Matrix.CreateScale(6f * ZoomScaleMultiplier) * Engine.ScreenMatrix * Matrix.CreateTranslation(1920, 0, 0);
-        // }
-
 		// Note that we leave the scale intact here! That's because the SpriteBatch.Draw
 		// hook will strip it off later.
         return Matrix.CreateScale(6f * ZoomScaleMultiplier) * Engine.ScreenMatrix;
