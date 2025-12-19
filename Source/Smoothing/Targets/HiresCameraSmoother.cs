@@ -663,7 +663,6 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
     private static void GameplayRenderer_Render(On.Celeste.GameplayRenderer.orig_Render orig, GameplayRenderer self, Scene scene)
     {
-		return;
 		if (HiresRenderer.Instance is not { } renderer || !MotionSmoothingModule.Settings.RenderMadelineWithSubpixels || scene is not Level level)
         {
 			orig(self, scene);
