@@ -1067,9 +1067,10 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
     // this in the PushSprite hook, because it would require scaling sourceW and
     // sourceH, which we don't want to do if they're using their default values (i.e.
     // if this rectangle wasn't specified). NOTE: we do not do this if we're drawing
-    // a small texture that's going to be replaced with a big one! In that case, we scale
-    // these parameters anyway in the PushSprite hook, and this messes them up, for example
-    // causing slices of a bloom mask to overlap
+    // a small texture that's going to be replaced with a big one! Source rectangles are
+	// on the scale [0, 1] and are computed as such by all of the draw overloads by dividing
+	// by texture width, so only when the actual draw call is made with a large texture will
+	// the source rectangle need to be scaled.
     private void HookSpriteBatchDraw()
     {
         AddHook(new Hook(typeof(SpriteBatch).GetMethod("Draw", new[] { typeof(Texture2D), typeof(Vector2), typeof(Rectangle?), typeof(Color) })!, SpriteBatch_Draw1));
@@ -1169,9 +1170,9 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
 
 
-        // In the very niche case where we're drawing a large texture to the screen with an offset
-        // (e.g. SJ's color grade masks), that offset needs to be scaled.
-        else if (_currentRenderTarget == null && _largeTextures.Contains(texture))
+        // If instead we're drawing a natively large texture to a large one or the screen with an offset
+        // (e.g. SJ's color grade masks or TempA to its bloom masks), that offset needs to be scaled.
+        else if ((_currentRenderTarget == null || _currentlyScaling) && _largeTextures.Contains(texture))
         {
             destinationX *= 6;
             destinationY *= 6;
