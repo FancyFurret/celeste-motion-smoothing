@@ -312,13 +312,13 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
         UnsmoothedCameraInverse = camera.inverse;
 
         SmoothedCameraPosition = cameraState.SmoothedRealPosition;
-        SmoothedCameraMatrix = Matrix.Identity *
-                        Matrix.CreateTranslation(new Vector3(-new Vector2(camera.position.X, camera.position.Y),
-                            0.0f)) *
-                        Matrix.CreateRotationZ(camera.angle) * Matrix.CreateScale(new Vector3(camera.zoom, 1f)) *
-                        Matrix.CreateTranslation(new Vector3(
-                            new Vector2((int)Math.Floor(camera.origin.X), (int)Math.Floor(camera.origin.Y)), 0.0f));
-        SmoothedCameraInverse = Matrix.Invert(camera.matrix);
+		SmoothedCameraMatrix = Matrix.Identity *
+						Matrix.CreateTranslation(new Vector3(-SmoothedCameraPosition, 0.0f)) *
+						Matrix.CreateRotationZ(camera.angle) *
+						Matrix.CreateScale(new Vector3(camera.zoom, 1f)) *
+						Matrix.CreateTranslation(new Vector3(
+							new Vector2((int)Math.Floor(camera.origin.X), (int)Math.Floor(camera.origin.Y)), 0.0f));
+		SmoothedCameraInverse = Matrix.Invert(SmoothedCameraMatrix);
     }
 
     private static void SmoothCameraPosition(Level level)
@@ -663,6 +663,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
     private static void GameplayRenderer_Render(On.Celeste.GameplayRenderer.orig_Render orig, GameplayRenderer self, Scene scene)
     {
+		return;
 		if (HiresRenderer.Instance is not { } renderer || !MotionSmoothingModule.Settings.RenderMadelineWithSubpixels || scene is not Level level)
         {
 			orig(self, scene);
