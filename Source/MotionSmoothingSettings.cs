@@ -42,6 +42,8 @@ public class MotionSmoothingSettings : EverestModuleSettings
     private int _frameRate = 120;
     private int _preferredFrameRate = 120;
     private UnlockCameraStrategy _unlockCameraStrategy = UnlockCameraStrategy.Hires;
+    private bool _renderBackgroundHires = true;
+    private bool _renderMadelineWithSubpixels = true;
     private UnlockCameraMode _unlockCameraMode = UnlockCameraMode.Extend;
     private SmoothingMode _smoothingMode = SmoothingMode.Extrapolate;
     private UpdateMode _updateMode = UpdateMode.Interval;
@@ -53,6 +55,9 @@ public class MotionSmoothingSettings : EverestModuleSettings
     private FrameRateTextMenuItem _frameRateMenuItem;
     private TextMenu.Item _unlockCameraModeItem;
 
+    private TextMenu.Item _renderBackgroundHiresItem;
+    private TextMenu.Item _renderMadelineWithSubpixelsItem;
+
     public bool Enabled
     {
         get => _enabled;
@@ -60,32 +65,10 @@ public class MotionSmoothingSettings : EverestModuleSettings
         {
             _enabled = value;
 
-            if (!_enabled)
+            if (_frameRateMenuItem != null)
             {
-                _frameRate = 60;
-
-                if (_frameRateMenuItem != null)
-                {
-                    _frameRateMenuItem.Index = 60;
-                    _frameRateMenuItem.Disabled = true;
-                    _frameRateMenuItem.Selectable = false;
-                }
-
-                _enabled = true;
-                MotionSmoothingModule.Instance.ApplySettings();
-                _enabled = false;
-            }
-
-            else
-            {
-                _frameRate = _preferredFrameRate;
-
-                if (_frameRateMenuItem != null)
-                {
-                    _frameRateMenuItem.Index = _preferredFrameRate;
-                    _frameRateMenuItem.Disabled = false;
-                    _frameRateMenuItem.Selectable = true;
-                }
+                _frameRateMenuItem.Disabled = !_enabled;
+                _frameRateMenuItem.Selectable = _enabled;
             }
 
             MotionSmoothingModule.Instance.ApplySettings();
@@ -118,12 +101,11 @@ public class MotionSmoothingSettings : EverestModuleSettings
     // ReSharper disable once UnusedMember.Global
     public void CreateFrameRateEntry(TextMenu menu, bool _)
     {
-        _frameRateMenuItem = new FrameRateTextMenuItem("Frame Rate", 60, 480, FrameRate);
+        _frameRateMenuItem = new FrameRateTextMenuItem("Framerate", 60, 480, FrameRate);
         _frameRateMenuItem.Change(fps => FrameRate = fps);
        
         if (!_enabled)
         {
-            _frameRate = 60;
             _frameRateMenuItem.Disabled = true;
             _frameRateMenuItem.Selectable = false;
         }
@@ -165,13 +147,98 @@ public class MotionSmoothingSettings : EverestModuleSettings
             "half a pixel could be shown on the side of the screen.\n" +
             "This makes slow camera movements look *MUCH* smoother.\n\n" +
             "Hires: Changes level rendering to be at a higher internal\n" +
-            "resolution. Usually has the fewest visual glitches, but may\n" +
-            "not work in modded maps that use a large number of helpers\n\n" +
-            "Unlock: lets the camera move without changing the rendering\n" +
+            "resolution. This usually produces the smoothest visuals, but it\n" +
+            "may impact performance on low-end systems and may not\n" +
+			"work in modded maps that use a large number of helpers.\n\n" +
+            "Unlock: Lets the camera move without changing the rendering\n" +
             "pipeline. Has the highest compatibility, but makes the entire\n" +
-            "background jitter when moving."
+            "background jitter when moving.\n\n" +
+			"Off: Disables all camera smoothing."
         );
     }
+
+    public bool RenderBackgroundHires
+    {
+        get => _renderBackgroundHires;
+        set
+        {
+            _renderBackgroundHires = value;
+            MotionSmoothingModule.Instance.ApplySettings();
+        }
+    }
+
+    public void CreateRenderBackgroundHiresEntry(TextMenu menu, bool inGame)
+    {
+        _renderBackgroundHiresItem = new TextMenu.OnOff(
+            "Render Background Hires",
+            _renderBackgroundHires
+        );
+
+        (_renderBackgroundHiresItem as TextMenu.OnOff).Change(value =>
+        {
+            RenderBackgroundHires = value;
+        });
+
+        // Set initial state based on UnlockCameraStrategy
+        bool shouldDisable = UnlockCameraStrategy != UnlockCameraStrategy.Hires;
+        _renderBackgroundHiresItem.Disabled = shouldDisable;
+        _renderBackgroundHiresItem.Selectable = !shouldDisable;
+
+        menu.Add(_renderBackgroundHiresItem);
+
+        _renderBackgroundHiresItem.AddDescription(
+            menu,
+            "Only applies if Smooth Camera is set to Hires. Determines\n" +
+            "whether the background is drawn at a 6x scale. This makes\n" +
+            "for a much smoother result, particularly with parallax. It also\n" +
+            "fixes occasional slightly incorrect colors (for example in the\n" +
+            "final checkpoints of Farewell)"
+        );
+    }
+
+
+
+    public bool RenderMadelineWithSubpixels
+    {
+        get => _renderMadelineWithSubpixels;
+        set
+        {
+            _renderMadelineWithSubpixels = value;
+            MotionSmoothingModule.Instance.ApplySettings();
+        }
+    }
+
+    public void CreateRenderMadelineWithSubpixelsEntry(TextMenu menu, bool inGame)
+    {
+        _renderMadelineWithSubpixelsItem = new TextMenu.OnOff(
+            "Render Madeline with Subpixel Precision",
+            _renderMadelineWithSubpixels
+        );
+
+        (_renderMadelineWithSubpixelsItem as TextMenu.OnOff).Change(value =>
+        {
+            RenderMadelineWithSubpixels = value;
+        });
+
+        // Set initial state based on UnlockCameraStrategy
+        bool shouldDisable = UnlockCameraStrategy != UnlockCameraStrategy.Hires;
+        _renderMadelineWithSubpixelsItem.Disabled = shouldDisable;
+        _renderMadelineWithSubpixelsItem.Selectable = !shouldDisable;
+
+        menu.Add(_renderMadelineWithSubpixelsItem);
+
+        _renderMadelineWithSubpixelsItem.AddDescription(
+            menu,
+            "Only applies if Smooth Camera is set to Hires. Determines\n" +
+            "whether Madeline is drawn at her exact subpixel position\n" +
+            "(i.e. offset from the pixel grid). This makes Madeline's\n" +
+			"sprite appear much more smooth and clear when moving.\n" +
+            "When not moving, Madeline will always be drawn aligned to the\n" +
+            "grid, so that information about her subpixels cannot be gleaned.\n"
+        );
+    }
+
+
 
     public UnlockCameraMode UnlockCameraMode
     {
@@ -215,9 +282,15 @@ public class MotionSmoothingSettings : EverestModuleSettings
     {
         if (_unlockCameraModeItem != null)
         {
-            bool shouldDisable = UnlockCameraStrategy == UnlockCameraStrategy.Hires;
-            _unlockCameraModeItem.Disabled = shouldDisable;
-            _unlockCameraModeItem.Selectable = !shouldDisable;
+            bool shouldDisableUnlockMode = UnlockCameraStrategy != UnlockCameraStrategy.Unlock;
+            _unlockCameraModeItem.Disabled = shouldDisableUnlockMode;
+            _unlockCameraModeItem.Selectable = !shouldDisableUnlockMode;
+
+            bool shouldDisableRenderBackgroundHires = UnlockCameraStrategy != UnlockCameraStrategy.Hires;
+            _renderBackgroundHiresItem.Disabled = shouldDisableRenderBackgroundHires;
+            _renderBackgroundHiresItem.Selectable = !shouldDisableRenderBackgroundHires;
+			_renderMadelineWithSubpixelsItem.Disabled = shouldDisableRenderBackgroundHires;
+			_renderMadelineWithSubpixelsItem.Selectable = !shouldDisableRenderBackgroundHires;
         }
     }
 

@@ -15,6 +15,8 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
     private const int HiresPixelSize = 1080 / 180;
     private const int BorderOffset = HiresPixelSize / 2;
 
+    private static bool _disableFloorFunctions = false;
+
     protected override void Hook()
     {
         base.Hook();
@@ -54,7 +56,7 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
         {
             var cameraState = (MotionSmoothingHandler.Instance.GetState(level.Camera) as IPositionSmoothingState)!;
             var pixelOffset = cameraState.SmoothedRealPosition.Floor() - cameraState.SmoothedRealPosition;
-            return pixelOffset;
+            return SaveData.Instance.Assists.MirrorMode ? -pixelOffset : pixelOffset;
         }
 
         return Vector2.Zero;
@@ -236,12 +238,12 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
 
         Vector2 oldCameraPosition = level.Camera.Position;
         level.Camera.Position = GetSmoothedCameraPosition();
-        renderer.DisableFloorFunctions = true;
+        _disableFloorFunctions = true;
 
         orig(self, scene);
 
         level.Camera.Position = oldCameraPosition;
-        renderer.DisableFloorFunctions = false;
+        _disableFloorFunctions = false;
     }
 
 
@@ -250,7 +252,7 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
 
     private static Vector2 FloorHook(orig_Floor orig, Vector2 self)
     {
-        if (HiresRenderer.Instance is not { } renderer || !renderer.DisableFloorFunctions)
+        if (!_disableFloorFunctions)
         {
             return orig(self);
         }
@@ -262,7 +264,7 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
 
     private static Vector2 CeilingHook(orig_Ceiling orig, Vector2 self)
     {
-        if (HiresRenderer.Instance is not { } renderer || !renderer.DisableFloorFunctions)
+        if (!_disableFloorFunctions)
         {
             return orig(self);
         }
@@ -274,7 +276,7 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
 
     private static Vector2 RoundHook(orig_Round orig, Vector2 self)
     {
-        if (HiresRenderer.Instance is not { } renderer || !renderer.DisableFloorFunctions)
+        if (!_disableFloorFunctions)
         {
             return orig(self);
         }

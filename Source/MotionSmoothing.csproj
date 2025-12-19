@@ -19,6 +19,7 @@
     <ItemGroup>
         <PackageReference Include="MonoMod.RuntimeDetour" Version="*" PrivateAssets="all" ExcludeAssets="runtime" />
         <PackageReference Include="MonoMod.Patcher" Version="*" />
+        <PackageReference Include="MonoMod.Utils" Version="*" />
         <PackageReference Include="Mono.Cecil" Version="*" />
         <PackageReference Include="CelesteAnalyzer" Version="*" />
         <PackageReference Include="YamlDotNet" Version="*" />
@@ -49,6 +50,7 @@
         <Copy SourceFiles="..\bin\MotionSmoothing.pdb" DestinationFolder="$(CelestePrefix)\Mods\MotionSmoothing\bin" />
         <Copy SourceFiles="..\Dialog\English.txt" DestinationFolder="$(CelestePrefix)\Mods\MotionSmoothing\Dialog" />
         <Copy SourceFiles="..\Effects\HiresGaussianBlur.cso" DestinationFolder="$(CelestePrefix)\Mods\MotionSmoothing\Effects" />
+        <Copy SourceFiles="..\Effects\HiresDistort.cso" DestinationFolder="$(CelestePrefix)\Mods\MotionSmoothing\Effects" />
     </Target>
 
     <Target Name="PackageMod" AfterTargets="CopyFiles" Inputs="$(ZippedFiles)" Outputs="..\MotionSmoothing.zip" Condition="'$(Configuration)' == 'Release'">

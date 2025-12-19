@@ -2,14 +2,12 @@
 using System.Collections.Generic;
 using System.Reflection;
 using System.Runtime.InteropServices;
-using System.Diagnostics.CodeAnalysis;
 using Celeste.Mod.MotionSmoothing.FrameUncap;
 using Celeste.Mod.MotionSmoothing.Interop;
 using Celeste.Mod.MotionSmoothing.Smoothing;
 using Celeste.Mod.MotionSmoothing.Smoothing.Targets;
 using Celeste.Mod.MotionSmoothing.Utilities;
 using Celeste.Pico8;
-using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using Monocle;
 using MonoMod.ModInterop;
@@ -54,7 +52,7 @@ public class MotionSmoothingModule : EverestModule
 
     private MotionSmoothingHandler MotionSmoothing { get; } = new();
     private UnlockedCameraSmoother UnlockedCameraSmoother { get; } = new();
-    private UnlockedCameraSmootherHires UnlockedCameraSmootherHires { get; } = new();
+    private HiresCameraSmoother HiresCameraSmoother { get; } = new();
     private ActorPushTracker ActorPushTracker { get; } = new();
     private UpdateAtDraw UpdateAtDraw { get; } = new();
     private MotionSmoothingInputHandler InputHandler { get; } = new();
@@ -67,12 +65,13 @@ public class MotionSmoothingModule : EverestModule
 
         typeof(MotionSmoothingExports).ModInterop();
         typeof(GravityHelperImports).ModInterop();
+        typeof(SpeedrunToolImports).ModInterop();
         CelesteTasInterop.Load();
 
         UpdateEveryNTicks.Load();
         MotionSmoothing.Load();
         UnlockedCameraSmoother.Load();
-        UnlockedCameraSmootherHires.Load();
+        HiresCameraSmoother.Load();
         ActorPushTracker.Load();
         UpdateAtDraw.Load();
         InputHandler.Load();
@@ -95,7 +94,7 @@ public class MotionSmoothingModule : EverestModule
         UpdateEveryNTicks.Unload();
         MotionSmoothing.Unload();
         UnlockedCameraSmoother.Unload();
-        UnlockedCameraSmootherHires.Unload();
+        HiresCameraSmoother.Unload();
         ActorPushTracker.Unload();
         UpdateAtDraw.Unload();
         InputHandler.Unload();
@@ -121,12 +120,14 @@ public class MotionSmoothingModule : EverestModule
 
         if (!Settings.Enabled)
         {
+            ApplyFramerate();
+
             UpdateEveryNTicks.Disable();
             DecoupledGameTick.Disable();
 
             MotionSmoothing.Disable();
             UnlockedCameraSmoother.Disable();
-            UnlockedCameraSmootherHires.Disable();
+            HiresCameraSmoother.Disable();
             ActorPushTracker.Disable();
             UpdateAtDraw.Disable();
             DebugRenderFix.Disable();
@@ -156,7 +157,7 @@ public class MotionSmoothingModule : EverestModule
             ActorPushTracker.Disable();
             UpdateAtDraw.Disable();
             UnlockedCameraSmoother.Disable();
-            UnlockedCameraSmootherHires.Disable();
+            HiresCameraSmoother.Disable();
             return;
         }
 
@@ -169,32 +170,45 @@ public class MotionSmoothingModule : EverestModule
         if (Settings.UnlockCameraStrategy == UnlockCameraStrategy.Hires)
         {
             UnlockedCameraSmoother.Disable();
-            UnlockedCameraSmootherHires.Enable();
+            HiresCameraSmoother.Enable();
+
+			if (Settings.RenderMadelineWithSubpixels)
+			{
+				HiresCameraSmoother.EnableHiresDistort();
+			}
+
+			else
+			{
+				HiresCameraSmoother.DisableHiresDistort();
+				Smoothing.Targets.HiresRenderer.DisableLargeGameplayBuffer();
+			}
         }
 
         else if (Settings.UnlockCameraStrategy == UnlockCameraStrategy.Unlock)
         {
-            UnlockedCameraSmootherHires.Disable();
+            HiresCameraSmoother.Disable();
             UnlockedCameraSmoother.Enable();
         }
         
         else
         {
             UnlockedCameraSmoother.Disable();
-            UnlockedCameraSmootherHires.Disable();
+            HiresCameraSmoother.Disable();
         }
     }
 
     private void ApplyFramerate()
     {
+        int framerate = Settings.Enabled ? Settings.FrameRate : 60;
+
         var updateFps = 60.0;
         
         if (!InLevel)
         {
             // For TAS, just draw at 60 as well. Motion smoothing in the Overworld looks awful at the moment.
             // If we're not in a level, just use the target framerate
-            var drawFps = Settings.TasMode ? 60 : Settings.FrameRate;
-            updateFps = Settings.FrameRate;
+            var drawFps = Settings.TasMode ? 60 : framerate;
+            updateFps = framerate;
             if (Settings.TasMode) updateFps = 60;
             else if (Settings.GameSpeedModified && !Settings.GameSpeedInLevelOnly) updateFps = Settings.GameSpeed;
 
@@ -209,7 +223,7 @@ public class MotionSmoothingModule : EverestModule
         if (Settings.GameSpeedModified && !(level.Paused && Settings.GameSpeedInLevelOnly))
             updateFps = Settings.GameSpeed;
         
-        FrameUncapStrategy.SetTargetFramerate(updateFps, Settings.FrameRate);
+        FrameUncapStrategy.SetTargetFramerate(updateFps, framerate);
         if (DecoupledGameTick.Enabled)
             DecoupledGameTick.SetTargetDeltaTime(60);
     }

@@ -20,7 +20,7 @@ public class UpdateEveryNTicks : ToggleableFeature<UpdateEveryNTicks>, IFrameUnc
 
     protected override void Hook()
     {
-        // Make sure our hook runs first, so that when we block the original update, other mods hooks won't run either.
+        // Make sure our hook runs first, so that when we block the original update, other mods' hooks won't run either.
         MainThreadHelper.Schedule(() =>
         {
             using (new DetourConfigContext(new DetourConfig(
@@ -30,6 +30,8 @@ public class UpdateEveryNTicks : ToggleableFeature<UpdateEveryNTicks>, IFrameUnc
             {
                 On.Monocle.Engine.Update += EngineUpdateHook;
                 On.Monocle.Engine.Draw += EngineDrawHook;
+
+                On.Celeste.Input.UpdateGrab += Input_UpdateGrab;
             }
         });
 
@@ -42,6 +44,8 @@ public class UpdateEveryNTicks : ToggleableFeature<UpdateEveryNTicks>, IFrameUnc
         {
             On.Monocle.Engine.Update -= EngineUpdateHook;
             On.Monocle.Engine.Draw -= EngineDrawHook;
+
+            On.Celeste.Input.UpdateGrab -= Input_UpdateGrab;
         });
 
         base.Unhook();
@@ -86,5 +90,13 @@ public class UpdateEveryNTicks : ToggleableFeature<UpdateEveryNTicks>, IFrameUnc
 
         // Engine.FPS is calculated in Draw, and ends up being 120+, so this fixes that
         orig(self, new GameTime(gameTime.TotalGameTime, Instance.TargetUpdateElapsedTime, gameTime.IsRunningSlowly));
+    }
+
+    public static void Input_UpdateGrab(On.Celeste.Input.orig_UpdateGrab orig)
+    {
+        if (Instance._drawsUntilUpdate == 0)
+        {
+            orig();
+        }
     }
 }
