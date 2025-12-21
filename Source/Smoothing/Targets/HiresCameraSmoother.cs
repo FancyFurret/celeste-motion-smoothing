@@ -153,8 +153,6 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
         On.Celeste.GameplayRenderer.Render += GameplayRenderer_Render;
         On.Celeste.Distort.Render += Distort_Render;
 
-		On.Celeste.Glitch.Apply += Glitch_Apply;
-
         On.Celeste.Parallax.Render += Parallax_Render;
         On.Celeste.Godrays.Update += Godrays_Update;
 
@@ -222,8 +220,6 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
         On.Celeste.BackdropRenderer.Render -= BackdropRenderer_Render;
         On.Celeste.GameplayRenderer.Render -= GameplayRenderer_Render;
         On.Celeste.Distort.Render -= Distort_Render;
-
-		On.Celeste.Glitch.Apply -= Glitch_Apply;
 
         On.Celeste.Parallax.Render -= Parallax_Render;
 		On.Celeste.Godrays.Update -= Godrays_Update;
@@ -433,6 +429,9 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
         ComputeSmoothedCameraData(level);
 
+		HiresRenderer.EnableLargeTempABuffer();
+		HiresRenderer.EnableLargeTempBBuffer();
+
         if (MotionSmoothingModule.Settings.RenderBackgroundHires)
         {
             HiresRenderer.EnableLargeLevelBuffer();
@@ -531,8 +530,6 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
     private static void BloomRenderer_Apply(On.Celeste.BloomRenderer.orig_Apply orig, BloomRenderer self, VirtualRenderTarget target, Scene scene)
     {
-        HiresRenderer.EnableLargeTempABuffer();
-        HiresRenderer.EnableLargeTempBBuffer();
         _useModifiedGaussianBlur = true;
         // This fixes issues with offsets happening in SJ's bloom masks.
         _excludeFromOffsetDrawing.Add(GameplayBuffers.Level.Target);
@@ -541,8 +538,6 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
         _excludeFromOffsetDrawing.Remove(GameplayBuffers.Level.Target);
         _useModifiedGaussianBlur = false;
-        HiresRenderer.DisableLargeTempABuffer();
-        HiresRenderer.DisableLargeTempBBuffer();
     }
 
     // Effect cutouts need to be offset in order for them not to jitter.
@@ -820,17 +815,6 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
     }
 
 
-
-	private static void Glitch_Apply(On.Celeste.Glitch.orig_Apply orig, VirtualRenderTarget source, float timer, float seed, float amplitude)
-	{
-		HiresRenderer.EnableLargeTempABuffer();
-
-		orig(source, timer, seed, amplitude);
-
-		HiresRenderer.DisableLargeTempABuffer();
-	}
-
-
 	private static void Godrays_Update(On.Celeste.Godrays.orig_Update orig, Godrays self, Scene scene)
 	{
 		if (HiresRenderer.Instance is not { } renderer)
@@ -941,6 +925,9 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
         level.Camera.Position = oldCameraPosition;
         _disableFloorFunctions = false;
+
+		HiresRenderer.DisableLargeTempABuffer();
+		HiresRenderer.DisableLargeTempBBuffer();
     }
 
 
