@@ -1270,12 +1270,8 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
                     Draw.SpriteBatch.End();
                     Draw.SpriteBatch.Begin(sortMode, blendState, samplerState, depthStencilState, rasterizerState, effect, InverseScaleMatrix * matrix);
 
-                    if (_offsetDrawing && _internalLargeTextures.Contains(_currentRenderTarget) && !_excludeFromOffsetDrawing.Contains(_currentRenderTarget))
-                    {
-                        Vector2 offset = GetCameraOffset();
-                        offsetDestinationX = destinationX + offset.X * 6;
-                        offsetDestinationY = destinationY + offset.Y * 6;
-                    }
+                    // We completely skip the offset check since this can never be an internal
+					// render target.
 
                     orig(self, texture, sourceX, sourceY, sourceW, sourceH, offsetDestinationX, offsetDestinationY, destinationW, destinationH, color, originX, originY, rotationSin, rotationCos, depth, effects);
 
@@ -1283,6 +1279,8 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
                     Draw.SpriteBatch.Begin(sortMode, blendState, samplerState, depthStencilState, rasterizerState, effect, matrix);
                 }
             }
+
+			return;
 		}
 
 
@@ -1292,13 +1290,18 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
 
 
-    private static VirtualRenderTarget HotCreateLargeBuffer(Texture2D smallTexture)
+    private static bool HotCreateLargeBuffer(Texture2D smallTexture)
     {
         // We cap the dimensions here since the maximum allowable texture is
         // 4096x4096 (and this is close to that at 6x)
         if (smallTexture.Width > 640 || smallTexture.Height > 640)
         {
-            return null;
+			// Ah well. Despite not being able to create a large buffer, this code path
+			// is still useful: a common reason to want a buffer this big is to capture
+			// what's drawn to the screen (ahem CelesteNet), in which case we will still
+			// be ditching the scale above where this is called -- which is exactly correct
+			// in that case!
+            return false;
         }
 
         VirtualRenderTarget largeTarget = GameplayBuffers.Create(smallTexture.Width * 6, smallTexture.Height * 6);
@@ -1340,7 +1343,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
         Logger.Log(LogLevel.Info, "MotionSmoothingModule", $"Hot created a {largeTarget.Target.Width}x{largeTarget.Target.Height} buffer! Total existing: {_largeExternalTextureMap.Count}");
 
-        return largeTarget;
+        return true;
     }
 
 
