@@ -419,7 +419,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
             Draw.SpriteBatch.Begin(SpriteSortMode.Deferred, BlendState.Opaque, SamplerState.LinearClamp, DepthStencilState.Default, RasterizerState.CullNone, null);
             Draw.SpriteBatch.Draw(largeTarget, new Vector2(320 * index, 0), Color.White);
-            Console.WriteLine($"{index}: {largeTarget.Width}x{largeTarget.Height}");
+			Logger.Log(LogLevel.Verbose, "MotionSmoothingModule", $"{index}: {largeTarget.Width}x{largeTarget.Height}");
             Draw.SpriteBatch.End();
 
             index++;
