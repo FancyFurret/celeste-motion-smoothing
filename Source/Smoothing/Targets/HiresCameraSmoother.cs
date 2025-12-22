@@ -1,6 +1,7 @@
 using Celeste.Mod.MotionSmoothing.Interop;
 using Celeste.Mod.MotionSmoothing.Smoothing.States;
 using Celeste.Mod.MotionSmoothing.Utilities;
+using Microsoft.Build.Framework;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using Mono.Cecil.Cil;
@@ -30,7 +31,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
     private static HashSet<Texture> _excludeFromOffsetDrawing = new HashSet<Texture>();
     private static bool _scaleSpriteBatchBeginMatrices = true;
 
-    private static bool _useModifiedGaussianBlur = false;
+    private static bool _useHiresGaussianBlur = false;
     private static bool _currentlyRenderingBackground = false;
     private static bool _allowParallaxOneBackgrounds = false;
     private static bool _disableFloorFunctions = false;
@@ -147,11 +148,15 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
         On.Celeste.BloomRenderer.Apply += BloomRenderer_Apply;
         IL.Celeste.BloomRenderer.Apply += BloomRendererApplyHook;
-        On.Celeste.GaussianBlur.Blur += GaussianBlur_Blur;
+        
+		On.Celeste.GaussianBlur.Blur += GaussianBlur_Blur;
+		IL.Celeste.GaussianBlur.Blur += GaussianBlurBlurHook;
 
         On.Celeste.BackdropRenderer.Render += BackdropRenderer_Render;
         On.Celeste.GameplayRenderer.Render += GameplayRenderer_Render;
         On.Celeste.Distort.Render += Distort_Render;
+
+		On.Celeste.Glitch.Apply += Glitch_Apply;
 
         On.Celeste.Parallax.Render += Parallax_Render;
         On.Celeste.Godrays.Update += Godrays_Update;
@@ -215,11 +220,15 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
         On.Celeste.BloomRenderer.Apply -= BloomRenderer_Apply;
         IL.Celeste.BloomRenderer.Apply -= BloomRendererApplyHook;
+
         On.Celeste.GaussianBlur.Blur -= GaussianBlur_Blur;
+		IL.Celeste.GaussianBlur.Blur -= GaussianBlurBlurHook;
 
         On.Celeste.BackdropRenderer.Render -= BackdropRenderer_Render;
         On.Celeste.GameplayRenderer.Render -= GameplayRenderer_Render;
         On.Celeste.Distort.Render -= Distort_Render;
+
+		On.Celeste.Glitch.Apply -= Glitch_Apply;
 
         On.Celeste.Parallax.Render -= Parallax_Render;
 		On.Celeste.Godrays.Update -= Godrays_Update;
@@ -422,16 +431,12 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
         _offsetDrawing = false;
         _excludeFromOffsetDrawing.Clear();
         _scaleSpriteBatchBeginMatrices = true;
-        _useModifiedGaussianBlur = false;
+        _useHiresGaussianBlur = false;
         _allowParallaxOneBackgrounds = false;
         _currentlyRenderingBackground = true;
         _disableFloorFunctions = false;
 
         ComputeSmoothedCameraData(level);
-
-		HiresRenderer.EnableLargeGameplayBuffer();
-		HiresRenderer.EnableLargeTempABuffer();
-		HiresRenderer.EnableLargeTempBBuffer();
 
         if (MotionSmoothingModule.Settings.RenderBackgroundHires)
         {
@@ -526,14 +531,18 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
     private static void BloomRenderer_Apply(On.Celeste.BloomRenderer.orig_Apply orig, BloomRenderer self, VirtualRenderTarget target, Scene scene)
     {
-        _useModifiedGaussianBlur = true;
+		HiresRenderer.EnableLargeTempABuffer();
+        HiresRenderer.EnableLargeTempBBuffer();
+
         // This fixes issues with offsets happening in SJ's bloom masks.
         _excludeFromOffsetDrawing.Add(GameplayBuffers.Level.Target);
 
         orig(self, target, scene);
 
         _excludeFromOffsetDrawing.Remove(GameplayBuffers.Level.Target);
-        _useModifiedGaussianBlur = false;
+
+		HiresRenderer.DisableLargeTempABuffer();
+        HiresRenderer.DisableLargeTempBBuffer();
     }
 
     // Effect cutouts need to be offset in order for them not to jitter.
@@ -557,43 +566,40 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
 
     private static Texture2D GaussianBlur_Blur(On.Celeste.GaussianBlur.orig_Blur orig, Texture2D texture, VirtualRenderTarget temp, VirtualRenderTarget output, float fade, bool clear, GaussianBlur.Samples samples, float sampleScale, GaussianBlur.Direction direction, float alpha)
-    {
-        if (!_useModifiedGaussianBlur)
-        {
-            return orig(texture, temp, output, fade, clear, samples, sampleScale, direction, alpha);
-        }
-        
-        return ModifiedBlur(texture, temp, output, fade, clear, samples, sampleScale, direction, alpha);
+	{
+		if (_largeTextures.Contains(texture))
+		{
+			_useHiresGaussianBlur = true;
+		}
+
+        var outputTexture = orig(texture, temp, output, fade, clear, samples, sampleScale, direction, alpha);
+
+		_useHiresGaussianBlur = false;
+
+		return outputTexture;
     }
 
-    public static Texture2D ModifiedBlur(Texture2D texture, VirtualRenderTarget temp, VirtualRenderTarget output, float fade = 0f, bool clear = true, GaussianBlur.Samples samples = GaussianBlur.Samples.Nine, float sampleScale = 1f, GaussianBlur.Direction direction = GaussianBlur.Direction.Both, float alpha = 1f)
+	private static void GaussianBlurBlurHook(ILContext il)
     {
-        Effect fxGaussianBlur = GFX.FxGaussianBlur;
-        if (fxGaussianBlur != null)
+        var cursor = new ILCursor(il);
+
+		var getModifiedParameter = () => _useHiresGaussianBlur ? 6f : 1f;
+
+		// When blurring something large, sample at points 6x farther away so they still
+		// line up with pixels.
+        if (cursor.TryGotoNext(MoveType.After,
+            instr => instr.MatchLdcR4(1f)))
         {
-            fxGaussianBlur.CurrentTechnique = fxGaussianBlur.Techniques["GaussianBlur9"];
-            fxGaussianBlur.Parameters["fade"].SetValue(fade);
-            fxGaussianBlur.Parameters["pixel"].SetValue(new Vector2(6f / (float)temp.Width, 0f) * sampleScale);
-            Engine.Instance.GraphicsDevice.SetRenderTarget(temp);
-            if (clear)
-            {
-                Engine.Instance.GraphicsDevice.Clear(Color.Transparent);
-            }
-            Draw.SpriteBatch.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend, SamplerState.PointClamp, DepthStencilState.Default, RasterizerState.CullNone, fxGaussianBlur);
-            Draw.SpriteBatch.Draw(texture, new Rectangle(0, 0, temp.Width, temp.Height), Color.White);
-            Draw.SpriteBatch.End();
-            fxGaussianBlur.Parameters["pixel"].SetValue(new Vector2(0f, 6f / (float)output.Height) * sampleScale);
-            Engine.Instance.GraphicsDevice.SetRenderTarget(output);
-            if (clear)
-            {
-                Engine.Instance.GraphicsDevice.Clear(Color.Transparent);
-            }
-            Draw.SpriteBatch.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend, SamplerState.PointClamp, DepthStencilState.Default, RasterizerState.CullNone, fxGaussianBlur);
-            Draw.SpriteBatch.Draw((RenderTarget2D)temp, new Rectangle(0, 0, output.Width, output.Height), Color.White);
-            Draw.SpriteBatch.End();
-            return (RenderTarget2D)output;
+            cursor.Emit(OpCodes.Pop);
+			cursor.EmitDelegate(getModifiedParameter);
         }
-        return texture;
+
+        if (cursor.TryGotoNext(MoveType.After,
+            instr => instr.MatchLdcR4(1f)))
+        {
+            cursor.Emit(OpCodes.Pop);
+			cursor.EmitDelegate(getModifiedParameter);
+        }
     }
 
 
@@ -820,6 +826,18 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
     }
 
 
+
+	private static void Glitch_Apply(On.Celeste.Glitch.orig_Apply orig, VirtualRenderTarget source, float timer, float seed, float amplitude)
+	{
+		HiresRenderer.EnableLargeTempABuffer();
+
+		orig(source, timer, seed, amplitude);
+
+		HiresRenderer.DisableLargeTempABuffer();
+	}
+
+
+
 	private static void Godrays_Update(On.Celeste.Godrays.orig_Update orig, Godrays self, Scene scene)
 	{
 		if (HiresRenderer.Instance is not { } renderer)
@@ -930,10 +948,6 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
         level.Camera.Position = oldCameraPosition;
         _disableFloorFunctions = false;
-
-		HiresRenderer.DisableLargeGameplayBuffer();
-		HiresRenderer.DisableLargeTempABuffer();
-		HiresRenderer.DisableLargeTempBBuffer();
     }
 
 

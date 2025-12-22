@@ -131,6 +131,8 @@ public class HiresRenderer : Renderer
             GameplayBuffers.Create(320, 180)
         );
 
+		EnableLargeGameplayBuffer();
+
         return Instance;
     }
 
