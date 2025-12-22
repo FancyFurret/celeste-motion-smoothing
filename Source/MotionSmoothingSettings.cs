@@ -139,6 +139,12 @@ public class MotionSmoothingSettings : EverestModuleSettings
         strategySlider.Change(index =>
         {
             UnlockCameraStrategy = (UnlockCameraStrategy)index;
+
+			bool shouldDisableRenderBackgroundHires = UnlockCameraStrategy != UnlockCameraStrategy.Hires;
+            _renderBackgroundHiresItem.Disabled = shouldDisableRenderBackgroundHires;
+            _renderBackgroundHiresItem.Selectable = !shouldDisableRenderBackgroundHires;
+			_renderMadelineWithSubpixelsItem.Disabled = shouldDisableRenderBackgroundHires;
+			_renderMadelineWithSubpixelsItem.Selectable = !shouldDisableRenderBackgroundHires;
         });
 
         menu.Add(strategySlider);

@@ -448,6 +448,11 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
             HiresRenderer.DisableLargeLevelBuffer();
         }
 
+		if (MotionSmoothingModule.Settings.RenderMadelineWithSubpixels)
+		{
+			HiresRenderer.DisableLargeGameplayBuffer();
+		}
+
 		Engine.Instance.GraphicsDevice.Clear(Color.Transparent);
     }
 
@@ -658,36 +663,25 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
         Engine.Instance.GraphicsDevice.SetRenderTarget(GameplayBuffers.Level);
     }
 
+
+
     private static void GameplayRenderer_Render(On.Celeste.GameplayRenderer.orig_Render orig, GameplayRenderer self, Scene scene)
     {
-		if (HiresRenderer.Instance is not { } renderer || scene is not Level level)
+		if (HiresRenderer.Instance is not { } renderer || !MotionSmoothingModule.Settings.RenderMadelineWithSubpixels || scene is not Level level)
 		{
 			orig(self, scene);
 			return;
 		}
-
-		if (!MotionSmoothingModule.Settings.RenderMadelineWithSubpixels)
-        {
-			Engine.Instance.GraphicsDevice.SetRenderTarget(renderer.SmallBuffer);
-			Engine.Instance.GraphicsDevice.Clear(Color.Transparent);
-			
-			orig(self, scene);
-
-			Engine.Instance.GraphicsDevice.SetRenderTarget(GameplayBuffers.Gameplay);
-			// The upscaling will happen automatically whenever we draw into the large
-			// gameplay buffer, so we don't add a scale matrix.
-			Draw.SpriteBatch.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend, SamplerState.PointClamp, DepthStencilState.None, RasterizerState.CullNone, null, Matrix.Identity);
-			Draw.SpriteBatch.Draw(renderer.SmallBuffer, Vector2.Zero, Color.White);
-			Draw.SpriteBatch.End();
-
-            return;
-        }
 
 		// If we're rendering with subpixels, we need to draw everything at 6x. We do
 		// this by recreating the gameplay rendering loop, and every time we encounter
 		// an entity that needs to be rendered at a fractional position, we draw everything
 		// we have to renderer.LargeGameplayBuffer, clear the small buffer, draw
 		// the single sprite at a precise position, clear it again, and then keep going.
+
+		HiresRenderer.EnableLargeGameplayBuffer();
+		Engine.Instance.GraphicsDevice.SetRenderTarget(GameplayBuffers.Gameplay);
+		Engine.Instance.GraphicsDevice.Clear(Color.Transparent);
 
 		Engine.Instance.GraphicsDevice.SetRenderTarget(renderer.SmallBuffer);
 		Engine.Instance.GraphicsDevice.Clear(Color.Transparent);
@@ -764,6 +758,8 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
         Draw.SpriteBatch.Draw(renderer.SmallBuffer, Vector2.Zero, Color.White);
         Draw.SpriteBatch.End();
     }
+
+	
 
     private static void Distort_Render(On.Celeste.Distort.orig_Render orig, Texture2D source, Texture2D map, bool hasDistortion)
     {
@@ -1203,6 +1199,32 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
 
 
+		// When drawing something not recognized as large into something large that's the same
+		// size, we give the source honorary large status and don't scale it.
+		if (
+			_currentlyScaling
+			&& !_largeTextures.Contains(texture)
+			&& _currentRenderTarget is Texture2D texture2D
+			&& Math.Abs(texture2D.Width - texture.Width) < 8
+			&& Math.Abs(texture2D.Height - texture.Height) < 8
+		) {
+			if ((bool)_beginCalledField.GetValue(Draw.SpriteBatch) &&
+				_lastSpriteBatchBeginParams is var (sortMode, blendState, samplerState, depthStencilState, rasterizerState, effect, matrix))
+			{
+				Draw.SpriteBatch.End();
+				Draw.SpriteBatch.Begin(sortMode, blendState, samplerState, depthStencilState, rasterizerState, effect, InverseScaleMatrix * matrix);
+
+				orig(self, texture, sourceX, sourceY, sourceW, sourceH, destinationX, destinationY, destinationW, destinationH, color, originX, originY, rotationSin, rotationCos, depth, effects);
+
+				Draw.SpriteBatch.End();
+				Draw.SpriteBatch.Begin(sortMode, blendState, samplerState, depthStencilState, rasterizerState, effect, matrix);
+			}
+
+			return;
+		}
+
+
+
         float offsetDestinationX = destinationX;
         float offsetDestinationY = destinationY;
 
@@ -1249,7 +1271,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
                 return;
 			}
 
-            if (_currentRenderTarget is not Texture2D texture2D)
+            if (_currentRenderTarget is not Texture2D targetTexture2D)
             {
                 orig(self, texture, sourceX, sourceY, sourceW, sourceH, offsetDestinationX, offsetDestinationY, destinationW, destinationH, color, originX, originY, rotationSin, rotationCos, depth, effects);
                 return;
@@ -1259,7 +1281,22 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
             // If we get to this point, then we're drawing something large into something
             // small. Danger! We need to replace that small buffer with a larger one.
-            HotCreateLargeBuffer(texture2D);
+            var createdSuccessfully = HotCreateLargeBuffer(targetTexture2D);
+
+			// If we failed to create a large buffer, but we're drawing something into a buffer
+			// that's very nearly the same size as the source, then we can just assume something
+			// else resized the target to match the source (e.g. DBBHelper), and we can skip the
+			// downscaling and just draw straight into the large buffer.
+			if (
+				!createdSuccessfully
+				&& Math.Abs(targetTexture2D.Width - texture.Width) < 8
+				&& Math.Abs(targetTexture2D.Height - texture.Height) < 8
+			) {
+				orig(self, texture, sourceX, sourceY, sourceW, sourceH, offsetDestinationX, offsetDestinationY, destinationW, destinationH, color, originX, originY, rotationSin, rotationCos, depth, effects);
+
+				return;
+			}
+
 
             if ((bool)_beginCalledField.GetValue(Draw.SpriteBatch))
             {

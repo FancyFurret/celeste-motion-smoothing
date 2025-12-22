@@ -180,6 +180,7 @@ public class MotionSmoothingModule : EverestModule
 			else
 			{
 				HiresCameraSmoother.DisableHiresDistort();
+				Smoothing.Targets.HiresRenderer.DisableLargeGameplayBuffer();
 			}
         }
 
