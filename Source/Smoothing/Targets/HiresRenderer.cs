@@ -12,7 +12,7 @@ public class HiresRenderer : Renderer
     public VirtualRenderTarget LargeTempABuffer { get; }
     public VirtualRenderTarget LargeTempBBuffer { get; }
 
-    public VirtualRenderTarget SmallLevelBuffer { get; }
+    public VirtualRenderTarget SmallBuffer { get; }
 
     private static VirtualRenderTarget OriginalGameplayBuffer = null;
 	private static VirtualRenderTarget OriginalLevelBuffer = null;
@@ -25,14 +25,14 @@ public class HiresRenderer : Renderer
         VirtualRenderTarget largeLevelBuffer,
         VirtualRenderTarget largeTempABuffer,
         VirtualRenderTarget largeTempBBuffer,
-        VirtualRenderTarget smallLevelBuffer
+        VirtualRenderTarget smallBuffer
     ) {
         LargeGameplayBuffer = largeGameplayBuffer;
         LargeLevelBuffer = largeLevelBuffer;
         LargeTempABuffer = largeTempABuffer;
         LargeTempBBuffer = largeTempBBuffer;
 
-        SmallLevelBuffer = smallLevelBuffer;
+        SmallBuffer = smallBuffer;
 
         Visible = true;
     }
@@ -148,7 +148,7 @@ public class HiresRenderer : Renderer
             Instance.LargeTempABuffer?.Dispose();
             Instance.LargeTempBBuffer?.Dispose();
 
-            Instance.SmallLevelBuffer?.Dispose();
+            Instance.SmallBuffer?.Dispose();
 
             Instance = null;
         }
