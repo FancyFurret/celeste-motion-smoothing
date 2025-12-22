@@ -27,13 +27,6 @@ public enum UnlockCameraStrategy
     Off
 }
 
-public enum UnlockCameraMode
-{
-    Extend,
-    Zoom,
-    Border
-}
-
 public class MotionSmoothingSettings : EverestModuleSettings
 {
     // Defaults
@@ -44,7 +37,6 @@ public class MotionSmoothingSettings : EverestModuleSettings
     private UnlockCameraStrategy _unlockCameraStrategy = UnlockCameraStrategy.Hires;
     private bool _renderBackgroundHires = true;
     private bool _renderMadelineWithSubpixels = true;
-    private UnlockCameraMode _unlockCameraMode = UnlockCameraMode.Extend;
     private SmoothingMode _smoothingMode = SmoothingMode.Extrapolate;
     private UpdateMode _updateMode = UpdateMode.Interval;
 
@@ -53,7 +45,6 @@ public class MotionSmoothingSettings : EverestModuleSettings
     private bool _gameSpeedInLevelOnly = true;
 
     private FrameRateTextMenuItem _frameRateMenuItem;
-    private TextMenu.Item _unlockCameraModeItem;
 
     private TextMenu.Item _renderBackgroundHiresItem;
     private TextMenu.Item _renderMadelineWithSubpixelsItem;
@@ -127,7 +118,19 @@ public class MotionSmoothingSettings : EverestModuleSettings
     {
         var strategySlider = new TextMenu.Slider(
             "Smooth Camera",
-            index => ((UnlockCameraStrategy)index).ToString(),
+            index => {
+				if ((UnlockCameraStrategy)index == UnlockCameraStrategy.Hires)
+				{
+					return "Highest Quality";
+				}
+
+				if ((UnlockCameraStrategy)index == UnlockCameraStrategy.Unlock)
+				{
+					return "Most Compatible";
+				}
+
+				return "Off";
+			},
             0,
             Enum.GetValues(typeof(UnlockCameraStrategy)).Length - 1,
             (int)UnlockCameraStrategy
@@ -136,23 +139,21 @@ public class MotionSmoothingSettings : EverestModuleSettings
         strategySlider.Change(index =>
         {
             UnlockCameraStrategy = (UnlockCameraStrategy)index;
-            UpdateUnlockCameraModeState();
         });
 
         menu.Add(strategySlider);
 
         strategySlider.AddDescription(
             menu,
-            "Allows the camera to move by fractions of a pixel, i.e.\n" +
-            "half a pixel could be shown on the side of the screen.\n" +
-            "This makes slow camera movements look *MUCH* smoother.\n\n" +
-            "Hires: Changes level rendering to be at a higher internal\n" +
-            "resolution. This usually produces the smoothest visuals, but it\n" +
-            "may impact performance on low-end systems and may not\n" +
-			"work in modded maps that use a large number of helpers.\n\n" +
-            "Unlock: Lets the camera move without changing the rendering\n" +
-            "pipeline. Has the highest compatibility, but makes the entire\n" +
-            "background jitter when moving.\n\n" +
+            "This lets the camera move continuously: that is, half of a pixel\n" +
+            "could be shown on the side of the screen while the camera \n" +
+            "is moving. This is especially noticeable when the camera.\n" +
+			"is slowly catching up to the player.\n\n" +
+            "Highest Quality: Produces the smoothest visuals, but is\n" +
+            "incompatible with a small number of other mods and may\n\n" +
+            "impact performance on low-end systems.\n\n" +
+            "Most Compatible: Has the highest compatibility, but makes\n" +
+            "the entire background jitter uncontrollably when moving.\n" +
 			"Off: Disables all camera smoothing."
         );
     }
@@ -188,11 +189,11 @@ public class MotionSmoothingSettings : EverestModuleSettings
 
         _renderBackgroundHiresItem.AddDescription(
             menu,
-            "Only applies if Smooth Camera is set to Hires. Determines\n" +
-            "whether the background is drawn at a 6x scale. This makes\n" +
-            "for a much smoother result, particularly with parallax. It also\n" +
-            "fixes occasional slightly incorrect colors (for example in the\n" +
-            "final checkpoints of Farewell)"
+            "Only applies if Smooth Camera is set to Highest Quality.\n" +
+            "Determines whether the background is drawn at a 6x scale.\n" +
+            "This makes for a much smoother result, particularly with\n" +
+            "parallax, and fixes occasional slightly incorrect colors\n" +
+            "(for example in the final checkpoints of Farewell)"
         );
     }
 
@@ -229,70 +230,16 @@ public class MotionSmoothingSettings : EverestModuleSettings
 
         _renderMadelineWithSubpixelsItem.AddDescription(
             menu,
-            "Only applies if Smooth Camera is set to Hires. Determines\n" +
-            "whether Madeline is drawn at her exact subpixel position\n" +
-            "(i.e. offset from the pixel grid). This makes Madeline's\n" +
-			"sprite appear much more smooth and clear when moving.\n" +
-            "When not moving, Madeline will always be drawn aligned to the\n" +
-            "grid, so that information about her subpixels cannot be gleaned.\n"
+            "Only applies if Smooth Camera is set to Highest Quality.\n" +
+            "Determines whether Madeline is drawn at her exact subpixel\n" +
+            "position (i.e. offset from the pixel grid). This makes\n" +
+			"Madeline's sprite appear much more smooth and clear when\n" +
+            "moving. When not moving, Madeline will always be drawn aligned\n" +
+            "to the grid, so that subpixel information cannot be gleaned.\n"
         );
     }
 
 
-
-    public UnlockCameraMode UnlockCameraMode
-    {
-        get => _unlockCameraMode;
-        set => _unlockCameraMode = value;
-    }
-
-    public void CreateUnlockCameraModeEntry(TextMenu menu, bool inGame)
-    {
-        _unlockCameraModeItem = new TextMenu.Slider(
-            "Unlocked Camera Mode",
-            index => ((UnlockCameraMode)index).ToString(),
-            0,
-            Enum.GetValues(typeof(UnlockCameraMode)).Length - 1,
-            (int)UnlockCameraMode
-        );
-
-        (_unlockCameraModeItem as TextMenu.Slider).Change(index =>
-        {
-            UnlockCameraMode = (UnlockCameraMode)index;
-        });
-
-        // Set initial state based on UnlockCameraStrategy
-        bool shouldDisable = UnlockCameraStrategy == UnlockCameraStrategy.Hires;
-        _unlockCameraModeItem.Disabled = shouldDisable;
-        _unlockCameraModeItem.Selectable = !shouldDisable;
-
-        menu.Add(_unlockCameraModeItem);
-
-        _unlockCameraModeItem.AddDescription(
-            menu,
-            "Only applies if Smooth Camera is set to Unlock. Determines\n" +
-            "how unrendered portions of the level are hidden.\n" +
-            "Zoom: Zooms the camera in slightly\n" +
-            "Extend: Extends the level to the edge of the window\n" +
-            "Border: Adds a small black border around the level"
-        );
-    }
-
-    private void UpdateUnlockCameraModeState()
-    {
-        if (_unlockCameraModeItem != null)
-        {
-            bool shouldDisableUnlockMode = UnlockCameraStrategy != UnlockCameraStrategy.Unlock;
-            _unlockCameraModeItem.Disabled = shouldDisableUnlockMode;
-            _unlockCameraModeItem.Selectable = !shouldDisableUnlockMode;
-
-            bool shouldDisableRenderBackgroundHires = UnlockCameraStrategy != UnlockCameraStrategy.Hires;
-            _renderBackgroundHiresItem.Disabled = shouldDisableRenderBackgroundHires;
-            _renderBackgroundHiresItem.Selectable = !shouldDisableRenderBackgroundHires;
-			_renderMadelineWithSubpixelsItem.Disabled = shouldDisableRenderBackgroundHires;
-			_renderMadelineWithSubpixelsItem.Selectable = !shouldDisableRenderBackgroundHires;
-        }
-    }
 
     [SettingSubText(
         "Extrapolate: [Recommended] Predicts object positions\n" +
