@@ -687,12 +687,12 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 		Engine.Instance.GraphicsDevice.Clear(Color.Transparent);
 		GameplayRenderer.Begin();
 
+		var player = MotionSmoothingHandler.Instance.Player;
+
 		foreach (Entity entity in level.Entities)
 		{
 			if (entity.Visible && !entity.TagCheck(Tags.HUD | TagsExt.SubHUD))
 			{
-                var player = MotionSmoothingHandler.Instance.Player;
-
 				if (entity == player || player?.Holding?.Entity == entity)
 				{
 					// Render the things below this entity
@@ -747,6 +747,11 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
 				entity.Render();
 			}
+		}
+
+		if (GameplayRenderer.RenderDebug || Engine.Commands.Open)
+		{
+			scene.Entities.DebugRender(level.GameplayRenderer.Camera);
 		}
 
 		GameplayRenderer.End();
@@ -1293,6 +1298,8 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 				&& Math.Abs(targetTexture2D.Height - texture.Height) < 8
 			) {
 				orig(self, texture, sourceX, sourceY, sourceW, sourceH, offsetDestinationX, offsetDestinationY, destinationW, destinationH, color, originX, originY, rotationSin, rotationCos, depth, effects);
+
+				_largeTextures.Add(targetTexture2D);
 
 				return;
 			}
