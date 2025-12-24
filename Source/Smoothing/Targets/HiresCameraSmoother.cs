@@ -1203,28 +1203,35 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
 
 		// When drawing something not recognized as large into something large that's the same
-		// size, we give the source honorary large status and don't scale it.
-		if (
-			_currentlyScaling
-			&& !_largeTextures.Contains(texture)
-			&& _currentRenderTarget is Texture2D texture2D
-			&& Math.Abs(texture2D.Width - texture.Width) < 8
-			&& Math.Abs(texture2D.Height - texture.Height) < 8
-		) {
-			if ((bool)_beginCalledField.GetValue(Draw.SpriteBatch) &&
-				_lastSpriteBatchBeginParams is var (sortMode, blendState, samplerState, depthStencilState, rasterizerState, effect, matrix))
-			{
-				Draw.SpriteBatch.End();
-				Draw.SpriteBatch.Begin(sortMode, blendState, samplerState, depthStencilState, rasterizerState, effect, InverseScaleMatrix * matrix);
+		// size, *and* that isn't being scaled, we give the source honorary large status and
+		// don't scale it.
 
-				orig(self, texture, sourceX, sourceY, sourceW, sourceH, destinationX, destinationY, destinationW, destinationH, color, originX, originY, rotationSin, rotationCos, depth, effects);
+		// This currently seems to be unnecessary since we register targets of draw calls
+		// like this as large.
 
-				Draw.SpriteBatch.End();
-				Draw.SpriteBatch.Begin(sortMode, blendState, samplerState, depthStencilState, rasterizerState, effect, matrix);
-			}
+		// if (
+		// 	_currentlyScaling
+		// 	&& !_largeTextures.Contains(texture)
+		// 	&& _currentRenderTarget is Texture2D texture2D
+		// 	&& Math.Abs(texture2D.Width - texture.Width) < 4
+		// 	&& Math.Abs(texture2D.Height - texture.Height) < 4
+		// 	&& Math.Abs(destinationW - sourceW * texture.Width) < 4
+		// 	&& Math.Abs(destinationH - sourceH * texture.Height) < 4
+		// ) {
+		// 	if ((bool)_beginCalledField.GetValue(Draw.SpriteBatch) &&
+		// 		_lastSpriteBatchBeginParams is var (sortMode, blendState, samplerState, depthStencilState, rasterizerState, effect, matrix))
+		// 	{
+		// 		Draw.SpriteBatch.End();
+		// 		Draw.SpriteBatch.Begin(sortMode, blendState, samplerState, depthStencilState, rasterizerState, effect, InverseScaleMatrix * matrix);
 
-			return;
-		}
+		// 		orig(self, texture, sourceX, sourceY, sourceW, sourceH, destinationX, destinationY, destinationW, destinationH, color, originX, originY, rotationSin, rotationCos, depth, effects);
+
+		// 		Draw.SpriteBatch.End();
+		// 		Draw.SpriteBatch.Begin(sortMode, blendState, samplerState, depthStencilState, rasterizerState, effect, matrix);
+		// 	}
+
+		// 	return;
+		// }
 
 
 
