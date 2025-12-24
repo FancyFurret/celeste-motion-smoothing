@@ -1,7 +1,6 @@
 using Celeste.Mod.MotionSmoothing.Interop;
 using Celeste.Mod.MotionSmoothing.Smoothing.States;
 using Celeste.Mod.MotionSmoothing.Utilities;
-using Microsoft.Build.Framework;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using Mono.Cecil.Cil;
@@ -17,7 +16,6 @@ namespace Celeste.Mod.MotionSmoothing.Smoothing.Targets;
 public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 {
     private const float ZoomScaleMultiplier = 181f / 180f;
-    private const int HiresPixelSize = 1080 / 180;
 
     private static Matrix ScaleMatrix = Matrix.CreateScale(6f);
     private static Matrix InverseScaleMatrix = Matrix.CreateScale(1f / 6f);
@@ -167,6 +165,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
         IL.Celeste.TalkComponent.TalkComponentUI.Render += TalkComponentUiRenderHook;
         IL.Celeste.Lookout.Hud.Render += LookoutHudRenderHook;
 
+		On.Celeste.GameplayBuffers.Create += GameplayBuffers_Create;
         On.Monocle.Scene.Begin += Scene_Begin;
         On.Celeste.Level.End += Level_End;
 
@@ -239,6 +238,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
         IL.Celeste.TalkComponent.TalkComponentUI.Render -= TalkComponentUiRenderHook;
         IL.Celeste.Lookout.Hud.Render -= LookoutHudRenderHook;
 
+		On.Celeste.GameplayBuffers.Create -= GameplayBuffers_Create;
         On.Monocle.Scene.Begin -= Scene_Begin;
         On.Celeste.Level.End -= Level_End;
 
@@ -251,17 +251,22 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
         DestroyLargeExternalTextureData();
     }
 
+	private static void GameplayBuffers_Create(On.Celeste.GameplayBuffers.orig_Create orig)
+    {
+		orig();
+		
+		HiresRenderer.Create();
+		CreateLargeExternalTextureData();
+    }
+
     private static void Scene_Begin(On.Monocle.Scene.orig_Begin orig, Scene self)
     {
         // we hook Scene.Begin rather than Level.Begin to ensure it runs
         // after GameplayBuffers.Create, but before any calls to Entity.SceneBegin
-        if (self is Level level)
-        {
-			var renderer = HiresRenderer.Create();
-            level.Add(renderer);
-
-            CreateLargeExternalTextureData();
-        }
+        if (self is Level level && HiresRenderer.Instance is { } renderer)
+		{
+			level.Add(renderer);
+		}
 
         orig(self);
     }
@@ -990,7 +995,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
         if (cursor.TryGotoNext(MoveType.Before, instr => instr.MatchStloc(5)))
         {
             // Add another pixel to the border size, so it covers up the empty pixels on the right/bottom
-            cursor.EmitLdcI4(HiresPixelSize);
+            cursor.EmitLdcI4(6);
             cursor.EmitAdd();
         }
     }
