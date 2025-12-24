@@ -108,12 +108,18 @@ public class MotionSmoothingInputHandler : ToggleableFeature<MotionSmoothingInpu
                     alarm.RemoveSelf();
                 }
 
+				var strategyString = MotionSmoothingModule.Settings.UnlockCameraStrategy == UnlockCameraStrategy.Hires
+					? "Highest Quality"
+					: MotionSmoothingModule.Settings.UnlockCameraStrategy == UnlockCameraStrategy.Unlock
+						? "Most Compatible"
+						: "Off";
+
                 Engine.Commands.ExecuteCommand("display_message", new string[] {
                     "motion_smoothing_unlock_strategy", // id
                     "0.5", // scale
                     "1020", // y
                     "true",
-                    $"[Motion Smoothing] Smooth Camera: {MotionSmoothingModule.Settings.UnlockCameraStrategy.ToString()}"
+                    $"[Motion Smoothing] Smooth Camera: {strategyString}"
                 });
 
                 Entity dummy = new Entity();

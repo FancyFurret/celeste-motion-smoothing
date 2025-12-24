@@ -8,6 +8,7 @@ using Celeste.Mod.MotionSmoothing.Smoothing;
 using Celeste.Mod.MotionSmoothing.Smoothing.Targets;
 using Celeste.Mod.MotionSmoothing.Utilities;
 using Celeste.Pico8;
+using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using Monocle;
 using MonoMod.ModInterop;
@@ -310,4 +311,42 @@ public class MotionSmoothingModule : EverestModule
         On.Monocle.Commands.Vsync -= VsyncHook;
         On.Celeste.MenuOptions.SetVSync -= SetVSyncHook;
     }
+
+
+
+	public static Vector2 GetCameraOffset()
+    {
+        switch (Settings.UnlockCameraStrategy)
+        {
+            case UnlockCameraStrategy.Hires:
+                return HiresCameraSmoother.GetCameraOffset();
+
+            case UnlockCameraStrategy.Unlock:
+                return UnlockedCameraSmoother.GetCameraOffset();
+
+            case UnlockCameraStrategy.Off:
+                return Vector2.Zero;
+        }
+
+		return Vector2.Zero;
+    }
+
+	private static Matrix ZoomedMatrix = Matrix.CreateScale(181f / 180f);
+
+	public static Matrix GetLevelZoomMatrix()
+	{
+		switch (Settings.UnlockCameraStrategy)
+		{
+			case UnlockCameraStrategy.Hires:
+				return ZoomedMatrix;
+
+			case UnlockCameraStrategy.Unlock:
+				return ZoomedMatrix;
+
+			case UnlockCameraStrategy.Off:
+				return Matrix.Identity;
+		}
+
+		return Matrix.Identity;
+	}
 }
