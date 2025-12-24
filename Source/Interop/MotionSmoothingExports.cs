@@ -1,6 +1,7 @@
 ﻿// ReSharper disable UnusedMember.Global
 
 using System;
+using Microsoft.Xna.Framework;
 using MonoMod.ModInterop;
 
 namespace Celeste.Mod.MotionSmoothing.Interop;
@@ -17,5 +18,16 @@ public static class MotionSmoothingExports
     public static void RegisterEnabledAction(Action<bool> action)
     {
         MotionSmoothingModule.Instance.EnabledActions.Add(action);
+    }
+
+	// Returns the fractional camera offset in [0, 1) for camera smoothing.
+	public static Vector2 GetFractionalCameraOffset()
+    {
+        return MotionSmoothingModule.GetCameraOffset();
+    }
+
+	public static Matrix GetLevelZoomMatrix()
+    {
+        return MotionSmoothingModule.GetLevelZoomMatrix();
     }
 }

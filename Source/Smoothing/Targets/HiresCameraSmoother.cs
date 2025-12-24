@@ -274,7 +274,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
         orig(self);
     }
 
-    private static Vector2 GetCameraOffset()
+    public static Vector2 GetCameraOffset()
     {
         if (CelesteTasInterop.CenterCamera)
             return Vector2.Zero;

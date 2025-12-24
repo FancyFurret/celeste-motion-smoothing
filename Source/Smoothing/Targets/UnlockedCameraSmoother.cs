@@ -47,7 +47,7 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
         On.Celeste.HudRenderer.RenderContent -= HudRenderer_RenderContent;
     }
 
-    private static Vector2 GetCameraOffset()
+    public static Vector2 GetCameraOffset()
     {
         if (CelesteTasInterop.CenterCamera)
             return Vector2.Zero;
