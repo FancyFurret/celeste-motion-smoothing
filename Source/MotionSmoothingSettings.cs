@@ -177,7 +177,7 @@ public class MotionSmoothingSettings : EverestModuleSettings
     public void CreateRenderBackgroundHiresEntry(TextMenu menu, bool inGame)
     {
         _renderBackgroundHiresItem = new TextMenu.OnOff(
-            "Render Background Hires",
+            "Smooth Background",
             _renderBackgroundHires
         );
 

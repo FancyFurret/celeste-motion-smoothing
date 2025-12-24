@@ -114,7 +114,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
             _largeExternalTextureMap.Remove(smallTexture);
         }
 
-        Logger.Log(LogLevel.Info, "MotionSmoothingModule", "Disposed all large external buffers");
+        Logger.Log(LogLevel.Verbose, "MotionSmoothingModule", "Disposed all large external buffers");
 
         _internalLargeTextures.Clear();
         _largeTextures.Clear();
@@ -254,7 +254,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 	private static void GameplayBuffers_Create(On.Celeste.GameplayBuffers.orig_Create orig)
     {
 		orig();
-		
+
 		HiresRenderer.Create();
 		CreateLargeExternalTextureData();
     }
@@ -1395,7 +1395,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
             _largeTextures.Add(largeTarget.Target);
         }
 
-        Logger.Log(LogLevel.Info, "MotionSmoothingModule", $"Hot created a {largeTarget.Target.Width}x{largeTarget.Target.Height} buffer! Total existing: {_largeExternalTextureMap.Count}");
+        Logger.Log(LogLevel.Verbose, "MotionSmoothingModule", $"Hot created a {largeTarget.Target.Width}x{largeTarget.Target.Height} buffer! Total existing: {_largeExternalTextureMap.Count}");
 
         return true;
     }
@@ -1419,7 +1419,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
             if (largeRenderTarget?.Target is Texture2D texture2D)
             {
-                Logger.Log(LogLevel.Info, "MotionSmoothingModule", $"Disposing a {texture2D.Width}x{texture2D.Height} hot-created buffer. Total left: {_largeExternalTextureMap.Count}");
+                Logger.Log(LogLevel.Verbose, "MotionSmoothingModule", $"Disposing a {texture2D.Width}x{texture2D.Height} hot-created buffer. Total left: {_largeExternalTextureMap.Count}");
 
                 largeRenderTarget?.Dispose();
             }
