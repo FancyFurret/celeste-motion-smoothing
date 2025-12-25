@@ -39,6 +39,10 @@
         <Reference Include="$(CelestePrefix)\FNA.dll" Publicize="true" />
     </ItemGroup>
 
+	<ItemGroup>
+        <Reference Include="$(CelestePrefix)\Mods\Cache\SpirialisHelper.Spirialis.dll" />
+    </ItemGroup>
+
     <Target Name="CopyFiles" AfterTargets="Build" Inputs="$(OutputPath)\$(AssemblyName).dll;$(OutputPath)\$(AssemblyName).pdb" Outputs="..\bin\$(AssemblyName).dll;..\bin\$(AssemblyName).pdb">
         <Copy SourceFiles="$(OutputPath)\$(AssemblyName).dll" DestinationFolder="..\bin" />
         <Copy SourceFiles="$(OutputPath)\$(AssemblyName).pdb" DestinationFolder="..\bin" />

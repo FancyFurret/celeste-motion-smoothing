@@ -10,12 +10,15 @@ using MonoMod.RuntimeDetour;
 using System;
 using System.Collections.Generic;
 using System.Reflection;
+using System.Runtime.CompilerServices;
 
 namespace Celeste.Mod.MotionSmoothing.Smoothing.Targets;
 
 public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 {
-    private const float ZoomScaleMultiplier = 181f / 180f;
+    private const float ZoomScale = 181f / 180f;
+
+	private static Matrix ZoomMatrix = Matrix.CreateScale(ZoomScale);
 
     private static Matrix ScaleMatrix = Matrix.CreateScale(6f);
     private static Matrix InverseScaleMatrix = Matrix.CreateScale(1f / 6f);
@@ -27,7 +30,10 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
     private static bool _offsetDrawing = false;
     // Textures can be dded to this to prevent offset drawing when they are the target.
     private static HashSet<Texture> _excludeFromOffsetDrawing = new HashSet<Texture>();
-    private static bool _scaleSpriteBatchBeginMatrices = true;
+
+	// A blunt tool for fixing weird mods like SpirialisHelper. When this is enabled,
+	// spritebatch.begin will use the 181/180 scale matrix and will offset its drawing.
+	private static bool _forceOffsetZoomDrawing = false;
 
     private static bool _useHiresGaussianBlur = false;
     private static bool _currentlyRenderingBackground = false;
@@ -209,6 +215,18 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 		{
 			EnableHiresDistort();
 		}
+
+
+
+		EverestModuleMetadata spirialisHelper = new() {
+			Name = "SpirialisHelper",
+			Version = new Version(1, 0, 8)
+		};
+
+		if (Everest.Loader.DependencyLoaded(spirialisHelper))
+		{
+			AddSpirialisHook();
+		}
     }
 
     protected override void Unhook()
@@ -296,7 +314,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
     public static float GetCameraScale()
     {
-        return ZoomScaleMultiplier;
+        return ZoomScale;
     }
 
     public static Vector2 GetSmoothedCameraPosition()
@@ -435,7 +453,6 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
     {
         _offsetDrawing = false;
         _excludeFromOffsetDrawing.Clear();
-        _scaleSpriteBatchBeginMatrices = true;
         _useHiresGaussianBlur = false;
         _allowParallaxOneBackgrounds = false;
         _currentlyRenderingBackground = true;
@@ -474,16 +491,6 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
     }
 
 
-
-    private static void DisableScaleSpriteBatchBeginMatrices()
-    {
-        _scaleSpriteBatchBeginMatrices = false;
-    }
-
-    private static void EnableScaleSpriteBatchBeginMatrices()
-    {
-        _scaleSpriteBatchBeginMatrices = true;
-    }
 
     private static void DisableOffsetDrawing()
     {
@@ -525,7 +532,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
     {
 		// Note that we leave the scale intact here! That's because the SpriteBatch.Draw
 		// hook will strip it off later.
-        return Matrix.CreateScale(6f * ZoomScaleMultiplier) * Engine.ScreenMatrix;
+        return Matrix.CreateScale(6f * ZoomScale) * Engine.ScreenMatrix;
     }
 
     private static VirtualRenderTarget GetLargeTempBBuffer()
@@ -1046,12 +1053,6 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
     private static void SpriteBatch_Begin(orig_SpriteBatch_Begin orig, SpriteBatch self, SpriteSortMode sortMode, BlendState blendState,
         SamplerState samplerState, DepthStencilState depthStencilState, RasterizerState rasterizerState, Effect effect, Matrix transformMatrix)
     {
-        if (!_scaleSpriteBatchBeginMatrices)
-        {
-            orig(self, sortMode, blendState, samplerState, depthStencilState, rasterizerState, effect, transformMatrix);
-            return;
-        }
-
         _lastSpriteBatchBeginParams = (sortMode, blendState, samplerState, depthStencilState, rasterizerState, effect, transformMatrix);
 
         
@@ -1063,6 +1064,11 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
             _currentlyScaling = true;
         }
+
+		else if (_forceOffsetZoomDrawing && _currentRenderTarget == null)
+		{
+			transformMatrix = ZoomMatrix * transformMatrix;
+		}
 
         orig(self, sortMode, blendState, samplerState, depthStencilState, rasterizerState, effect, transformMatrix);
     }
@@ -1243,9 +1249,17 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
         float offsetDestinationX = destinationX;
         float offsetDestinationY = destinationY;
 
-        // Apply the subpixel offset if needed. We only allow offsetting to our own buffers.
-        if (_offsetDrawing && _internalLargeTextures.Contains(_currentRenderTarget) && !_excludeFromOffsetDrawing.Contains(_currentRenderTarget))
-        {
+        // Apply the subpixel offset if needed. We only allow offsetting to our own buffers,
+		// or when _forceOffsetZoomDrawing overrides it.
+        if (
+			(
+				_offsetDrawing
+				&& _internalLargeTextures.Contains(_currentRenderTarget)
+				&& !_excludeFromOffsetDrawing.Contains(_currentRenderTarget)
+			) || (
+				_forceOffsetZoomDrawing && _currentRenderTarget == null
+			)
+		) {
             Vector2 offset = GetCameraOffset();
             offsetDestinationX = destinationX + offset.X * (_currentlyScaling ? 1 : 6);
             offsetDestinationY = destinationY + offset.Y * (_currentlyScaling ? 1 : 6);
@@ -1539,4 +1553,32 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
         return self;
     }
+
+
+	private delegate void orig_DrawTimeStopEntities(object self);
+
+	private Hook spirialisHook;
+
+	// noinlining necessary to avoid crashes when the jit attempts inline this method while jitting methods that use this function
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	private void AddSpirialisHook()
+	{
+		Type t_TimeController = Type.GetType("Celeste.Mod.Spirialis.TimeController, Spirialis");
+		MethodInfo m_DrawTimeStopEntities = t_TimeController?.GetMethod(
+			"DrawTimestopEntities",
+			BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic
+		);
+
+		if (m_DrawTimeStopEntities != null)
+		{
+			spirialisHook = new Hook(m_DrawTimeStopEntities, DrawTimeStopEntitiesHook);
+		}
+	}
+
+	private static void DrawTimeStopEntitiesHook(orig_DrawTimeStopEntities orig, object self)
+	{
+		_forceOffsetZoomDrawing = true;
+		orig(self);
+		_forceOffsetZoomDrawing = false;
+	}
 }
