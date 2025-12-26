@@ -1,5 +1,5 @@
-using Microsoft.Xna.Framework;
 using Monocle;
+using System;
 
 namespace Celeste.Mod.MotionSmoothing.Smoothing.Targets;
 
@@ -122,18 +122,22 @@ public class HiresRenderer : Renderer
     {
         Destroy();
 
-        Instance = new HiresRenderer(
-            GameplayBuffers.Create(1920, 1080),
-            GameplayBuffers.Create(1920, 1080),
-            GameplayBuffers.Create(1920, 1080),
-            GameplayBuffers.Create(1920, 1080),
+		// Read vanilla dimensions BEFORE replacing GameplayBuffers
+		int vanillaWidth = GameplayBuffers.Gameplay.Width;
+		int vanillaHeight = GameplayBuffers.Gameplay.Height;
 
-            GameplayBuffers.Create(320, 180)
-        );
+		int largeWidth = vanillaWidth * 6;
+		int largeHeight = vanillaHeight * 6;
 
-		EnableLargeGameplayBuffer();
+		Instance = new HiresRenderer(
+			GameplayBuffers.Create(largeWidth, largeHeight),
+			GameplayBuffers.Create(largeWidth, largeHeight),
+			GameplayBuffers.Create(largeWidth, largeHeight),
+			GameplayBuffers.Create(largeWidth, largeHeight),
+			GameplayBuffers.Create(vanillaWidth, vanillaHeight)
+		);
 
-        return Instance;
+		return Instance;
     }
 
     public static void Destroy()

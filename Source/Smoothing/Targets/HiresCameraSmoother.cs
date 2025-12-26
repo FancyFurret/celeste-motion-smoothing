@@ -32,7 +32,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
     private static HashSet<Texture> _excludeFromOffsetDrawing = new HashSet<Texture>();
 
 	// A blunt tool for fixing weird mods like SpirialisHelper. When this is enabled,
-	// spritebatch.begin will use the 181/180 scale matrix and will offset its drawing.
+	// spritebatch.begin will use the 181/180 scale matrix.
 	private static bool _forceOffsetZoomDrawing = false;
 
     private static bool _useHiresGaussianBlur = false;
