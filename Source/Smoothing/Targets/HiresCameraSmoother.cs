@@ -203,6 +203,8 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
         AddHook(new Hook(typeof(VirtualRenderTarget).GetMethod("Dispose", Type.EmptyTypes)!, VirtualRenderTarget_Dispose));
 
+		// AddHook(new Hook(typeof(VirtualRenderTarget).GetMethod("Reload", BindingFlags.NonPublic | BindingFlags.Instance)!, VirtualRenderTarget_Reload));
+
         HookDrawVertices<VertexPositionColor>();
         HookDrawVertices<VertexPositionColorTexture>();
         HookDrawVertices<LightingRenderer.VertexPositionColorMaskTexture>();
@@ -1024,9 +1026,19 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
         {
             // If there's a large version of this, then we use that instead.
             if (_largeExternalTextureMap.TryGetValue(renderTargetBindings[i].RenderTarget, out VirtualRenderTarget largeRenderTarget))
-            {
-                renderTargetBindings[i] = new RenderTargetBinding(largeRenderTarget.Target);
-            }
+			{
+				if (largeRenderTarget?.Target != null)
+				{
+					renderTargetBindings[i] = new RenderTargetBinding(largeRenderTarget.Target);
+				}
+
+				else
+				{
+					// Large target was disposed, remove stale entry
+					_largeExternalTextureMap.Remove(renderTargetBindings[i].RenderTarget);
+					_largeTextures.Remove(largeRenderTarget?.Target);
+				}
+			}
         }
 
         bool needToRestartSpriteBatch = _currentRenderTarget != renderTargetBindings[0].RenderTarget && (bool)_beginCalledField.GetValue(Draw.SpriteBatch);
@@ -1213,39 +1225,6 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
 
 
-		// When drawing something not recognized as large into something large that's the same
-		// size, *and* that isn't being scaled, we give the source honorary large status and
-		// don't scale it.
-
-		// This currently seems to be unnecessary since we register targets of draw calls
-		// like this as large.
-
-		// if (
-		// 	_currentlyScaling
-		// 	&& !_largeTextures.Contains(texture)
-		// 	&& _currentRenderTarget is Texture2D texture2D
-		// 	&& Math.Abs(texture2D.Width - texture.Width) < 4
-		// 	&& Math.Abs(texture2D.Height - texture.Height) < 4
-		// 	&& Math.Abs(destinationW - sourceW * texture.Width) < 4
-		// 	&& Math.Abs(destinationH - sourceH * texture.Height) < 4
-		// ) {
-		// 	if ((bool)_beginCalledField.GetValue(Draw.SpriteBatch) &&
-		// 		_lastSpriteBatchBeginParams is var (sortMode, blendState, samplerState, depthStencilState, rasterizerState, effect, matrix))
-		// 	{
-		// 		Draw.SpriteBatch.End();
-		// 		Draw.SpriteBatch.Begin(sortMode, blendState, samplerState, depthStencilState, rasterizerState, effect, InverseScaleMatrix * matrix);
-
-		// 		orig(self, texture, sourceX, sourceY, sourceW, sourceH, destinationX, destinationY, destinationW, destinationH, color, originX, originY, rotationSin, rotationCos, depth, effects);
-
-		// 		Draw.SpriteBatch.End();
-		// 		Draw.SpriteBatch.Begin(sortMode, blendState, samplerState, depthStencilState, rasterizerState, effect, matrix);
-		// 	}
-
-		// 	return;
-		// }
-
-
-
         float offsetDestinationX = destinationX;
         float offsetDestinationY = destinationY;
 
@@ -1315,17 +1294,25 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 			// If we failed to create a large buffer, but we're drawing something into a buffer
 			// that's very nearly the same size as the source, then we can just assume something
 			// else resized the target to match the source (e.g. DBBHelper), and we can skip the
-			// downscaling and just draw straight into the large buffer.
+			// downscaling and just draw straight into the large buffer, marking the target as large
+			// since the source was.
+			// However! Things like CelesteNet can also do this when they're drawing the level to
+			// a buffer the size of the screen. In that case, we absolutely do *not* want the target
+			// to be large, since it isn't actually. So we use this somewhat sneaky heuristic to
+			// check: if we're drawing with scale, like CelesteNet does, then we don't mark the
+			// target as large.
 			if (
 				!createdSuccessfully
 				&& Math.Abs(targetTexture2D.Width - texture.Width) < 8
 				&& Math.Abs(targetTexture2D.Height - texture.Height) < 8
 			) {
-				orig(self, texture, sourceX, sourceY, sourceW, sourceH, offsetDestinationX, offsetDestinationY, destinationW, destinationH, color, originX, originY, rotationSin, rotationCos, depth, effects);
+				bool hasScaling = _lastSpriteBatchBeginParams is (_, _, _, _, _, _, var matrix)
+					&& MatrixHasSignificantScaling(matrix);
 
-				_largeTextures.Add(targetTexture2D);
-
-				return;
+				if (!hasScaling)
+				{
+					_largeTextures.Add(targetTexture2D);
+				}
 			}
 
 
@@ -1355,6 +1342,15 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
         orig(self, texture, sourceX, sourceY, sourceW, sourceH, offsetDestinationX, offsetDestinationY, destinationW, destinationH, color, originX, originY, rotationSin, rotationCos, depth, effects);
     }
+
+
+	// Detects when a target appears to 
+	private static bool MatrixHasSignificantScaling(Matrix m)
+	{
+		float scaleX = new Vector2(m.M11, m.M12).Length();
+		float scaleY = new Vector2(m.M21, m.M22).Length();
+		return Math.Abs(scaleX - 1f) > 0.1f || Math.Abs(scaleY - 1f) > 0.1f;
+	}
 
 
 
@@ -1441,6 +1437,85 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
         orig(self);
     }
+
+
+	// Sometimes, things like ExCameraDynamics will forcibly
+	// resize and reload buffers, which just causes all sorts of
+	// issues. We hook this to restore order.
+	private static void VirtualRenderTarget_Reload(Action<VirtualRenderTarget> orig, VirtualRenderTarget self)
+	{
+		// if (HiresRenderer.Instance is not { } renderer)
+		// {
+		// 	orig(self);
+		// 	return;
+		// }
+
+		// Identify which buffer this is BEFORE reload changes .Target
+		// Texture oldTarget = self.Target;
+
+		// bool isLargeBuffer = _largeTextures.Contains(oldTarget);
+
+		orig(self);
+
+		// Texture newTarget = self.Target;
+
+		// // If it actually changed, we need to update things
+		// if (oldTarget != newTarget)
+		// {
+		// 	// Update large textures if necessary
+		// 	if (_largeTextures.Remove(oldTarget))
+		// 	{
+		// 		_largeTextures.Add(newTarget);
+		// 	}
+
+		// 	if (_internalLargeTextures.Remove(oldTarget))
+		// 	{
+		// 		_internalLargeTextures.Add(newTarget);
+		// 	}
+
+		// 	// This only works when we're resizing the small buffer; we'll handle the big one a little later.
+		// 	if (_largeExternalTextureMap.Remove(oldTarget, out var largeTarget))
+		// 	{
+		// 		_largeExternalTextureMap[newTarget] = largeTarget;
+		// 	}
+		// }
+
+
+
+		// bool isExternal = false;
+		// VirtualRenderTarget correspondingLargeBuffer;
+		// if (self == GameplayBuffers.Gameplay)
+		// 	correspondingLargeBuffer = renderer.LargeGameplayBuffer;
+		// else if (self == GameplayBuffers.Level)
+		// 	correspondingLargeBuffer = renderer.LargeLevelBuffer;
+		// else if (self == GameplayBuffers.TempA)
+		// 	correspondingLargeBuffer = renderer.LargeTempABuffer;
+		// else if (self == GameplayBuffers.TempB)
+		// 	correspondingLargeBuffer = renderer.LargeTempBBuffer;
+		// else if (_largeExternalTextureMap.TryGetValue(oldTarget, out correspondingLargeBuffer))
+		// {
+		// 	isExternal = true;
+		// }
+
+		// // If a small buffer was resized, resize the corresponding large buffer
+		// if (!isLargeBuffer && correspondingLargeBuffer != null)
+		// {	
+		// 	int newLargeWidth = self.Width * 6;
+		// 	int newLargeHeight = self.Height * 6;
+
+		// 	if (correspondingLargeBuffer.Width != newLargeWidth || correspondingLargeBuffer.Height != newLargeHeight)
+		// 	{
+		// 		correspondingLargeBuffer.Width = newLargeWidth;
+		// 		correspondingLargeBuffer.Height = newLargeHeight;
+		// 		correspondingLargeBuffer.Reload(); // Recursive call updates _largeTextures via this same hook
+		// 		if (isExternal)
+		// 		{
+		// 			_largeExternalTextureMap[newTarget] = correspondingLargeBuffer;
+		// 		}
+		// 	}
+		// }
+	}
+
 
 
 
