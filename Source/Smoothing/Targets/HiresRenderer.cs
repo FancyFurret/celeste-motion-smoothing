@@ -14,11 +14,11 @@ public class HiresRenderer : Renderer
 
     public VirtualRenderTarget SmallBuffer { get; }
 
-    private static VirtualRenderTarget OriginalGameplayBuffer = null;
-	private static VirtualRenderTarget OriginalLevelBuffer = null;
-    private static VirtualRenderTarget OriginalTempABuffer = null;
+    public static VirtualRenderTarget OriginalGameplayBuffer = null;
+	public static VirtualRenderTarget OriginalLevelBuffer = null;
+    public static VirtualRenderTarget OriginalTempABuffer = null;
 
-    private static VirtualRenderTarget OriginalTempBBuffer = null;
+    public static VirtualRenderTarget OriginalTempBBuffer = null;
 
     public HiresRenderer(
         VirtualRenderTarget largeGameplayBuffer,

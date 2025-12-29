@@ -2,6 +2,7 @@
 
 using System;
 using Microsoft.Xna.Framework;
+using Monocle;
 using MonoMod.ModInterop;
 
 namespace Celeste.Mod.MotionSmoothing.Interop;
@@ -20,17 +21,26 @@ public static class MotionSmoothingExports
         MotionSmoothingModule.Instance.EnabledActions.Add(action);
     }
 
+	// [1.3.1+]
 	// Returns the fractional camera offset in [0, 1) for camera smoothing.
-	// Available in 1.3.1+.
 	public static Vector2 GetFractionalCameraOffset()
     {
         return MotionSmoothingModule.GetCameraOffset();
     }
 	
+	// [1.3.1+]
 	// Returns the camera zoom matrix (typically a 181/180 scale) for camera smoothing.
-	// Available in 1.3.1+.
 	public static Matrix GetLevelZoomMatrix()
     {
         return MotionSmoothingModule.GetLevelZoomMatrix();
+    }
+
+	// [1.3.2+]
+	// When passed a VirtualRenderTarget to one of our internal large buffers,
+	// returns the corresponding small large render target. Otherwise, returns
+	// the input.
+	public static VirtualRenderTarget GetResizableBuffer(VirtualRenderTarget largeRenderTarget)
+    {
+		return MotionSmoothingModule.GetResizableBuffer(largeRenderTarget);
     }
 }

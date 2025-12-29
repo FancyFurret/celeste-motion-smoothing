@@ -20,15 +20,14 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
 	private static Matrix ZoomMatrix = Matrix.CreateScale(ZoomScale);
 
-    private static Matrix ScaleMatrix = Matrix.CreateScale(6f);
-    private static Matrix InverseScaleMatrix = Matrix.CreateScale(1f / 6f);
+	public static float Scale = 6f;
 
 	// Flag set by the SpriteBatch.Begin hook when it it currently scaling by 6x.
 	private static bool _currentlyScaling = false;
 	private static Texture _currentRenderTarget;
 
     private static bool _offsetDrawing = false;
-    // Textures can be dded to this to prevent offset drawing when they are the target.
+    // Textures can be added to this to prevent offset drawing when they are the target.
     private static HashSet<Texture> _excludeFromOffsetDrawing = new HashSet<Texture>();
 
 	// A blunt tool for fixing weird mods like SpirialisHelper. When this is enabled,
@@ -506,42 +505,11 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
 
 
-    private static Matrix GetScaleMatrix()
-    {
-        return ScaleMatrix;
-    }
-
-    private static Matrix GetOffsetScaleMatrix()
-    {
-        Vector2 offset = GetCameraOffset();
-
-        return Matrix.CreateTranslation(offset.X, offset.Y, 0f) * ScaleMatrix;
-    }
-
-    private static Matrix GetOffsetMatrix()
-    {
-        Vector2 offset = GetCameraOffset();
-
-        return Matrix.CreateTranslation(offset.X, offset.Y, 0f);
-    }
-
-    private static Matrix GetScaledCameraMatrix(Level level)
-    {
-        return ScaleMatrix * level.Camera.Matrix;
-    }
-
     private static Matrix GetHiresDisplayMatrix()
     {
 		// Note that we leave the scale intact here! That's because the SpriteBatch.Draw
 		// hook will strip it off later.
-        return Matrix.CreateScale(6f * ZoomScale) * Engine.ScreenMatrix;
-    }
-
-    private static VirtualRenderTarget GetLargeTempBBuffer()
-    {
-        if (HiresRenderer.Instance is not { } renderer) return GameplayBuffers.TempB;
-
-        return renderer.LargeTempBBuffer;
+        return Matrix.CreateScale(Scale * ZoomScale) * Engine.ScreenMatrix;
     }
 
 
@@ -600,7 +568,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
     {
         var cursor = new ILCursor(il);
 
-		var getModifiedParameter = () => _useHiresGaussianBlur ? 6f : 1f;
+		var getModifiedParameter = () => _useHiresGaussianBlur ? Scale : 1f;
 
 		// When blurring something large, sample at points 6x farther away so they still
 		// line up with pixels.
@@ -1004,7 +972,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
         if (cursor.TryGotoNext(MoveType.Before, instr => instr.MatchStloc(5)))
         {
             // Add another pixel to the border size, so it covers up the empty pixels on the right/bottom
-            cursor.EmitLdcI4(6);
+            cursor.EmitLdcI4((int) Math.Ceiling(Scale));
             cursor.EmitAdd();
         }
     }
@@ -1072,7 +1040,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
         // If we're drawing to a large target, scale.
         if (_largeTextures.Contains(_currentRenderTarget))
         {
-            transformMatrix = transformMatrix * ScaleMatrix;
+            transformMatrix = transformMatrix * Matrix.CreateScale(Scale);
 
             _currentlyScaling = true;
         }
@@ -1113,10 +1081,10 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
         if (
 			sourceRectangle is Rectangle rect
 			&& _largeTextures.Contains(texture)
-			&& rect.Right <= texture.Width / 6
-			&& rect.Bottom <= texture.Height / 6
+			&& rect.Right <= texture.Width / Scale
+			&& rect.Bottom <= texture.Height / Scale
 		) {
-            Rectangle scaledRect = new Rectangle(6 * rect.X, 6 * rect.Y, 6 * rect.Width, 6 * rect.Height);
+            Rectangle scaledRect = new Rectangle((int) (Scale * rect.X), (int) (Scale * rect.Y), (int) (Scale * rect.Width), (int) (Scale * rect.Height));
             orig(self, texture, position, scaledRect, color);
             return;
         }
@@ -1129,10 +1097,10 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
         if (
 			sourceRectangle is Rectangle rect
 			&& _largeTextures.Contains(texture)
-			&& rect.Right <= texture.Width / 6
-			&& rect.Bottom <= texture.Height / 6
+			&& rect.Right <= texture.Width / Scale
+			&& rect.Bottom <= texture.Height / Scale
 		) {
-            Rectangle scaledRect = new Rectangle(6 * rect.X, 6 * rect.Y, 6 * rect.Width, 6 * rect.Height);
+            Rectangle scaledRect = new Rectangle((int) (Scale * rect.X), (int) (Scale * rect.Y), (int) (Scale * rect.Width), (int) (Scale * rect.Height));
             orig(self, texture, position, scaledRect, color, rotation, origin, scale, effects, layerDepth);
             return;
         }
@@ -1145,10 +1113,10 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
         if (
 			sourceRectangle is Rectangle rect
 			&& _largeTextures.Contains(texture)
-			&& rect.Right <= texture.Width / 6
-			&& rect.Bottom <= texture.Height / 6
+			&& rect.Right <= texture.Width / Scale
+			&& rect.Bottom <= texture.Height / Scale
 		) {
-            Rectangle scaledRect = new Rectangle(6 * rect.X, 6 * rect.Y, 6 * rect.Width, 6 * rect.Height);
+            Rectangle scaledRect = new Rectangle((int) (Scale * rect.X), (int) (Scale * rect.Y), (int) (Scale * rect.Width), (int) (Scale * rect.Height));
             orig(self, texture, position, scaledRect, color, rotation, origin, scale, effects, layerDepth);
             return;
         }
@@ -1161,10 +1129,10 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
         if (
 			sourceRectangle is Rectangle rect
 			&& _largeTextures.Contains(texture)
-			&& rect.Right <= texture.Width / 6
-			&& rect.Bottom <= texture.Height / 6
+			&& rect.Right <= texture.Width / Scale
+			&& rect.Bottom <= texture.Height / Scale
 		) {
-            Rectangle scaledRect = new Rectangle(6 * rect.X, 6 * rect.Y, 6 * rect.Width, 6 * rect.Height);
+            Rectangle scaledRect = new Rectangle((int) (Scale * rect.X), (int) (Scale * rect.Y), (int) (Scale * rect.Width), (int) (Scale * rect.Height));
             orig(self, texture, destinationRectangle, scaledRect, color);
             return;
         }
@@ -1177,10 +1145,10 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
         if (
 			sourceRectangle is Rectangle rect
 			&& _largeTextures.Contains(texture)
-			&& rect.Right <= texture.Width / 6
-			&& rect.Bottom <= texture.Height / 6
+			&& rect.Right <= texture.Width / Scale
+			&& rect.Bottom <= texture.Height / Scale
 		) {
-            Rectangle scaledRect = new Rectangle(6 * rect.X, 6 * rect.Y, 6 * rect.Width, 6 * rect.Height);
+            Rectangle scaledRect = new Rectangle((int) (Scale * rect.X), (int) (Scale * rect.Y), (int) (Scale * rect.Width), (int) (Scale * rect.Height));
             orig(self, texture, destinationRectangle, scaledRect, color, rotation, origin, effects, layerDepth);
             return;
         }
@@ -1204,12 +1172,12 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
         if (_largeExternalTextureMap.TryGetValue(texture, out VirtualRenderTarget largeRenderTarget))
         {
             texture = largeRenderTarget.Target;
-            destinationW *= 6;
-            destinationH *= 6;
-            destinationX *= 6;
-            destinationY *= 6;
-            originX *= 6;
-            originY *= 6;
+            destinationW *= Scale;
+            destinationH *= Scale;
+            destinationX *= Scale;
+            destinationY *= Scale;
+            originX *= Scale;
+            originY *= Scale;
         }
 
         // If instead we're drawing a natively large texture to a large one or the screen with an offset
@@ -1217,10 +1185,10 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 		// We do *not* scale the width and height because we aren't changing the size of the texture!
         else if ((_currentRenderTarget == null || _currentlyScaling) && _largeTextures.Contains(texture))
         {
-            destinationX *= 6;
-            destinationY *= 6;
-            originX *= 6;
-            originY *= 6;
+            destinationX *= Scale;
+            destinationY *= Scale;
+            originX *= Scale;
+            originY *= Scale;
         }
 
 
@@ -1240,8 +1208,8 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 			)
 		) {
             Vector2 offset = GetCameraOffset();
-            offsetDestinationX = destinationX + offset.X * (_currentlyScaling ? 1 : 6);
-            offsetDestinationY = destinationY + offset.Y * (_currentlyScaling ? 1 : 6);
+            offsetDestinationX = destinationX + offset.X * (_currentlyScaling ? 1 : Scale);
+            offsetDestinationY = destinationY + offset.Y * (_currentlyScaling ? 1 : Scale);
         }
 
         // We handle scaling when the target is large in the Begin hook, so the only things
@@ -1260,13 +1228,13 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
                     if (_lastSpriteBatchBeginParams is var (sortMode, blendState, samplerState, depthStencilState, rasterizerState, effect, matrix))
                     {
                         Draw.SpriteBatch.End();
-                        Draw.SpriteBatch.Begin(sortMode, blendState, samplerState, depthStencilState, rasterizerState, effect, InverseScaleMatrix * matrix);
+                        Draw.SpriteBatch.Begin(sortMode, blendState, samplerState, depthStencilState, rasterizerState, effect, Matrix.CreateScale(1f / Scale) * matrix);
 
                         if (_offsetDrawing && _internalLargeTextures.Contains(_currentRenderTarget) && !_excludeFromOffsetDrawing.Contains(_currentRenderTarget))
                         {
                             Vector2 offset = GetCameraOffset();
-                            offsetDestinationX = destinationX + offset.X * 6;
-                            offsetDestinationY = destinationY + offset.Y * 6;
+                            offsetDestinationX = destinationX + offset.X * Scale;
+                            offsetDestinationY = destinationY + offset.Y * Scale;
                         }
 
                         orig(self, texture, sourceX, sourceY, sourceW, sourceH, offsetDestinationX, offsetDestinationY, destinationW, destinationH, color, originX, originY, rotationSin, rotationCos, depth, effects);
@@ -1323,7 +1291,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
                 if (_lastSpriteBatchBeginParams is var (sortMode, blendState, samplerState, depthStencilState, rasterizerState, effect, matrix))
                 {	
                     Draw.SpriteBatch.End();
-                    Draw.SpriteBatch.Begin(sortMode, blendState, samplerState, depthStencilState, rasterizerState, effect, InverseScaleMatrix * matrix);
+                    Draw.SpriteBatch.Begin(sortMode, blendState, samplerState, depthStencilState, rasterizerState, effect, Matrix.CreateScale(1f / Scale) * matrix);
 
                     // We completely skip the offset check since this can never be an internal
 					// render target.
@@ -1368,7 +1336,10 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
             return false;
         }
 
-        VirtualRenderTarget largeTarget = GameplayBuffers.Create(smallTexture.Width * 6, smallTexture.Height * 6);
+        VirtualRenderTarget largeTarget = GameplayBuffers.Create(
+			(int) (smallTexture.Width * Scale),
+			(int) (smallTexture.Height * Scale)
+		);
 
         // Now we switch to that buffer and proceed. To preserve whatever was in here before,
         // we copy it into the large buffer. Since we haven't registered this buffer anywhere yet,
@@ -1382,7 +1353,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
             Draw.SpriteBatch.End();
 
             Engine.Instance.GraphicsDevice.Clear(Color.Transparent);
-            Draw.SpriteBatch.Begin(SpriteSortMode.Deferred, BlendState.Opaque, SamplerState.PointClamp, DepthStencilState.Default, RasterizerState.CullNone, null, ScaleMatrix);
+            Draw.SpriteBatch.Begin(SpriteSortMode.Deferred, BlendState.Opaque, SamplerState.PointClamp, DepthStencilState.Default, RasterizerState.CullNone, null, Matrix.CreateScale(Scale));
             Draw.SpriteBatch.Draw(smallTexture, Vector2.Zero, Color.White);
             Draw.SpriteBatch.End();
 
@@ -1397,7 +1368,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
             // We have to duplicate this code since otherwise the Begin call will
             // overwrite the lastParams variable.
             Engine.Instance.GraphicsDevice.Clear(Color.Transparent);
-            Draw.SpriteBatch.Begin(SpriteSortMode.Deferred, BlendState.Opaque, SamplerState.PointClamp, DepthStencilState.Default, RasterizerState.CullNone, null, ScaleMatrix);
+            Draw.SpriteBatch.Begin(SpriteSortMode.Deferred, BlendState.Opaque, SamplerState.PointClamp, DepthStencilState.Default, RasterizerState.CullNone, null, Matrix.CreateScale(Scale));
             Draw.SpriteBatch.Draw(smallTexture, Vector2.Zero, Color.White);
             Draw.SpriteBatch.End();
 
@@ -1439,85 +1410,6 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
     }
 
 
-	// Sometimes, things like ExCameraDynamics will forcibly
-	// resize and reload buffers, which just causes all sorts of
-	// issues. We hook this to restore order.
-	private static void VirtualRenderTarget_Reload(Action<VirtualRenderTarget> orig, VirtualRenderTarget self)
-	{
-		// if (HiresRenderer.Instance is not { } renderer)
-		// {
-		// 	orig(self);
-		// 	return;
-		// }
-
-		// Identify which buffer this is BEFORE reload changes .Target
-		// Texture oldTarget = self.Target;
-
-		// bool isLargeBuffer = _largeTextures.Contains(oldTarget);
-
-		orig(self);
-
-		// Texture newTarget = self.Target;
-
-		// // If it actually changed, we need to update things
-		// if (oldTarget != newTarget)
-		// {
-		// 	// Update large textures if necessary
-		// 	if (_largeTextures.Remove(oldTarget))
-		// 	{
-		// 		_largeTextures.Add(newTarget);
-		// 	}
-
-		// 	if (_internalLargeTextures.Remove(oldTarget))
-		// 	{
-		// 		_internalLargeTextures.Add(newTarget);
-		// 	}
-
-		// 	// This only works when we're resizing the small buffer; we'll handle the big one a little later.
-		// 	if (_largeExternalTextureMap.Remove(oldTarget, out var largeTarget))
-		// 	{
-		// 		_largeExternalTextureMap[newTarget] = largeTarget;
-		// 	}
-		// }
-
-
-
-		// bool isExternal = false;
-		// VirtualRenderTarget correspondingLargeBuffer;
-		// if (self == GameplayBuffers.Gameplay)
-		// 	correspondingLargeBuffer = renderer.LargeGameplayBuffer;
-		// else if (self == GameplayBuffers.Level)
-		// 	correspondingLargeBuffer = renderer.LargeLevelBuffer;
-		// else if (self == GameplayBuffers.TempA)
-		// 	correspondingLargeBuffer = renderer.LargeTempABuffer;
-		// else if (self == GameplayBuffers.TempB)
-		// 	correspondingLargeBuffer = renderer.LargeTempBBuffer;
-		// else if (_largeExternalTextureMap.TryGetValue(oldTarget, out correspondingLargeBuffer))
-		// {
-		// 	isExternal = true;
-		// }
-
-		// // If a small buffer was resized, resize the corresponding large buffer
-		// if (!isLargeBuffer && correspondingLargeBuffer != null)
-		// {	
-		// 	int newLargeWidth = self.Width * 6;
-		// 	int newLargeHeight = self.Height * 6;
-
-		// 	if (correspondingLargeBuffer.Width != newLargeWidth || correspondingLargeBuffer.Height != newLargeHeight)
-		// 	{
-		// 		correspondingLargeBuffer.Width = newLargeWidth;
-		// 		correspondingLargeBuffer.Height = newLargeHeight;
-		// 		correspondingLargeBuffer.Reload(); // Recursive call updates _largeTextures via this same hook
-		// 		if (isExternal)
-		// 		{
-		// 			_largeExternalTextureMap[newTarget] = correspondingLargeBuffer;
-		// 		}
-		// 	}
-		// }
-	}
-
-
-
 
     private static Matrix GetScaleMatrixForDrawVertices()
     {
@@ -1535,7 +1427,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
             return Matrix.Identity;
         }
 
-        return ScaleMatrix;
+        return Matrix.CreateScale(Scale);
     }
 
     private static Matrix MultiplyMatrices(Matrix matrix1, Matrix matrix2)

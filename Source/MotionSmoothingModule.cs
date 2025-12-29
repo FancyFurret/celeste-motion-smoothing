@@ -349,4 +349,36 @@ public class MotionSmoothingModule : EverestModule
 
 		return Matrix.Identity;
 	}
+
+	public static VirtualRenderTarget GetResizableBuffer(VirtualRenderTarget largeRenderTarget)
+	{
+		if (Smoothing.Targets.HiresRenderer.Instance is not { } renderer)
+		{
+			return largeRenderTarget;
+		}
+
+		var target = largeRenderTarget.Target;
+
+        if (target == renderer.LargeGameplayBuffer.Target)
+		{
+			return Smoothing.Targets.HiresRenderer.OriginalGameplayBuffer;
+		}
+
+		if (target == renderer.LargeLevelBuffer.Target)
+		{
+			return Smoothing.Targets.HiresRenderer.OriginalLevelBuffer;
+		}
+
+		if (target == renderer.LargeTempABuffer.Target)
+		{
+			return Smoothing.Targets.HiresRenderer.OriginalTempABuffer;
+		}
+
+		if (target == renderer.LargeTempBBuffer.Target)
+		{
+			return Smoothing.Targets.HiresRenderer.OriginalTempBBuffer;
+		}
+
+		return largeRenderTarget;
+	}
 }
