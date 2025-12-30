@@ -91,6 +91,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
         orig();
         _fxHiresDistort = new Effect(Engine.Graphics.GraphicsDevice,
             Everest.Content.Get("MotionSmoothing:/Effects/HiresDistort.cso").Data);
+
 		_fxOrigDistort = GFX.FxDistort;
 	}
 
@@ -106,13 +107,8 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
 
 
-    public static void DestroyLargeExternalTextureData()
+    public static void DestroyLargeTextures()
 	{
-        if (HiresRenderer.Instance is not { } renderer)
-        {
-            return;
-        }
-
         foreach (var (smallTexture, largeTarget) in _largeExternalTextureMap)
         {
             largeTarget.Dispose();
@@ -125,14 +121,16 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
         _largeTextures.Clear();
 	}
 
-    public static void CreateLargeExternalTextureData()
+    public static void InitializeLargeTextures()
 	{
+		HiresRenderer.Create();
+
         if (HiresRenderer.Instance is not { } renderer)
         {
             return;
         }
 
-        DestroyLargeExternalTextureData();
+        DestroyLargeTextures();
 
         _internalLargeTextures.Add(renderer.LargeLevelBuffer.Target);
         _internalLargeTextures.Add(renderer.LargeGameplayBuffer.Target);
@@ -176,10 +174,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
         if (Engine.Scene is Level)
         {
-            HiresRenderer.Destroy();
-            var renderer = HiresRenderer.Create();
-
-            CreateLargeExternalTextureData();
+            InitializeLargeTextures();
         }
 
         AddHook(new Hook(typeof(SpriteBatch).GetMethod("Begin",
@@ -267,15 +262,14 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
         HiresRenderer.Destroy();
 		DisableHiresDistort();
 
-        DestroyLargeExternalTextureData();
+        DestroyLargeTextures();
     }
 
 	private static void GameplayBuffers_Create(On.Celeste.GameplayBuffers.orig_Create orig)
     {
 		orig();
 
-		HiresRenderer.Create();
-		CreateLargeExternalTextureData();
+		InitializeLargeTextures();
     }
 
     private static void Scene_Begin(On.Monocle.Scene.orig_Begin orig, Scene self)
@@ -293,7 +287,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
     private static void Level_End(On.Celeste.Level.orig_End orig, Level self)
     {
         HiresRenderer.Destroy();
-        DestroyLargeExternalTextureData();
+        DestroyLargeTextures();
 
         orig(self);
     }
@@ -740,6 +734,11 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
         Draw.SpriteBatch.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend, SamplerState.PointClamp, DepthStencilState.None, RasterizerState.CullNone, null, Matrix.Identity);
         Draw.SpriteBatch.Draw(GameplayBuffers.Gameplay, Vector2.Zero, Color.White);
         Draw.SpriteBatch.End();
+
+		_fxHiresDistort?.Parameters["bufferSize"]?.SetValue(new Vector2(
+			GameplayBuffers.Gameplay.Width,
+			GameplayBuffers.Gameplay.Height
+		));
 
 		HiresRenderer.EnableLargeGameplayBuffer();
     }

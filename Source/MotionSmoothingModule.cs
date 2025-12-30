@@ -381,4 +381,12 @@ public class MotionSmoothingModule : EverestModule
 
 		return largeRenderTarget;
 	}
+
+	public static void ReloadLargeTextures()
+	{
+		if (Settings.UnlockCameraStrategy == UnlockCameraStrategy.Hires)
+		{
+			HiresCameraSmoother.InitializeLargeTextures();
+		}
+	}
 }

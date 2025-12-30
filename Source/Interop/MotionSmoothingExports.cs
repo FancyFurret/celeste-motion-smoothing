@@ -43,4 +43,13 @@ public static class MotionSmoothingExports
     {
 		return MotionSmoothingModule.GetResizableBuffer(largeRenderTarget);
     }
+
+	// [1.3.2+]
+	// Recreates the large texture data. This is necessary if you've called
+	// VirtualRenderTarget.Reload() on the Gameplay, Level, TempA, or TempB
+	// buffers (e.g. ExCameraDynamics).
+	public static void ReloadLargeTextures()
+	{
+		MotionSmoothingModule.ReloadLargeTextures();
+	}
 }
