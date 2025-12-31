@@ -67,6 +67,8 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
     private static Matrix UnsmoothedCameraMatrix;
     private static Matrix UnsmoothedCameraInverse;
 
+	private static bool _extendedVariantModeLoaded = false;
+
     private readonly HashSet<Hook> _hooks = new();
 
     public override void Load()
@@ -222,6 +224,18 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 		if (Everest.Loader.DependencyLoaded(spirialisHelper))
 		{
 			AddSpirialisHook();
+		}
+
+
+
+		EverestModuleMetadata extendedVariantMode = new() {
+			Name = "ExtendedVariantMode",
+			Version = new Version(0, 47, 6)
+		};
+
+		if (Everest.Loader.DependencyLoaded(extendedVariantMode))
+		{
+			_extendedVariantModeLoaded = true;
 		}
     }
 
@@ -409,11 +423,27 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
            }
         }
 
+		// Multiply the offset vectors.
+        if (cursor.TryGotoNext(MoveType.Before,
+            instr => instr.MatchCallvirt(typeof(SpriteBatch), "Begin")))
+        {
+            cursor.EmitLdloca(9);
+            cursor.EmitDelegate(ScaleDownPadding);
+        }
+
         // if (cursor.TryGotoNext(MoveType.Before,
         //     instr => instr.MatchLdfld(typeof(Level), "HudRenderer")))
         // {
         //     cursor.EmitDelegate(DrawDebugBuffers);
         // }
+    }
+
+	private static void ScaleDownPadding(ref Vector2 vector4)
+    {
+		if (_extendedVariantModeLoaded)
+		{
+			vector4 /= Scale;
+		}
     }
 
     private static void DrawDebugBuffers()
@@ -1054,16 +1084,14 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
     }
 
 
-    // These are all five overloads that take a source rectangle. If, and only if, it's
-    // specified when drawing a large texture, it needs to be scaled. We can't really do
-    // this in the PushSprite hook, because it would require scaling sourceW and
-    // sourceH, which we don't want to do if they're using their default values (i.e.
-    // if this rectangle wasn't specified). NOTE: we do not do this if we're drawing
-    // a small texture that's going to be replaced with a big one! Source rectangles are
-	// on the scale [0, 1] and are computed as such by all of the draw overloads by dividing
-	// by texture width, so only when the actual draw call is made with a large texture will
-	// the source rectangle need to be scaled. We do the exact same thing with the origin
-	// parameters.
+    // These are all five overloads that take a source rectangle and/or origin. If, and only
+    // if, these are specified when drawing a large texture, it needs to be scaled. We can't
+    // do this in the PushSprite hook, because these things are all in the range [0, 1] by then.
+    // NOTE: we do not do this if we're drawing a small texture that's going to be replaced 
+	// with a big one! Since source rectangles are on the scale [0, 1] and are computed as such
+	// by all of the draw overloads by dividing by texture width, only when the actual draw call
+	// is made with a large texture does the source rectangle need to be scaled. We do the exact
+	// same thing with the origin parameters.
     private void HookSpriteBatchDraw()
     {
 		// The bizarre numbering is just the order these overloads appear in the SpriteBatch class.
