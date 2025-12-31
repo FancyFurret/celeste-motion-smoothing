@@ -22,6 +22,8 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
 	public static float Scale = 6f;
 
+	private static bool _needSamllBufferSizeUpdate = false;
+
 	// Flag set by the SpriteBatch.Begin hook when it it currently scaling by 6x.
 	private static bool _currentlyScaling = false;
 	private static Texture _currentRenderTarget;
@@ -58,7 +60,6 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
 	private static Effect _fxHiresDistort;
 	private static Effect _fxOrigDistort;
-
 
     private static Vector2 SmoothedCameraPosition;
     private static Matrix SmoothedCameraMatrix;
@@ -138,6 +139,8 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
         _internalLargeTextures.Add(renderer.LargeTempBBuffer.Target);
 
         _largeTextures.UnionWith(_internalLargeTextures);
+
+		_needSamllBufferSizeUpdate = true;
 	}
 
 
@@ -448,7 +451,6 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
     {
         _offsetDrawing = false;
         _excludeFromOffsetDrawing.Clear();
-        _useHiresGaussianBlur = false;
         _allowParallaxOneBackgrounds = false;
         _currentlyRenderingBackground = true;
         _disableFloorFunctions = false;
@@ -546,12 +548,25 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
     private static Texture2D GaussianBlur_Blur(On.Celeste.GaussianBlur.orig_Blur orig, Texture2D texture, VirtualRenderTarget temp, VirtualRenderTarget output, float fade, bool clear, GaussianBlur.Samples samples, float sampleScale, GaussianBlur.Direction direction, float alpha)
 	{
+		if (HiresRenderer.Instance is not { } renderer)
+		{
+			return orig(texture, temp, output, fade, clear, samples, sampleScale, direction, alpha);
+		}
+
 		if (_largeTextures.Contains(texture))
 		{
 			_useHiresGaussianBlur = true;
 		}
 
-        var outputTexture = orig(texture, temp, output, fade, clear, samples, sampleScale, direction, alpha);
+		if (texture.Width != temp.Width || texture.Height != temp.Height)
+		{
+			renderer.GaussianBlurTempBuffer.Width = texture.Width;
+			renderer.GaussianBlurTempBuffer.Height = texture.Height;
+			renderer.GaussianBlurTempBuffer.Reload();
+			temp = renderer.GaussianBlurTempBuffer;
+		}
+
+		var outputTexture = orig(texture, temp, output, fade, clear, samples, sampleScale, direction, alpha);
 
 		_useHiresGaussianBlur = false;
 
@@ -734,11 +749,19 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
         Draw.SpriteBatch.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend, SamplerState.PointClamp, DepthStencilState.None, RasterizerState.CullNone, null, Matrix.Identity);
         Draw.SpriteBatch.Draw(GameplayBuffers.Gameplay, Vector2.Zero, Color.White);
         Draw.SpriteBatch.End();
+		
 
-		_fxHiresDistort?.Parameters["bufferSize"]?.SetValue(new Vector2(
-			GameplayBuffers.Gameplay.Width,
-			GameplayBuffers.Gameplay.Height
-		));
+
+		if (_needSamllBufferSizeUpdate)
+		{
+			_needSamllBufferSizeUpdate = false;
+			_fxHiresDistort?.Parameters["bufferSize"]?.SetValue(new Vector2(
+				GameplayBuffers.Gameplay.Width,
+				GameplayBuffers.Gameplay.Height
+			));
+		}
+
+
 
 		HiresRenderer.EnableLargeGameplayBuffer();
     }

@@ -14,6 +14,10 @@ public class HiresRenderer : Renderer
 
     public VirtualRenderTarget SmallBuffer { get; }
 
+	// Used when some other code got itself confused and is trying
+	// to use a missized buffer as a temp buffer.
+	public VirtualRenderTarget GaussianBlurTempBuffer { get; }
+
     public static VirtualRenderTarget OriginalGameplayBuffer = null;
 	public static VirtualRenderTarget OriginalLevelBuffer = null;
     public static VirtualRenderTarget OriginalTempABuffer = null;
@@ -25,7 +29,8 @@ public class HiresRenderer : Renderer
         VirtualRenderTarget largeLevelBuffer,
         VirtualRenderTarget largeTempABuffer,
         VirtualRenderTarget largeTempBBuffer,
-        VirtualRenderTarget smallBuffer
+        VirtualRenderTarget smallBuffer,
+		VirtualRenderTarget gaussianBlurTempBuffer
     ) {
         LargeGameplayBuffer = largeGameplayBuffer;
         LargeLevelBuffer = largeLevelBuffer;
@@ -33,6 +38,8 @@ public class HiresRenderer : Renderer
         LargeTempBBuffer = largeTempBBuffer;
 
         SmallBuffer = smallBuffer;
+
+		GaussianBlurTempBuffer = gaussianBlurTempBuffer;
 
         Visible = true;
     }
@@ -122,7 +129,6 @@ public class HiresRenderer : Renderer
     {
         Destroy();
 
-		// Read vanilla dimensions BEFORE replacing GameplayBuffers
 		int vanillaWidth = GameplayBuffers.Gameplay.Width;
 		int vanillaHeight = GameplayBuffers.Gameplay.Height;
 
@@ -134,6 +140,7 @@ public class HiresRenderer : Renderer
 			GameplayBuffers.Create(largeWidth, largeHeight),
 			GameplayBuffers.Create(largeWidth, largeHeight),
 			GameplayBuffers.Create(largeWidth, largeHeight),
+			GameplayBuffers.Create(vanillaWidth, vanillaHeight),
 			GameplayBuffers.Create(vanillaWidth, vanillaHeight)
 		);
 
@@ -155,6 +162,8 @@ public class HiresRenderer : Renderer
             Instance.LargeTempBBuffer?.Dispose();
 
             Instance.SmallBuffer?.Dispose();
+
+			Instance.GaussianBlurTempBuffer?.Dispose();
 
             Instance = null;
         }
