@@ -67,8 +67,6 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
     private static Matrix UnsmoothedCameraMatrix;
     private static Matrix UnsmoothedCameraInverse;
 
-	private static bool _extendedVariantModeLoaded = false;
-
     private readonly HashSet<Hook> _hooks = new();
 
     public override void Load()
@@ -224,18 +222,6 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 		if (Everest.Loader.DependencyLoaded(spirialisHelper))
 		{
 			AddSpirialisHook();
-		}
-
-
-
-		EverestModuleMetadata extendedVariantMode = new() {
-			Name = "ExtendedVariantMode",
-			Version = new Version(0, 47, 6)
-		};
-
-		if (Everest.Loader.DependencyLoaded(extendedVariantMode))
-		{
-			_extendedVariantModeLoaded = true;
 		}
     }
 
@@ -423,27 +409,11 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
            }
         }
 
-		// Multiply the offset vectors.
-        if (cursor.TryGotoNext(MoveType.Before,
-            instr => instr.MatchCallvirt(typeof(SpriteBatch), "Begin")))
-        {
-            cursor.EmitLdloca(9);
-            cursor.EmitDelegate(ScaleDownPadding);
-        }
-
         // if (cursor.TryGotoNext(MoveType.Before,
         //     instr => instr.MatchLdfld(typeof(Level), "HudRenderer")))
         // {
         //     cursor.EmitDelegate(DrawDebugBuffers);
         // }
-    }
-
-	private static void ScaleDownPadding(ref Vector2 vector4)
-    {
-		if (_extendedVariantModeLoaded)
-		{
-			vector4 /= Scale;
-		}
     }
 
     private static void DrawDebugBuffers()
