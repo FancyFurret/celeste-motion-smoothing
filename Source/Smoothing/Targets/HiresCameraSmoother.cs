@@ -1062,95 +1062,104 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
     // a small texture that's going to be replaced with a big one! Source rectangles are
 	// on the scale [0, 1] and are computed as such by all of the draw overloads by dividing
 	// by texture width, so only when the actual draw call is made with a large texture will
-	// the source rectangle need to be scaled.
+	// the source rectangle need to be scaled. We do the exact same thing with the origin
+	// parameters.
     private void HookSpriteBatchDraw()
     {
-        AddHook(new Hook(typeof(SpriteBatch).GetMethod("Draw", new[] { typeof(Texture2D), typeof(Vector2), typeof(Rectangle?), typeof(Color) })!, SpriteBatch_Draw1));
+		// The bizarre numbering is just the order these overloads appear in the SpriteBatch class.
 
-        AddHook(new Hook(typeof(SpriteBatch).GetMethod("Draw", new[] { typeof(Texture2D), typeof(Vector2), typeof(Rectangle?), typeof(Color), typeof(float), typeof(Vector2), typeof(float), typeof(SpriteEffects), typeof(float) })!, SpriteBatch_Draw2));
+        AddHook(new Hook(typeof(SpriteBatch).GetMethod("Draw", new[] { typeof(Texture2D), typeof(Vector2), typeof(Rectangle?), typeof(Color) })!, SpriteBatch_Draw2));
 
-        AddHook(new Hook(typeof(SpriteBatch).GetMethod("Draw", new[] { typeof(Texture2D), typeof(Vector2), typeof(Rectangle?), typeof(Color), typeof(float), typeof(Vector2), typeof(Vector2), typeof(SpriteEffects), typeof(float) })!, SpriteBatch_Draw3));
+        AddHook(new Hook(typeof(SpriteBatch).GetMethod("Draw", new[] { typeof(Texture2D), typeof(Vector2), typeof(Rectangle?), typeof(Color), typeof(float), typeof(Vector2), typeof(float), typeof(SpriteEffects), typeof(float) })!, SpriteBatch_Draw3));
 
-        AddHook(new Hook(typeof(SpriteBatch).GetMethod("Draw", new[] { typeof(Texture2D), typeof(Rectangle), typeof(Rectangle?), typeof(Color) })!, SpriteBatch_Draw4));
+        AddHook(new Hook(typeof(SpriteBatch).GetMethod("Draw", new[] { typeof(Texture2D), typeof(Vector2), typeof(Rectangle?), typeof(Color), typeof(float), typeof(Vector2), typeof(Vector2), typeof(SpriteEffects), typeof(float) })!, SpriteBatch_Draw4));
 
-        AddHook(new Hook(typeof(SpriteBatch).GetMethod("Draw", new[] { typeof(Texture2D), typeof(Rectangle), typeof(Rectangle?), typeof(Color), typeof(float), typeof(Vector2), typeof(SpriteEffects), typeof(float) })!, SpriteBatch_Draw5));
+        AddHook(new Hook(typeof(SpriteBatch).GetMethod("Draw", new[] { typeof(Texture2D), typeof(Rectangle), typeof(Rectangle?), typeof(Color) })!, SpriteBatch_Draw6));
+
+        AddHook(new Hook(typeof(SpriteBatch).GetMethod("Draw", new[] { typeof(Texture2D), typeof(Rectangle), typeof(Rectangle?), typeof(Color), typeof(float), typeof(Vector2), typeof(SpriteEffects), typeof(float) })!, SpriteBatch_Draw7));
     }
 
-    private static void SpriteBatch_Draw1(Action<SpriteBatch, Texture2D, Vector2, Rectangle?, Color> orig, SpriteBatch self, Texture2D texture, Vector2 position, Rectangle? sourceRectangle, Color color)
+    private static void SpriteBatch_Draw2(Action<SpriteBatch, Texture2D, Vector2, Rectangle?, Color> orig, SpriteBatch self, Texture2D texture, Vector2 position, Rectangle? sourceRectangle, Color color)
     {
-        if (
-			sourceRectangle is Rectangle rect
-			&& _largeTextures.Contains(texture)
-			&& rect.Right <= texture.Width / Scale
-			&& rect.Bottom <= texture.Height / Scale
-		) {
-            Rectangle scaledRect = new Rectangle((int) (Scale * rect.X), (int) (Scale * rect.Y), (int) (Scale * rect.Width), (int) (Scale * rect.Height));
-            orig(self, texture, position, scaledRect, color);
-            return;
+        if (_largeTextures.Contains(texture))
+		{
+			if (
+				sourceRectangle is Rectangle rect
+				&& rect.Right <= texture.Width / Scale
+				&& rect.Bottom <= texture.Height / Scale
+			) {
+				sourceRectangle = new Rectangle((int) (Scale * rect.X), (int) (Scale * rect.Y), (int) (Scale * rect.Width), (int) (Scale * rect.Height));
+			}
         }
 
         orig(self, texture, position, sourceRectangle, color);
     }
 
-    private static void SpriteBatch_Draw2(Action<SpriteBatch, Texture2D, Vector2, Rectangle?, Color, float, Vector2, float, SpriteEffects, float> orig, SpriteBatch self, Texture2D texture, Vector2 position, Rectangle? sourceRectangle, Color color, float rotation, Vector2 origin, float scale, SpriteEffects effects, float layerDepth)
+    private static void SpriteBatch_Draw3(Action<SpriteBatch, Texture2D, Vector2, Rectangle?, Color, float, Vector2, float, SpriteEffects, float> orig, SpriteBatch self, Texture2D texture, Vector2 position, Rectangle? sourceRectangle, Color color, float rotation, Vector2 origin, float scale, SpriteEffects effects, float layerDepth)
     {
-        if (
-			sourceRectangle is Rectangle rect
-			&& _largeTextures.Contains(texture)
-			&& rect.Right <= texture.Width / Scale
-			&& rect.Bottom <= texture.Height / Scale
-		) {
-            Rectangle scaledRect = new Rectangle((int) (Scale * rect.X), (int) (Scale * rect.Y), (int) (Scale * rect.Width), (int) (Scale * rect.Height));
-            orig(self, texture, position, scaledRect, color, rotation, origin, scale, effects, layerDepth);
-            return;
+        if (_largeTextures.Contains(texture))
+		{
+			origin *= Scale;
+
+			if (
+				sourceRectangle is Rectangle rect
+				&& rect.Right <= texture.Width / Scale
+				&& rect.Bottom <= texture.Height / Scale
+			) {
+				sourceRectangle = new Rectangle((int) (Scale * rect.X), (int) (Scale * rect.Y), (int) (Scale * rect.Width), (int) (Scale * rect.Height));
+			}
         }
 
         orig(self, texture, position, sourceRectangle, color, rotation, origin, scale, effects, layerDepth);
     }
 
-    private static void SpriteBatch_Draw3(Action<SpriteBatch, Texture2D, Vector2, Rectangle?, Color, float, Vector2, Vector2, SpriteEffects, float> orig, SpriteBatch self, Texture2D texture, Vector2 position, Rectangle? sourceRectangle, Color color, float rotation, Vector2 origin, Vector2 scale, SpriteEffects effects, float layerDepth)
+    private static void SpriteBatch_Draw4(Action<SpriteBatch, Texture2D, Vector2, Rectangle?, Color, float, Vector2, Vector2, SpriteEffects, float> orig, SpriteBatch self, Texture2D texture, Vector2 position, Rectangle? sourceRectangle, Color color, float rotation, Vector2 origin, Vector2 scale, SpriteEffects effects, float layerDepth)
     {
-        if (
-			sourceRectangle is Rectangle rect
-			&& _largeTextures.Contains(texture)
-			&& rect.Right <= texture.Width / Scale
-			&& rect.Bottom <= texture.Height / Scale
-		) {
-            Rectangle scaledRect = new Rectangle((int) (Scale * rect.X), (int) (Scale * rect.Y), (int) (Scale * rect.Width), (int) (Scale * rect.Height));
-            orig(self, texture, position, scaledRect, color, rotation, origin, scale, effects, layerDepth);
-            return;
+        if (_largeTextures.Contains(texture))
+		{
+			origin *= Scale;
+
+			if (
+				sourceRectangle is Rectangle rect
+				&& rect.Right <= texture.Width / Scale
+				&& rect.Bottom <= texture.Height / Scale
+			) {
+				sourceRectangle = new Rectangle((int) (Scale * rect.X), (int) (Scale * rect.Y), (int) (Scale * rect.Width), (int) (Scale * rect.Height));
+			}
         }
 
         orig(self, texture, position, sourceRectangle, color, rotation, origin, scale, effects, layerDepth);
     }
 
-    private static void SpriteBatch_Draw4(Action<SpriteBatch, Texture2D, Rectangle, Rectangle?, Color> orig, SpriteBatch self, Texture2D texture, Rectangle destinationRectangle, Rectangle? sourceRectangle, Color color)
+    private static void SpriteBatch_Draw6(Action<SpriteBatch, Texture2D, Rectangle, Rectangle?, Color> orig, SpriteBatch self, Texture2D texture, Rectangle destinationRectangle, Rectangle? sourceRectangle, Color color)
     {
-        if (
-			sourceRectangle is Rectangle rect
-			&& _largeTextures.Contains(texture)
-			&& rect.Right <= texture.Width / Scale
-			&& rect.Bottom <= texture.Height / Scale
-		) {
-            Rectangle scaledRect = new Rectangle((int) (Scale * rect.X), (int) (Scale * rect.Y), (int) (Scale * rect.Width), (int) (Scale * rect.Height));
-            orig(self, texture, destinationRectangle, scaledRect, color);
-            return;
+        if (_largeTextures.Contains(texture))
+		{
+			if (
+				sourceRectangle is Rectangle rect
+				&& rect.Right <= texture.Width / Scale
+				&& rect.Bottom <= texture.Height / Scale
+			) {
+				sourceRectangle = new Rectangle((int) (Scale * rect.X), (int) (Scale * rect.Y), (int) (Scale * rect.Width), (int) (Scale * rect.Height));
+			}
         }
 
         orig(self, texture, destinationRectangle, sourceRectangle, color);
     }
 
-    private static void SpriteBatch_Draw5(Action<SpriteBatch, Texture2D, Rectangle, Rectangle?, Color, float, Vector2, SpriteEffects, float> orig, SpriteBatch self, Texture2D texture, Rectangle destinationRectangle, Rectangle? sourceRectangle, Color color, float rotation, Vector2 origin, SpriteEffects effects, float layerDepth)
+    private static void SpriteBatch_Draw7(Action<SpriteBatch, Texture2D, Rectangle, Rectangle?, Color, float, Vector2, SpriteEffects, float> orig, SpriteBatch self, Texture2D texture, Rectangle destinationRectangle, Rectangle? sourceRectangle, Color color, float rotation, Vector2 origin, SpriteEffects effects, float layerDepth)
     {
-        if (
-			sourceRectangle is Rectangle rect
-			&& _largeTextures.Contains(texture)
-			&& rect.Right <= texture.Width / Scale
-			&& rect.Bottom <= texture.Height / Scale
-		) {
-            Rectangle scaledRect = new Rectangle((int) (Scale * rect.X), (int) (Scale * rect.Y), (int) (Scale * rect.Width), (int) (Scale * rect.Height));
-            orig(self, texture, destinationRectangle, scaledRect, color, rotation, origin, effects, layerDepth);
-            return;
+        if (_largeTextures.Contains(texture))
+		{
+			origin *= Scale;
+
+			if (
+				sourceRectangle is Rectangle rect
+				&& rect.Right <= texture.Width / Scale
+				&& rect.Bottom <= texture.Height / Scale
+			) {
+				sourceRectangle = new Rectangle((int) (Scale * rect.X), (int) (Scale * rect.Y), (int) (Scale * rect.Width), (int) (Scale * rect.Height));
+			}
         }
 
         orig(self, texture, destinationRectangle, sourceRectangle, color, rotation, origin, effects, layerDepth);
@@ -1176,8 +1185,6 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
             destinationH *= Scale;
             destinationX *= Scale;
             destinationY *= Scale;
-            originX *= Scale;
-            originY *= Scale;
         }
 
         // If instead we're drawing a natively large texture to a large one or the screen with an offset
@@ -1187,8 +1194,6 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
         {
             destinationX *= Scale;
             destinationY *= Scale;
-            originX *= Scale;
-            originY *= Scale;
         }
 
 
