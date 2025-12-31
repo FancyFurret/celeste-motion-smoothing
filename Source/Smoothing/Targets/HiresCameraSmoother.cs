@@ -35,8 +35,6 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 	// A blunt tool for fixing weird mods like SpirialisHelper. When this is enabled,
 	// spritebatch.begin will use the 181/180 scale matrix.
 	private static bool _forceOffsetZoomDrawing = false;
-
-    private static bool _useHiresGaussianBlur = false;
     private static bool _currentlyRenderingBackground = false;
     private static bool _allowParallaxOneBackgrounds = false;
     private static bool _disableFloorFunctions = false;
@@ -90,9 +88,9 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 	private static void GfxLoadEffectsHook(On.Celeste.GFX.orig_LoadEffects orig)
     {
         orig();
+
         _fxHiresDistort = new Effect(Engine.Graphics.GraphicsDevice,
             Everest.Content.Get("MotionSmoothing:/Effects/HiresDistort.cso").Data);
-
 		_fxOrigDistort = GFX.FxDistort;
 	}
 
@@ -154,7 +152,6 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
         IL.Celeste.BloomRenderer.Apply += BloomRendererApplyHook;
         
 		On.Celeste.GaussianBlur.Blur += GaussianBlur_Blur;
-		IL.Celeste.GaussianBlur.Blur += GaussianBlurBlurHook;
 
         On.Celeste.BackdropRenderer.Render += BackdropRenderer_Render;
         On.Celeste.GameplayRenderer.Render += GameplayRenderer_Render;
@@ -238,7 +235,6 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
         IL.Celeste.BloomRenderer.Apply -= BloomRendererApplyHook;
 
         On.Celeste.GaussianBlur.Blur -= GaussianBlur_Blur;
-		IL.Celeste.GaussianBlur.Blur -= GaussianBlurBlurHook;
 
         On.Celeste.BackdropRenderer.Render -= BackdropRenderer_Render;
         On.Celeste.GameplayRenderer.Render -= GameplayRenderer_Render;
@@ -553,9 +549,17 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 			return orig(texture, temp, output, fade, clear, samples, sampleScale, direction, alpha);
 		}
 
+		// This is a really blunt fix, but for things like Extended Variants that blur at small scales,
+		// they tend to look gross since they blur the sharp pixel boundaries. This just disables them
+		// when the scale is small enough that it wouldn't be noticible at low res anyway.
 		if (_largeTextures.Contains(texture))
 		{
-			_useHiresGaussianBlur = true;
+			if (sampleScale < 0.175f)
+			{
+				sampleScale = 0;
+			}
+
+			sampleScale *= Scale;
 		}
 
 		if (texture.Width != temp.Width || texture.Height != temp.Height)
@@ -566,34 +570,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 			temp = renderer.GaussianBlurTempBuffer;
 		}
 
-		var outputTexture = orig(texture, temp, output, fade, clear, samples, sampleScale, direction, alpha);
-
-		_useHiresGaussianBlur = false;
-
-		return outputTexture;
-    }
-
-	private static void GaussianBlurBlurHook(ILContext il)
-    {
-        var cursor = new ILCursor(il);
-
-		var getModifiedParameter = () => _useHiresGaussianBlur ? Scale : 1f;
-
-		// When blurring something large, sample at points 6x farther away so they still
-		// line up with pixels.
-        if (cursor.TryGotoNext(MoveType.After,
-            instr => instr.MatchLdcR4(1f)))
-        {
-            cursor.Emit(OpCodes.Pop);
-			cursor.EmitDelegate(getModifiedParameter);
-        }
-
-        if (cursor.TryGotoNext(MoveType.After,
-            instr => instr.MatchLdcR4(1f)))
-        {
-            cursor.Emit(OpCodes.Pop);
-			cursor.EmitDelegate(getModifiedParameter);
-        }
+		return orig(texture, temp, output, fade, clear, samples, sampleScale, direction, alpha);
     }
 
 
@@ -755,6 +732,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 		if (_needSamllBufferSizeUpdate)
 		{
 			_needSamllBufferSizeUpdate = false;
+
 			_fxHiresDistort?.Parameters["bufferSize"]?.SetValue(new Vector2(
 				GameplayBuffers.Gameplay.Width,
 				GameplayBuffers.Gameplay.Height
