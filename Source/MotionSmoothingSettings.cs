@@ -156,10 +156,10 @@ public class MotionSmoothingSettings : EverestModuleSettings
             "is moving. This is especially noticeable when the camera.\n" +
 			"is slowly catching up to the player.\n\n" +
             "Highest Quality: Produces the smoothest visuals, but is\n" +
-            "incompatible with a small number of other mods and may\n\n" +
+            "incompatible with a small number of other mods and may\n" +
             "impact performance on low-end systems.\n\n" +
             "Most Compatible: Has the highest compatibility, but makes\n" +
-            "the entire background jitter uncontrollably when moving.\n" +
+            "the entire background jitter uncontrollably when moving.\n\n" +
 			"Off: Disables all camera smoothing."
         );
     }

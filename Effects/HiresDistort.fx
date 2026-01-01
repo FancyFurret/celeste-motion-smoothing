@@ -29,6 +29,7 @@ uniform float gamerate = 1.0;
 uniform float waterSine = 0.0;
 uniform float waterCameraY = 0.0;
 uniform float waterAlpha = 1.0;
+uniform float2 bufferSize = float2(320.0, 180.0);
 
 //-----------------------------------------------------------------------------
 // Pixel Shaders.
@@ -36,16 +37,16 @@ uniform float waterAlpha = 1.0;
 
 float2 GetDisplacement(float2 texcoord)
 {
-    float2 pixelatedTexcoord = float2(floor(texcoord.x * 320.0) / 320.0 + 0.5 / 320.0, floor(texcoord.y * 180.0) / 180.0 + 0.5 / 180.0);
+    float2 pixelatedTexcoord = float2(floor(texcoord.x * bufferSize.x) / bufferSize.x + 0.5 / bufferSize.x, floor(texcoord.y * bufferSize.y) / bufferSize.y + 0.5 / bufferSize.y);
 
     // normal displacement
     float4 displacementPixel = SAMPLE_TEXTURE(map, pixelatedTexcoord);
-    float shift = waterAlpha * sin((pixelatedTexcoord.y * 180.0 + waterCameraY) * 0.3 - waterSine * displacementPixel.b) * 0.004;
+    float shift = waterAlpha * sin((pixelatedTexcoord.y * bufferSize.y + waterCameraY) * 0.3 - waterSine * displacementPixel.b) * 0.004;
 
     if (
-        abs((displacementPixel.r * 2.0 - 1.0) * 0.044) < 0.49 / 320.0
-        && abs((displacementPixel.g * 2.0 - 1.0) * 0.078) < 0.49 / 180.0
-        && abs(shift * ceil(displacementPixel.b)) < 0.1 / 320.0
+        abs((displacementPixel.r * 2.0 - 1.0) * 0.044) < 0.49 / bufferSize.x
+        && abs((displacementPixel.g * 2.0 - 1.0) * 0.078) < 0.49 / bufferSize.y
+        && abs(shift * ceil(displacementPixel.b)) < 0.1 / bufferSize.x
     ) {
         displacementPixel = float4(0.5, 0.5, 0.0, 0.0);
         pixelatedTexcoord = texcoord;

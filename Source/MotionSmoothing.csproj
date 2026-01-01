@@ -39,6 +39,10 @@
         <Reference Include="$(CelestePrefix)\FNA.dll" Publicize="true" />
     </ItemGroup>
 
+	<ItemGroup>
+        <Reference Include="$(CelestePrefix)\Mods\Cache\SpirialisHelper.Spirialis.dll" />
+    </ItemGroup>
+
     <Target Name="CopyFiles" AfterTargets="Build" Inputs="$(OutputPath)\$(AssemblyName).dll;$(OutputPath)\$(AssemblyName).pdb" Outputs="..\bin\$(AssemblyName).dll;..\bin\$(AssemblyName).pdb">
         <Copy SourceFiles="$(OutputPath)\$(AssemblyName).dll" DestinationFolder="..\bin" />
         <Copy SourceFiles="$(OutputPath)\$(AssemblyName).pdb" DestinationFolder="..\bin" />
@@ -49,7 +53,6 @@
         <Copy SourceFiles="..\bin\MotionSmoothing.dll" DestinationFolder="$(CelestePrefix)\Mods\MotionSmoothing\bin" />
         <Copy SourceFiles="..\bin\MotionSmoothing.pdb" DestinationFolder="$(CelestePrefix)\Mods\MotionSmoothing\bin" />
         <Copy SourceFiles="..\Dialog\English.txt" DestinationFolder="$(CelestePrefix)\Mods\MotionSmoothing\Dialog" />
-        <Copy SourceFiles="..\Effects\HiresGaussianBlur.cso" DestinationFolder="$(CelestePrefix)\Mods\MotionSmoothing\Effects" />
         <Copy SourceFiles="..\Effects\HiresDistort.cso" DestinationFolder="$(CelestePrefix)\Mods\MotionSmoothing\Effects" />
     </Target>
 

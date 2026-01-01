@@ -1,5 +1,5 @@
-using Microsoft.Xna.Framework;
 using Monocle;
+using System;
 
 namespace Celeste.Mod.MotionSmoothing.Smoothing.Targets;
 
@@ -14,18 +14,23 @@ public class HiresRenderer : Renderer
 
     public VirtualRenderTarget SmallBuffer { get; }
 
-    private static VirtualRenderTarget OriginalGameplayBuffer = null;
-	private static VirtualRenderTarget OriginalLevelBuffer = null;
-    private static VirtualRenderTarget OriginalTempABuffer = null;
+	// Used when some other code got itself confused and is trying
+	// to use a missized buffer as a temp buffer.
+	public VirtualRenderTarget GaussianBlurTempBuffer { get; }
 
-    private static VirtualRenderTarget OriginalTempBBuffer = null;
+    public static VirtualRenderTarget OriginalGameplayBuffer = null;
+	public static VirtualRenderTarget OriginalLevelBuffer = null;
+    public static VirtualRenderTarget OriginalTempABuffer = null;
+
+    public static VirtualRenderTarget OriginalTempBBuffer = null;
 
     public HiresRenderer(
         VirtualRenderTarget largeGameplayBuffer,
         VirtualRenderTarget largeLevelBuffer,
         VirtualRenderTarget largeTempABuffer,
         VirtualRenderTarget largeTempBBuffer,
-        VirtualRenderTarget smallBuffer
+        VirtualRenderTarget smallBuffer,
+		VirtualRenderTarget gaussianBlurTempBuffer
     ) {
         LargeGameplayBuffer = largeGameplayBuffer;
         LargeLevelBuffer = largeLevelBuffer;
@@ -33,6 +38,8 @@ public class HiresRenderer : Renderer
         LargeTempBBuffer = largeTempBBuffer;
 
         SmallBuffer = smallBuffer;
+
+		GaussianBlurTempBuffer = gaussianBlurTempBuffer;
 
         Visible = true;
     }
@@ -122,18 +129,22 @@ public class HiresRenderer : Renderer
     {
         Destroy();
 
-        Instance = new HiresRenderer(
-            GameplayBuffers.Create(1920, 1080),
-            GameplayBuffers.Create(1920, 1080),
-            GameplayBuffers.Create(1920, 1080),
-            GameplayBuffers.Create(1920, 1080),
+		int vanillaWidth = GameplayBuffers.Gameplay.Width;
+		int vanillaHeight = GameplayBuffers.Gameplay.Height;
 
-            GameplayBuffers.Create(320, 180)
-        );
+		int largeWidth = vanillaWidth * 6;
+		int largeHeight = vanillaHeight * 6;
 
-		EnableLargeGameplayBuffer();
+		Instance = new HiresRenderer(
+			GameplayBuffers.Create(largeWidth, largeHeight),
+			GameplayBuffers.Create(largeWidth, largeHeight),
+			GameplayBuffers.Create(largeWidth, largeHeight),
+			GameplayBuffers.Create(largeWidth, largeHeight),
+			GameplayBuffers.Create(vanillaWidth, vanillaHeight),
+			GameplayBuffers.Create(vanillaWidth, vanillaHeight)
+		);
 
-        return Instance;
+		return Instance;
     }
 
     public static void Destroy()
@@ -151,6 +162,8 @@ public class HiresRenderer : Renderer
             Instance.LargeTempBBuffer?.Dispose();
 
             Instance.SmallBuffer?.Dispose();
+
+			Instance.GaussianBlurTempBuffer?.Dispose();
 
             Instance = null;
         }
