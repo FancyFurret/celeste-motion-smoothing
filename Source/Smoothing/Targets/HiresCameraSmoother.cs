@@ -22,7 +22,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
 	public static float Scale = 6f;
 
-	private static bool _needSamllBufferSizeUpdate = false;
+	private static bool _needSmallBufferSizeUpdate = false;
 
 	// Flag set by the SpriteBatch.Begin hook when it it currently scaling by 6x.
 	private static bool _currentlyScaling = false;
@@ -138,7 +138,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
         _largeTextures.UnionWith(_internalLargeTextures);
 
-		_needSamllBufferSizeUpdate = true;
+		_needSmallBufferSizeUpdate = true;
 	}
 
 
@@ -155,6 +155,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
         On.Celeste.BackdropRenderer.Render += BackdropRenderer_Render;
         On.Celeste.GameplayRenderer.Render += GameplayRenderer_Render;
+		On.Celeste.Player.Render += Player_Render;
         On.Celeste.Distort.Render += Distort_Render;
 
 		On.Celeste.Glitch.Apply += Glitch_Apply;
@@ -238,6 +239,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
         On.Celeste.BackdropRenderer.Render -= BackdropRenderer_Render;
         On.Celeste.GameplayRenderer.Render -= GameplayRenderer_Render;
+		On.Celeste.Player.Render -= Player_Render;
         On.Celeste.Distort.Render -= Distort_Render;
 
 		On.Celeste.Glitch.Apply -= Glitch_Apply;
@@ -639,99 +641,28 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 			return;
 		}
 
-		// If we're rendering with subpixels, we need to draw everything at 6x. We do
-		// this by recreating the gameplay rendering loop, and every time we encounter
-		// an entity that needs to be rendered at a fractional position, we draw everything
-		// we have to renderer.LargeGameplayBuffer, clear the small buffer, draw
-		// the single sprite at a precise position, clear it again, and then keep going.
-
+		// If we're rendering with subpixels, we need to draw everything at 6x. Every
+		// time we encounter an entity that needs to be rendered at a fractional position
+		// (a player or held holdable) we draw everything we have to renderer.LargeGameplayBuffer,
+		// clear the small buffer, draw the single sprite at a precise position, clear
+		// it again, and then keep going.
 		Engine.Instance.GraphicsDevice.SetRenderTarget(renderer.LargeGameplayBuffer);
 		Engine.Instance.GraphicsDevice.Clear(Color.Transparent);
 
 		Engine.Instance.GraphicsDevice.SetRenderTarget(GameplayBuffers.Gameplay);
-		GameplayRenderer.Begin();
+		
+		orig(self, scene);
 
-		foreach (Entity entity in level.Entities)
-		{
-			if (entity.Visible && !entity.TagCheck(Tags.HUD | TagsExt.SubHUD))
-			{
-				var player = MotionSmoothingHandler.Instance.Player;
-
-				if (entity == player || player?.Holding?.Entity == entity)
-				{
-					// Render the things below this entity
-					GameplayRenderer.End();
-
-					Engine.Instance.GraphicsDevice.SetRenderTarget(renderer.LargeGameplayBuffer);
-
-                    // The upscaling will happen automatically whenever we draw into the large
-                    // gameplay buffer, so we don't add a scale matrix.
-					Draw.SpriteBatch.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend, SamplerState.PointClamp, DepthStencilState.None, RasterizerState.CullNone, null, Matrix.Identity);
-					Draw.SpriteBatch.Draw(GameplayBuffers.Gameplay, Vector2.Zero, Color.White);
-					Draw.SpriteBatch.End();
-
-					Engine.Instance.GraphicsDevice.SetRenderTarget(GameplayBuffers.Gameplay);
-					Engine.Instance.GraphicsDevice.Clear(Color.Transparent);
-
-					GameplayRenderer.Begin();
-
-
-
-
-					// Now render just this entity and copy it in at subpixel-precise position
-					entity.Render();
-
-					GameplayRenderer.End();
-                    var state = MotionSmoothingHandler.Instance.GetState(entity) as IPositionSmoothingState;
-					Vector2 offset = state.SmoothedRealPosition - state.SmoothedRealPosition.Round();
-	
-					if (Math.Abs(player.Speed.X) < float.Epsilon)
-					{
-						offset.X = 0;
-					}
-
-					if (Math.Abs(player.Speed.Y) < float.Epsilon)
-					{
-						offset.Y = 0;
-					}
-
-					Engine.Instance.GraphicsDevice.SetRenderTarget(renderer.LargeGameplayBuffer);
-					Draw.SpriteBatch.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend, SamplerState.PointClamp, DepthStencilState.None, RasterizerState.CullNone, null, Matrix.Identity);
-					Draw.SpriteBatch.Draw(GameplayBuffers.Gameplay, offset, Color.White);
-					Draw.SpriteBatch.End();
-					
-					Engine.Instance.GraphicsDevice.SetRenderTarget(GameplayBuffers.Gameplay);
-					Engine.Instance.GraphicsDevice.Clear(Color.Transparent);
-
-					// Keep going for things above this entity
-					GameplayRenderer.Begin();
-
-					continue;
-				}
-
-				entity.Render();
-			}
-		}
-
-		if (GameplayRenderer.RenderDebug || Engine.Commands.Open)
-		{
-			scene.Entities.DebugRender(level.GameplayRenderer.Camera);
-		}
-
-		GameplayRenderer.End();
-
-		// Draw the topmost things.
+		// Draw the topmost things that are left (we got the others in Player.Render)
 		Engine.Instance.GraphicsDevice.SetRenderTarget(renderer.LargeGameplayBuffer);
 	
         Draw.SpriteBatch.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend, SamplerState.PointClamp, DepthStencilState.None, RasterizerState.CullNone, null, Matrix.Identity);
         Draw.SpriteBatch.Draw(GameplayBuffers.Gameplay, Vector2.Zero, Color.White);
         Draw.SpriteBatch.End();
-		
 
-
-		if (_needSamllBufferSizeUpdate)
+		if (_needSmallBufferSizeUpdate)
 		{
-			_needSamllBufferSizeUpdate = false;
+			_needSmallBufferSizeUpdate = false;
 
 			_fxHiresDistort?.Parameters["bufferSize"]?.SetValue(new Vector2(
 				GameplayBuffers.Gameplay.Width,
@@ -739,10 +670,65 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 			));
 		}
 
-
-
 		HiresRenderer.EnableLargeGameplayBuffer();
     }
+
+
+
+	private static void Player_Render(On.Celeste.Player.orig_Render orig, Player self)
+	{
+		if (HiresRenderer.Instance is not { } renderer || !MotionSmoothingModule.Settings.RenderMadelineWithSubpixels)
+		{
+			orig(self);
+			return;
+		}
+
+		// Render the things below this entity.
+		GameplayRenderer.End();
+
+		Engine.Instance.GraphicsDevice.SetRenderTarget(renderer.LargeGameplayBuffer);
+
+		// The upscaling will happen automatically whenever we draw into the large
+		// gameplay buffer, so we don't add a scale matrix.
+		Draw.SpriteBatch.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend, SamplerState.PointClamp, DepthStencilState.None, RasterizerState.CullNone, null, Matrix.Identity);
+		Draw.SpriteBatch.Draw(GameplayBuffers.Gameplay, Vector2.Zero, Color.White);
+		Draw.SpriteBatch.End();
+
+		Engine.Instance.GraphicsDevice.SetRenderTarget(GameplayBuffers.Gameplay);
+		Engine.Instance.GraphicsDevice.Clear(Color.Transparent);
+
+		GameplayRenderer.Begin();
+
+
+
+		// Now render just this entity and copy it in at subpixel-precise position
+		orig(self);
+
+		GameplayRenderer.End();
+		var state = MotionSmoothingHandler.Instance.GetState(self) as IPositionSmoothingState;
+		Vector2 offset = state.SmoothedRealPosition - state.SmoothedRealPosition.Round();
+
+		if (Math.Abs(self.Speed.X) < float.Epsilon)
+		{
+			offset.X = 0;
+		}
+
+		if (Math.Abs(self.Speed.Y) < float.Epsilon)
+		{
+			offset.Y = 0;
+		}
+
+		Engine.Instance.GraphicsDevice.SetRenderTarget(renderer.LargeGameplayBuffer);
+		Draw.SpriteBatch.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend, SamplerState.PointClamp, DepthStencilState.None, RasterizerState.CullNone, null, Matrix.Identity);
+		Draw.SpriteBatch.Draw(GameplayBuffers.Gameplay, offset, Color.White);
+		Draw.SpriteBatch.End();
+		
+		Engine.Instance.GraphicsDevice.SetRenderTarget(GameplayBuffers.Gameplay);
+		Engine.Instance.GraphicsDevice.Clear(Color.Transparent);
+
+		// Keep going for things above this entity
+		GameplayRenderer.Begin();
+	}
 
 	
 
