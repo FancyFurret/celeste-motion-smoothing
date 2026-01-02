@@ -62,7 +62,7 @@ public class MotionSmoothingModule : EverestModule
 
     public override void Load()
     {
-        DisableInliningPushSpriteEnable();
+        DisableInliningPushSprite();
 
         typeof(MotionSmoothingExports).ModInterop();
         typeof(GravityHelperImports).ModInterop();
@@ -248,7 +248,7 @@ public class MotionSmoothingModule : EverestModule
 
     // A fix for Madeline's hair being glitchy;
     // from Wartori's Mountain Tweaks, with permission. Thank you!
-    private static void DisableInliningPushSpriteEnable()
+    private static void DisableInliningPushSprite()
     {
         Type t_SpriteBatch = typeof(SpriteBatch);
 

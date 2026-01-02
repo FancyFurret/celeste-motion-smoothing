@@ -36,6 +36,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 	// spritebatch.begin will use the 181/180 scale matrix.
 	private static bool _forceOffsetZoomDrawing = false;
     private static bool _currentlyRenderingBackground = false;
+	private static bool _currentlyRenderingGameplay = false;
     private static bool _allowParallaxOneBackgrounds = false;
     private static bool _disableFloorFunctions = false;
 
@@ -155,6 +156,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
         On.Celeste.BackdropRenderer.Render += BackdropRenderer_Render;
         On.Celeste.GameplayRenderer.Render += GameplayRenderer_Render;
+		On.Celeste.Player.Render += Player_Render;
 		On.Monocle.Entity.Render += Entity_Render;
         On.Celeste.Distort.Render += Distort_Render;
 
@@ -239,6 +241,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
         On.Celeste.BackdropRenderer.Render -= BackdropRenderer_Render;
         On.Celeste.GameplayRenderer.Render -= GameplayRenderer_Render;
+		On.Celeste.Player.Render -= Player_Render;
 		On.Monocle.Entity.Render -= Entity_Render;
         On.Celeste.Distort.Render -= Distort_Render;
 
@@ -447,7 +450,6 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
     private static void PrepareLevelRender(Level level)
     {
-		Console.WriteLine("---");
         _offsetDrawing = false;
         _excludeFromOffsetDrawing.Clear();
         _allowParallaxOneBackgrounds = false;
@@ -636,7 +638,6 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
     private static void GameplayRenderer_Render(On.Celeste.GameplayRenderer.orig_Render orig, GameplayRenderer self, Scene scene)
     {
-		Console.WriteLine("gameplay");
 		if (HiresRenderer.Instance is not { } renderer || !MotionSmoothingModule.Settings.RenderMadelineWithSubpixels)
 		{
 			orig(self, scene);
@@ -653,7 +654,9 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
 		Engine.Instance.GraphicsDevice.SetRenderTarget(GameplayBuffers.Gameplay);
 		
+		_currentlyRenderingGameplay = true;
 		orig(self, scene);
+		_currentlyRenderingGameplay = false;
 
 		// Draw the topmost things that are left (we got the others in Player.Render)
 		Engine.Instance.GraphicsDevice.SetRenderTarget(renderer.LargeGameplayBuffer);
@@ -679,69 +682,139 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
 	private static void Entity_Render(On.Monocle.Entity.orig_Render orig, Entity self)
 	{
-		if (HiresRenderer.Instance is not { } renderer || !MotionSmoothingModule.Settings.RenderMadelineWithSubpixels)
-		{
+		if (
+			!_currentlyRenderingGameplay
+			|| HiresRenderer.Instance is not { } renderer
+			|| !MotionSmoothingModule.Settings.RenderMadelineWithSubpixels
+		) {
 			orig(self);
 			return;
 		}
 
 		var player = MotionSmoothingHandler.Instance.Player;
 
-		if (self == player || player?.Holding?.Entity == self)
-		{
-			Console.WriteLine("entity");
-
-			// Render the things below this entity.
-			GameplayRenderer.End();
-
-			Engine.Instance.GraphicsDevice.SetRenderTarget(renderer.LargeGameplayBuffer);
-
-			// The upscaling will happen automatically whenever we draw into the large
-			// gameplay buffer, so we don't add a scale matrix.
-			Draw.SpriteBatch.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend, SamplerState.PointClamp, DepthStencilState.None, RasterizerState.CullNone, null, Matrix.Identity);
-			Draw.SpriteBatch.Draw(GameplayBuffers.Gameplay, Vector2.Zero, Color.White);
-			Draw.SpriteBatch.End();
-			
-
-
-			Engine.Instance.GraphicsDevice.SetRenderTarget(GameplayBuffers.Gameplay);
-			Engine.Instance.GraphicsDevice.Clear(Color.Transparent);
-
-			GameplayRenderer.Begin();
-
-			// Now render just this entity and copy it in at subpixel-precise position
-			orig(self);
-
-			GameplayRenderer.End();
-			var state = MotionSmoothingHandler.Instance.GetState(player) as IPositionSmoothingState;
-			Vector2 offset = state.SmoothedRealPosition - state.SmoothedRealPosition.Round();
-
-			if (Math.Abs(player.Speed.X) < float.Epsilon)
-			{
-				offset.X = 0;
-			}
-
-			if (Math.Abs(player.Speed.Y) < float.Epsilon)
-			{
-				offset.Y = 0;
-			}
-
-			Engine.Instance.GraphicsDevice.SetRenderTarget(renderer.LargeGameplayBuffer);
-			Draw.SpriteBatch.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend, SamplerState.PointClamp, DepthStencilState.None, RasterizerState.CullNone, null, Matrix.Identity);
-			Draw.SpriteBatch.Draw(GameplayBuffers.Gameplay, offset, Color.White);
-			Draw.SpriteBatch.End();
-			
-			Engine.Instance.GraphicsDevice.SetRenderTarget(GameplayBuffers.Gameplay);
-			Engine.Instance.GraphicsDevice.Clear(Color.Transparent);
-
-			// Keep going for things above this entity
-			GameplayRenderer.Begin();
-		}
-
-		else
+		if (player?.Holding?.Entity != self)
 		{
 			orig(self);
+			return;
 		}
+
+		var state = MotionSmoothingHandler.Instance.GetState(self) as IPositionSmoothingState;
+		Vector2 offset = state.SmoothedRealPosition - state.SmoothedRealPosition.Round();
+
+		if (Math.Abs(player.Speed.X) < float.Epsilon)
+		{
+			offset.X = 0;
+		}
+
+		if (Math.Abs(player.Speed.Y) < float.Epsilon)
+		{
+			offset.Y = 0;
+		}
+
+		// Render the things below this entity.
+		GameplayRenderer.End();
+
+		Engine.Instance.GraphicsDevice.SetRenderTarget(renderer.LargeGameplayBuffer);
+
+		// Shoutout to the single worst bug I have encountered in writing this godforsaken mod
+		Strategies.PushSpriteSmoother.TemporarilyDisablePushSpriteSmoothing = true;
+		Draw.SpriteBatch.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend, SamplerState.PointClamp, DepthStencilState.None, RasterizerState.CullNone, null, Matrix.Identity);
+		Draw.SpriteBatch.Draw(GameplayBuffers.Gameplay, Vector2.Zero, Color.White);
+		Draw.SpriteBatch.End();
+		Strategies.PushSpriteSmoother.TemporarilyDisablePushSpriteSmoothing = false;
+		
+
+
+		Engine.Instance.GraphicsDevice.SetRenderTarget(GameplayBuffers.Gameplay);
+		Engine.Instance.GraphicsDevice.Clear(Color.Transparent);
+
+		GameplayRenderer.Begin();
+
+		// Now render just this entity and copy it in at subpixel-precise position
+		orig(self);
+
+		GameplayRenderer.End();
+		
+
+		Engine.Instance.GraphicsDevice.SetRenderTarget(renderer.LargeGameplayBuffer);
+
+		Strategies.PushSpriteSmoother.TemporarilyDisablePushSpriteSmoothing = true;
+		Draw.SpriteBatch.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend, SamplerState.PointClamp, DepthStencilState.None, RasterizerState.CullNone, null, Matrix.Identity);
+		Draw.SpriteBatch.Draw(GameplayBuffers.Gameplay, offset, Color.White);
+		Draw.SpriteBatch.End();
+		Strategies.PushSpriteSmoother.TemporarilyDisablePushSpriteSmoothing = false;
+		
+		Engine.Instance.GraphicsDevice.SetRenderTarget(GameplayBuffers.Gameplay);
+		Engine.Instance.GraphicsDevice.Clear(Color.Transparent);
+
+		// Keep going for things above this entity
+		GameplayRenderer.Begin();
+	}
+
+	private static void Player_Render(On.Celeste.Player.orig_Render orig, Player self)
+	{
+		if (
+			!_currentlyRenderingGameplay
+			|| HiresRenderer.Instance is not { } renderer
+			|| !MotionSmoothingModule.Settings.RenderMadelineWithSubpixels
+		) {
+			orig(self);
+			return;
+		}
+
+		var state = MotionSmoothingHandler.Instance.GetState(self) as IPositionSmoothingState;
+		Vector2 offset = state.SmoothedRealPosition - state.SmoothedRealPosition.Round();
+
+		if (Math.Abs(self.Speed.X) < float.Epsilon)
+		{
+			offset.X = 0;
+		}
+
+		if (Math.Abs(self.Speed.Y) < float.Epsilon)
+		{
+			offset.Y = 0;
+		}
+
+
+
+		// Render the things below this entity.
+		GameplayRenderer.End();
+
+		Engine.Instance.GraphicsDevice.SetRenderTarget(renderer.LargeGameplayBuffer);
+
+		Strategies.PushSpriteSmoother.TemporarilyDisablePushSpriteSmoothing = true;
+		Draw.SpriteBatch.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend, SamplerState.PointClamp, DepthStencilState.None, RasterizerState.CullNone, null, Matrix.Identity);
+		Draw.SpriteBatch.Draw(GameplayBuffers.Gameplay, Vector2.Zero, Color.White);
+		Draw.SpriteBatch.End();
+		Strategies.PushSpriteSmoother.TemporarilyDisablePushSpriteSmoothing = false;
+		
+
+
+		Engine.Instance.GraphicsDevice.SetRenderTarget(GameplayBuffers.Gameplay);
+		Engine.Instance.GraphicsDevice.Clear(Color.Transparent);
+
+		GameplayRenderer.Begin();
+
+		// Now render just this entity and copy it in at subpixel-precise position
+		orig(self);
+
+		GameplayRenderer.End();
+
+
+
+		Engine.Instance.GraphicsDevice.SetRenderTarget(renderer.LargeGameplayBuffer);
+		Strategies.PushSpriteSmoother.TemporarilyDisablePushSpriteSmoothing = true;
+		Draw.SpriteBatch.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend, SamplerState.PointClamp, DepthStencilState.None, RasterizerState.CullNone, null, Matrix.Identity);
+		Draw.SpriteBatch.Draw(GameplayBuffers.Gameplay, offset, Color.White);
+		Draw.SpriteBatch.End();
+		Strategies.PushSpriteSmoother.TemporarilyDisablePushSpriteSmoothing = false;
+		
+		Engine.Instance.GraphicsDevice.SetRenderTarget(GameplayBuffers.Gameplay);
+		Engine.Instance.GraphicsDevice.Clear(Color.Transparent);
+
+		// Keep going for things above this entity
+		GameplayRenderer.Begin();
 	}
 
 	

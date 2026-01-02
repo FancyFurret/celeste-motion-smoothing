@@ -12,6 +12,8 @@ namespace Celeste.Mod.MotionSmoothing.Smoothing.Strategies;
 
 public class PushSpriteSmoother : SmoothingStrategy<PushSpriteSmoother>
 {
+	public static bool TemporarilyDisablePushSpriteSmoothing = false;
+
     private readonly Stack<object> _currentObjects = new();
 
     public void SmoothObject(object obj, IPositionSmoothingState state)
@@ -157,7 +159,7 @@ public class PushSpriteSmoother : SmoothingStrategy<PushSpriteSmoother>
         float depth, byte effects)
     {
         var pos = new Vector2(destinationX, destinationY);
-        if (Instance.Enabled)
+        if (Instance.Enabled && !TemporarilyDisablePushSpriteSmoothing)
             pos = Instance.GetSpritePosition(pos);
         orig(self, texture, sourceX, sourceY, sourceW, sourceH, pos.X, pos.Y, destinationW, destinationH, color,
             originX, originY, rotationSin, rotationCos, depth, effects);
