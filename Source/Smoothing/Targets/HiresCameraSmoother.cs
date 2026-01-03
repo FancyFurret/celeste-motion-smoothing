@@ -155,6 +155,8 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 		On.Celeste.GaussianBlur.Blur += GaussianBlur_Blur;
 
         On.Celeste.BackdropRenderer.Render += BackdropRenderer_Render;
+        IL.Celeste.BackdropRenderer.Render += BackdropRendererRenderHook;
+
         On.Celeste.GameplayRenderer.Render += GameplayRenderer_Render;
 		On.Celeste.Player.Render += Player_Render;
 		On.Monocle.Entity.Render += Entity_Render;
@@ -162,7 +164,6 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
 		On.Celeste.Glitch.Apply += Glitch_Apply;
 
-        On.Celeste.Parallax.Render += Parallax_Render;
         On.Celeste.Godrays.Update += Godrays_Update;
 
         On.Celeste.HudRenderer.RenderContent += HudRenderer_RenderContent;
@@ -240,6 +241,8 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
         On.Celeste.GaussianBlur.Blur -= GaussianBlur_Blur;
 
         On.Celeste.BackdropRenderer.Render -= BackdropRenderer_Render;
+		IL.Celeste.BackdropRenderer.Render -= BackdropRendererRenderHook;
+
         On.Celeste.GameplayRenderer.Render -= GameplayRenderer_Render;
 		On.Celeste.Player.Render -= Player_Render;
 		On.Monocle.Entity.Render -= Entity_Render;
@@ -247,7 +250,6 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
 		On.Celeste.Glitch.Apply -= Glitch_Apply;
 
-        On.Celeste.Parallax.Render -= Parallax_Render;
 		On.Celeste.Godrays.Update -= Godrays_Update;
 
         On.Celeste.HudRenderer.RenderContent -= HudRenderer_RenderContent;
@@ -601,7 +603,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
         // ourselves.
         if (MotionSmoothingModule.Settings.RenderBackgroundHires)
         {
-            // The background very much does *not* get an offset.
+            // The background very much does *not* get an offset, unlike the foreground.
             orig(self, scene);
             _currentlyRenderingBackground = false;
             return;
@@ -625,14 +627,68 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
         // Now draw the parallax-one backgrounds
         _allowParallaxOneBackgrounds = true;
+		_offsetDrawing = true;
 
         orig(self, scene);
 
+		_offsetDrawing = false;
         _currentlyRenderingBackground = false;
 
         HiresRenderer.EnableLargeLevelBuffer();
         Engine.Instance.GraphicsDevice.SetRenderTarget(GameplayBuffers.Level);
     }
+
+	private static void BackdropRendererRenderHook(ILContext il)
+    {
+        var cursor = new ILCursor(il);
+
+		// Emit some IL to add a conditional for drawing each background, so that we can offset only
+		// the parallax-one backgrounds.
+
+		var sceneLocal = new VariableDefinition(il.Import(typeof(Scene)));
+		il.Body.Variables.Add(sceneLocal);
+		
+		if (cursor.TryGotoNext(MoveType.Before,
+			i => i.MatchCallvirt<Backdrop>("Render")))
+		{
+			// Stack: [Backdrop, Scene]
+			
+			ILLabel doRender = cursor.DefineLabel();
+			ILLabel skip = cursor.DefineLabel();
+			
+			// Store Scene, dup Backdrop for our check
+			cursor.Emit(OpCodes.Stloc, sceneLocal);   // Stack: [Backdrop]
+			cursor.Emit(OpCodes.Dup);                  // Stack: [Backdrop, Backdrop]
+			cursor.EmitDelegate(ShouldRenderBackdrop);  // Stack: [Backdrop, bool]
+			cursor.Emit(OpCodes.Brtrue, doRender);     // Stack: [Backdrop]
+			
+			// Skip path: pop the Backdrop and jump past callvirt
+			cursor.Emit(OpCodes.Pop);                  // Stack: []
+			cursor.Emit(OpCodes.Br, skip);
+			
+			// Render path: restore Scene and fall through to callvirt
+			cursor.MarkLabel(doRender);
+			cursor.Emit(OpCodes.Ldloc, sceneLocal);    // Stack: [Backdrop, Scene]
+			
+			// Move past the callvirt to mark the skip label
+			cursor.GotoNext(MoveType.After, i => i.MatchCallvirt<Backdrop>("Render"));
+			cursor.MarkLabel(skip);
+		}
+    }
+
+	private static bool ShouldRenderBackdrop(Backdrop self)
+	{
+		if (
+			MotionSmoothingModule.Settings.RenderBackgroundHires
+			|| !_currentlyRenderingBackground
+		) {
+			return true;
+		}
+
+		bool isParallaxOne = self is Parallax && self.Scroll.X == 1.0 && self.Scroll.Y == 1.0;
+
+		return _allowParallaxOneBackgrounds == isParallaxOne;
+	}
 
 
 
@@ -952,37 +1008,6 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 		}
 		self.vertexCount = num;
 	}
-
-
-
-    public static void Parallax_Render(On.Celeste.Parallax.orig_Render orig, Parallax self, Scene scene)
-    {
-        if (MotionSmoothingModule.Settings.RenderBackgroundHires)
-        {
-            orig(self, scene);
-            return;
-        }
-
-        // We save the parallax-one backgrounds (which should move in lockstep with
-        // the gameplay layer) until after the background has been upscaled, so that
-        // We can draw them with the camera offset. This does mean they're drawn slightly
-        // out of place from where they would normally be if other mods insert draw calls
-        // after background rendering but before gameplay rendering, but in practice this
-        // doesn't pose an issue.
-        if (_currentlyRenderingBackground)
-        {
-            bool isParallaxOne = self.Scroll.X == 1.0 && self.Scroll.Y == 1.0;
-
-            if (isParallaxOne == _allowParallaxOneBackgrounds)
-            {
-                orig(self, scene);
-            }
-
-            return;
-        }
-
-        orig(self, scene);
-    }
 
 
 
