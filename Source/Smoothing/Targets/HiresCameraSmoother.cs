@@ -109,16 +109,21 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
     public static void DestroyLargeTextures()
 	{
-        foreach (var (smallTexture, largeTarget) in _largeExternalTextureMap)
-        {
-            largeTarget.Dispose();
-            _largeExternalTextureMap.Remove(smallTexture);
-        }
+        DestroyExternalLargeTextures();
 
         Logger.Log(LogLevel.Verbose, "MotionSmoothingModule", "Disposed all large external buffers");
 
         _internalLargeTextures.Clear();
         _largeTextures.Clear();
+	}
+
+	public static void DestroyExternalLargeTextures()
+	{
+        foreach (var (smallTexture, largeTarget) in _largeExternalTextureMap)
+        {
+            largeTarget.Dispose();
+            _largeExternalTextureMap.Remove(smallTexture);
+        }
 	}
 
     public static void InitializeLargeTextures()
@@ -456,6 +461,8 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
     private static void PrepareLevelRender(Level level)
     {
+		DestroyExternalLargeTextures();
+
         _offsetDrawing = false;
         _excludeFromOffsetDrawing.Clear();
         _allowParallaxOneBackgrounds = false;
