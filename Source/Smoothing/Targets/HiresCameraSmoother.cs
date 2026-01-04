@@ -49,6 +49,8 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
     // when they get other large buffers drawn into them.
 	private static Dictionary<Texture, VirtualRenderTarget> _largeExternalTextureMap = new Dictionary<Texture, VirtualRenderTarget>();
 
+	private const int MAX_EXTERNAL_BUFFERS = 32;
+
     // This is a set containing just the large versions of large textures, but
     // we also include the four that we enlarge (Level, Gameplay, TempA, and TempB).
     private static HashSet<Texture> _largeTextures = new HashSet<Texture>();
@@ -461,7 +463,11 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
     private static void PrepareLevelRender(Level level)
     {
-		DestroyExternalLargeTextures();
+		if (_largeExternalTextureMap.Count > MAX_EXTERNAL_BUFFERS)
+		{
+			Logger.Log(LogLevel.Verbose, "MotionSmoothingModule", $"Too many large external buffers! ({_largeExternalTextureMap.Count})");
+			DestroyExternalLargeTextures();
+		}
 
         _offsetDrawing = false;
         _excludeFromOffsetDrawing.Clear();
