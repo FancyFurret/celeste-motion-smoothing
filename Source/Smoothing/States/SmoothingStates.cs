@@ -146,6 +146,10 @@ public class LevelZoomSmoothingState : FloatSmoothingState<Level>
 		// like garbage; we make it wait an extra frame when crossing 1
 		// to be sure.
 		if (value < 1 && History[1] >= 1 || value > 1 && History[1] <= 1)
+		{
+			return;
+		}
+		
 		obj.Zoom = Math.Max(value, 0.01f);
 	}
 }

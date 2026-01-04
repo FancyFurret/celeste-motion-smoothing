@@ -33,7 +33,6 @@ public class MotionSmoothingSettings : EverestModuleSettings
     private bool _enabled = true;
     private bool _tasMode = false;
     private int _frameRate = 120;
-    private int _preferredFrameRate = 120;
     private UnlockCameraStrategy _unlockCameraStrategy = UnlockCameraStrategy.Hires;
     private bool _renderBackgroundHires = true;
     private bool _renderMadelineWithSubpixels = true;
@@ -84,7 +83,6 @@ public class MotionSmoothingSettings : EverestModuleSettings
             }
 
             _frameRate = value;
-            _preferredFrameRate = value;
             MotionSmoothingModule.Instance.ApplySettings();
         }
     }
