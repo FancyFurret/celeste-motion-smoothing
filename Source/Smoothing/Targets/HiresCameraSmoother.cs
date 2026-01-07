@@ -1206,8 +1206,6 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
             destinationH *= Scale;
             destinationX *= Scale;
             destinationY *= Scale;
-			originX *= Scale;
-			originY *= Scale;
         }
 
         // If instead we're drawing a natively large texture to a large one or the screen with an offset
@@ -1217,8 +1215,6 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
         {
             destinationX *= Scale;
             destinationY *= Scale;
-			originX *= Scale;
-			originY *= Scale;
         }
 
 
@@ -1312,12 +1308,16 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 					_largeTextures.Add(targetTexture2D);
 				}
 			}
-
+			
 
             if ((bool)_beginCalledField.GetValue(Draw.SpriteBatch))
             {
                 // Since we're drawing something large into the new large buffer,
-                // we ditch the scale exactly like above.
+                // we ditch the scale exactly like above. However, at this point,
+				// we're drawing something large into something large (either officially
+				// or not), but *it's not being scaled*. Since we're applying an inverse
+				// scale matrix to destination coordinates that weren't scaled in the first
+				// place, we have to now multiply them by Scale to offset it.
                 if (_lastSpriteBatchBeginParams is var (sortMode, blendState, samplerState, depthStencilState, rasterizerState, effect, matrix))
                 {	
                     Draw.SpriteBatch.End();
@@ -1326,7 +1326,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
                     // We completely skip the offset check since this can never be an internal
 					// render target.
 
-                    orig(self, texture, sourceX, sourceY, sourceW, sourceH, offsetDestinationX, offsetDestinationY, destinationW, destinationH, color, originX, originY, rotationSin, rotationCos, depth, effects);
+                    orig(self, texture, sourceX, sourceY, sourceW, sourceH, Scale * offsetDestinationX, Scale * offsetDestinationY, destinationW, destinationH, color, originX, originY, rotationSin, rotationCos, depth, effects);
 
                     Draw.SpriteBatch.End();
                     Draw.SpriteBatch.Begin(sortMode, blendState, samplerState, depthStencilState, rasterizerState, effect, matrix);
