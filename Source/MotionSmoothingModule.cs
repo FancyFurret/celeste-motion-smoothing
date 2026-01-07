@@ -451,7 +451,7 @@ public class MotionSmoothingModule : EverestModule
 
 	public static void ReloadLargeTextures()
 	{
-		if (Settings.UnlockCameraStrategy == UnlockCameraStrategy.Hires)
+		if (Settings.UnlockCameraStrategy == UnlockCameraStrategy.Hires && GameplayBuffers.Gameplay is VirtualRenderTarget)
 		{
 			HiresCameraSmoother.InitializeLargeTextures();
 		}

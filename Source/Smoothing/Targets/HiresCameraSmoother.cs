@@ -1206,6 +1206,8 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
             destinationH *= Scale;
             destinationX *= Scale;
             destinationY *= Scale;
+			originX *= Scale;
+			originY *= Scale;
         }
 
         // If instead we're drawing a natively large texture to a large one or the screen with an offset
@@ -1215,6 +1217,8 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
         {
             destinationX *= Scale;
             destinationY *= Scale;
+			originX *= Scale;
+			originY *= Scale;
         }
 
 
