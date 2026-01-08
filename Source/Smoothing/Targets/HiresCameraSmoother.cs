@@ -530,6 +530,43 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
     private static void BloomRenderer_Apply(On.Celeste.BloomRenderer.orig_Apply orig, BloomRenderer self, VirtualRenderTarget target, Scene scene)
     {
+		// This first bit is kind of a goofy fix. We extend the level buffer down and right, since
+		// otherwise there's a gap of background after the gameplay ends (since it's offset). We use
+		// the level buffer itself because it's past the foreground layer, and we can't *just* extend
+		// like this because we're drawing weird offset-pixel stuff in general. This whole dance is
+		// drawing stuff that will be hidden by the 181/180 scale matrix anyway, but it's necessary
+		// because the blurring from the bloom can still reach back up into the visible section!
+		var renderTargets = Draw.SpriteBatch.GraphicsDevice.GetRenderTargets();
+
+		int width = HiresRenderer.OriginalGameplayBuffer?.Width ?? 320;
+		int height = HiresRenderer.OriginalGameplayBuffer?.Height ?? 180;
+
+		Engine.Instance.GraphicsDevice.SetRenderTarget(target);
+
+		Draw.SpriteBatch.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend, SamplerState.PointClamp, DepthStencilState.None, RasterizerState.CullNone, null, Matrix.Identity);
+
+		// Bottom edge: draw the last row one pixel lower
+		Draw.SpriteBatch.Draw(
+			target,
+			new Vector2(0, height - 1),
+			new Rectangle(0, height - 2, width, 1),
+			Color.White
+		);
+
+		// Right edge: draw the last column one pixel further right
+		Draw.SpriteBatch.Draw(
+			target,
+			new Vector2(width - 1, 0),
+			new Rectangle(width - 2, 0, 1, height),
+			Color.White
+		);
+
+		Draw.SpriteBatch.End();
+
+		Engine.Instance.GraphicsDevice.SetRenderTargets(renderTargets);
+
+
+
 		HiresRenderer.EnableLargeTempABuffer();
         HiresRenderer.EnableLargeTempBBuffer();
 
