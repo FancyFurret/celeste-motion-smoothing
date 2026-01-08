@@ -5,7 +5,7 @@ namespace Celeste.Mod.MotionSmoothing.Smoothing;
 
 public static class SmoothingMath
 {
-    private static float SecondsPerUpdate => (float)(1f / MotionSmoothingModule.Settings.GameSpeed);
+    public static float SecondsPerUpdate => (float)(1f / MotionSmoothingModule.Settings.GameSpeed);
 
     public static float Smooth(float[] history, double elapsedSeconds, SmoothingMode mode)
     {

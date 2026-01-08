@@ -29,13 +29,20 @@ public class ActorPushTracker : ToggleableFeature<ActorPushTracker>
 
     public bool ApplyPusherOffset(Actor actor, double elapsedSeconds, SmoothingMode mode, out Vector2 pushed)
     {
+        return ApplyPusherOffset(actor, elapsedSeconds, mode, out pushed, out _);
+    }
+
+    public bool ApplyPusherOffset(Actor actor, double elapsedSeconds, SmoothingMode mode, out Vector2 pushed,
+        out Vector2 pusherVelocity)
+    {
         pushed = Vector2.Zero;
+        pusherVelocity = Vector2.Zero;
 
         var state = MotionSmoothingHandler.Instance.GetState(actor);
         if (state is not IPositionSmoothingState posState)
             return false;
 
-        if (!GetPusherOffset(actor, elapsedSeconds, out var offset))
+        if (!GetPusherOffset(actor, elapsedSeconds, out var offset, out pusherVelocity))
             return false;
 
         pushed = posState.GetLastDrawPosition(mode) + offset;
@@ -44,8 +51,14 @@ public class ActorPushTracker : ToggleableFeature<ActorPushTracker>
 
     public bool GetPusherOffset(Actor actor, double elapsedSeconds, out Vector2 offset)
     {
+        return GetPusherOffset(actor, elapsedSeconds, out offset, out _);
+    }
+
+    public bool GetPusherOffset(Actor actor, double elapsedSeconds, out Vector2 offset, out Vector2 pusherVelocity)
+    {
         var pushed = false;
         offset = Vector2.Zero;
+        pusherVelocity = Vector2.Zero;
 
         if (!_pushers.TryGetValue(actor, out var pushers) || pushers == null)
             return false;
@@ -57,7 +70,8 @@ public class ActorPushTracker : ToggleableFeature<ActorPushTracker>
                 continue;
 
             pushed = true;
-            offset += GetSolidOffset(state, pusher, elapsedSeconds);
+            offset += GetSolidOffset(state, pusher, elapsedSeconds, out var velocity);
+            pusherVelocity += velocity;
         }
 
         return pushed;
@@ -65,27 +79,37 @@ public class ActorPushTracker : ToggleableFeature<ActorPushTracker>
 
     public Vector2 GetSolidOffset(ISmoothingState state, object obj, double elapsedSeconds)
     {
+        return GetSolidOffset(state, obj, elapsedSeconds, out _);
+    }
+
+    public Vector2 GetSolidOffset(ISmoothingState state, object obj, double elapsedSeconds, out Vector2 velocity)
+    {
         var mode = MotionSmoothingModule.Settings.SmoothingMode;
         var interp = mode == SmoothingMode.Interpolate;
-
-        var smoothed = Vector2.Zero;
-        var original = Vector2.Zero;
+        velocity = Vector2.Zero;
 
         if (state is IPositionSmoothingState posState)
         {
             posState.Smooth(obj, elapsedSeconds, mode);
+            // Calculate velocity from position history
+            velocity = (posState.RealPositionHistory[0] - posState.RealPositionHistory[1]) / SmoothingMath.SecondsPerUpdate;
             return posState.GetSmoothedOffset(mode);
         }
 
         if (state is ZipMoverPercentSmoothingState zipMoverState)
         {
-            smoothed = zipMoverState.GetPositionAtPercent((ZipMover)obj,
-                SmoothingMath.Smooth(zipMoverState.History, elapsedSeconds, mode));
-            original = zipMoverState.GetPositionAtPercent((ZipMover)obj,
-                interp ? zipMoverState.History[1] : zipMoverState.History[0]);
+            var smoothedPercent = SmoothingMath.Smooth(zipMoverState.History, elapsedSeconds, mode);
+            var originalPercent = interp ? zipMoverState.History[1] : zipMoverState.History[0];
+            var smoothed = zipMoverState.GetPositionAtPercent((ZipMover)obj, smoothedPercent);
+            var original = zipMoverState.GetPositionAtPercent((ZipMover)obj, originalPercent);
+            // Calculate velocity from position at current and previous percent values
+            var posAtCurrent = zipMoverState.GetPositionAtPercent((ZipMover)obj, zipMoverState.History[0]);
+            var posAtPrev = zipMoverState.GetPositionAtPercent((ZipMover)obj, zipMoverState.History[1]);
+            velocity = (posAtCurrent - posAtPrev) / SmoothingMath.SecondsPerUpdate;
+            return smoothed - original;
         }
 
-        return smoothed - original;
+        return Vector2.Zero;
     }
 
     private static void EngineUpdateHook(On.Monocle.Engine.orig_Update orig, Engine self, GameTime gameTime)
