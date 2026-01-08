@@ -161,6 +161,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
         
 		On.Celeste.GaussianBlur.Blur += GaussianBlur_Blur;
 
+		On.Celeste.BackdropRenderer.Update += BackdropRenderer_Update;
         On.Celeste.BackdropRenderer.Render += BackdropRenderer_Render;
         IL.Celeste.BackdropRenderer.Render += BackdropRendererRenderHook;
 
@@ -172,8 +173,6 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
         On.Celeste.Distort.Render += Distort_Render;
 		On.Celeste.Glitch.Apply += Glitch_Apply;
-
-        On.Celeste.Godrays.Update += Godrays_Update;
 
         On.Celeste.HudRenderer.RenderContent += HudRenderer_RenderContent;
 
@@ -249,6 +248,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
         On.Celeste.GaussianBlur.Blur -= GaussianBlur_Blur;
 
+		On.Celeste.BackdropRenderer.Update -= BackdropRenderer_Update;
         On.Celeste.BackdropRenderer.Render -= BackdropRenderer_Render;
 		IL.Celeste.BackdropRenderer.Render -= BackdropRendererRenderHook;
 
@@ -260,8 +260,6 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
         On.Celeste.Distort.Render -= Distort_Render;
 		On.Celeste.Glitch.Apply -= Glitch_Apply;
-
-		On.Celeste.Godrays.Update -= Godrays_Update;
 
         On.Celeste.HudRenderer.RenderContent -= HudRenderer_RenderContent;
 
@@ -532,6 +530,43 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
     private static void BloomRenderer_Apply(On.Celeste.BloomRenderer.orig_Apply orig, BloomRenderer self, VirtualRenderTarget target, Scene scene)
     {
+		// This first bit is kind of a goofy fix. We extend the level buffer down and right, since
+		// otherwise there's a gap of background after the gameplay ends (since it's offset). We use
+		// the level buffer itself because it's past the foreground layer, and we can't *just* extend
+		// like this because we're drawing weird offset-pixel stuff in general. This whole dance is
+		// drawing stuff that will be hidden by the 181/180 scale matrix anyway, but it's necessary
+		// because the blurring from the bloom can still reach back up into the visible section!
+		var renderTargets = Draw.SpriteBatch.GraphicsDevice.GetRenderTargets();
+
+		int width = HiresRenderer.OriginalGameplayBuffer?.Width ?? 320;
+		int height = HiresRenderer.OriginalGameplayBuffer?.Height ?? 180;
+
+		Engine.Instance.GraphicsDevice.SetRenderTarget(target);
+
+		Draw.SpriteBatch.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend, SamplerState.PointClamp, DepthStencilState.None, RasterizerState.CullNone, null, Matrix.Identity);
+
+		// Bottom edge: draw the last row one pixel lower
+		Draw.SpriteBatch.Draw(
+			target,
+			new Vector2(0, height - 1),
+			new Rectangle(0, height - 2, width, 1),
+			Color.White
+		);
+
+		// Right edge: draw the last column one pixel further right
+		Draw.SpriteBatch.Draw(
+			target,
+			new Vector2(width - 1, 0),
+			new Rectangle(width - 2, 0, 1, height),
+			Color.White
+		);
+
+		Draw.SpriteBatch.End();
+
+		Engine.Instance.GraphicsDevice.SetRenderTargets(renderTargets);
+
+
+
 		HiresRenderer.EnableLargeTempABuffer();
         HiresRenderer.EnableLargeTempBBuffer();
 
@@ -597,7 +632,14 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 		return orig(texture, temp, output, fade, clear, samples, sampleScale, direction, alpha);
     }
 
+	
 
+	private static void BackdropRenderer_Update(On.Celeste.BackdropRenderer.orig_Update orig, BackdropRenderer self, Scene scene)
+	{
+		_disableFloorFunctions = true;
+		orig(self, scene);
+		_disableFloorFunctions = false;
+	}
 
     private static void BackdropRenderer_Render(On.Celeste.BackdropRenderer.orig_Render orig, BackdropRenderer self, Scene scene)
     {
@@ -927,69 +969,6 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 		orig(source, timer, seed, amplitude);
 
 		HiresRenderer.DisableLargeTempABuffer();
-	}
-
-
-
-	private static void Godrays_Update(On.Celeste.Godrays.orig_Update orig, Godrays self, Scene scene)
-	{
-		if (HiresRenderer.Instance is not { } renderer)
-		{
-			orig(self, scene);
-			return;
-		}
-
-		Level level = scene as Level;
-		bool flag = self.IsVisible(level);
-		self.fade = Calc.Approach(self.fade, (float)(flag ? 1 : 0), Engine.DeltaTime);
-		self.Visible = (self.fade > 0f);
-		if (!self.Visible)
-		{
-			return;
-		}
-		Player entity = level.Tracker.GetEntity<Player>();
-		Vector2 vector = Calc.AngleToVector(-1.6707964f, 1f);
-		Vector2 value = new Vector2(-vector.Y, vector.X);
-		int num = 0;
-		for (int i = 0; i < self.rays.Length; i++)
-		{
-			if (self.rays[i].Percent >= 1f)
-			{
-				self.rays[i].Reset();
-			}
-			Godrays.Ray[] array = self.rays;
-			int num2 = i;
-			array[num2].Percent = array[num2].Percent + Engine.DeltaTime / self.rays[i].Duration;
-			Godrays.Ray[] array2 = self.rays;
-			int num3 = i;
-			array2[num3].Y = array2[num3].Y + 8f * Engine.DeltaTime;
-			float percent = self.rays[i].Percent;
-			float num4 = -32f + self.Mod(self.rays[i].X - level.Camera.X * 0.9f, 384f);
-			float num5 = -32f + self.Mod(self.rays[i].Y - level.Camera.Y * 0.9f, 244f);
-			float width = self.rays[i].Width;
-			float length = self.rays[i].Length;
-			Vector2 value2 = new Vector2(num4, num5); // Removed casting
-			Color color = self.rayColor * Ease.CubeInOut(Calc.Clamp(((percent < 0.5f) ? percent : (1f - percent)) * 2f, 0f, 1f)) * self.fade;
-			if (entity != null)
-			{
-				float num6 = (value2 + level.Camera.Position - entity.Position).Length();
-				if (num6 < 64f)
-				{
-					color *= 0.25f + 0.75f * (num6 / 64f);
-				}
-			}
-			VertexPositionColor vertexPositionColor = new VertexPositionColor(new Vector3(value2 + value * width + vector * length, 0f), color);
-			VertexPositionColor vertexPositionColor2 = new VertexPositionColor(new Vector3(value2 - value * width, 0f), color);
-			VertexPositionColor vertexPositionColor3 = new VertexPositionColor(new Vector3(value2 + value * width, 0f), color);
-			VertexPositionColor vertexPositionColor4 = new VertexPositionColor(new Vector3(value2 - value * width - vector * length, 0f), color);
-			self.vertices[num++] = vertexPositionColor;
-			self.vertices[num++] = vertexPositionColor2;
-			self.vertices[num++] = vertexPositionColor3;
-			self.vertices[num++] = vertexPositionColor2;
-			self.vertices[num++] = vertexPositionColor3;
-			self.vertices[num++] = vertexPositionColor4;
-		}
-		self.vertexCount = num;
 	}
 
 
@@ -1366,12 +1345,16 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 					_largeTextures.Add(targetTexture2D);
 				}
 			}
-
+			
 
             if ((bool)_beginCalledField.GetValue(Draw.SpriteBatch))
             {
                 // Since we're drawing something large into the new large buffer,
-                // we ditch the scale exactly like above.
+                // we ditch the scale exactly like above. However, at this point,
+				// we're drawing something large into something large (either officially
+				// or not), but *it's not being scaled*. Since we're applying an inverse
+				// scale matrix to destination coordinates that weren't scaled in the first
+				// place, we have to now multiply them by Scale to offset it.
                 if (_lastSpriteBatchBeginParams is var (sortMode, blendState, samplerState, depthStencilState, rasterizerState, effect, matrix))
                 {	
                     Draw.SpriteBatch.End();
@@ -1380,7 +1363,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
                     // We completely skip the offset check since this can never be an internal
 					// render target.
 
-                    orig(self, texture, sourceX, sourceY, sourceW, sourceH, offsetDestinationX, offsetDestinationY, destinationW, destinationH, color, originX, originY, rotationSin, rotationCos, depth, effects);
+                    orig(self, texture, sourceX, sourceY, sourceW, sourceH, Scale * offsetDestinationX, Scale * offsetDestinationY, destinationW, destinationH, color, originX, originY, rotationSin, rotationCos, depth, effects);
 
                     Draw.SpriteBatch.End();
                     Draw.SpriteBatch.Begin(sortMode, blendState, samplerState, depthStencilState, rasterizerState, effect, matrix);
