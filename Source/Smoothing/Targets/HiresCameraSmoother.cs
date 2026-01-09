@@ -1561,7 +1561,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
             return orig(self);
         }
 
-        return self;
+        return new Vector2((float) Math.Floor(self.X * Scale), (float) Math.Floor(self.Y * Scale)) / Scale;
     }
 
     private delegate Vector2 orig_Ceiling(Vector2 self);
@@ -1573,7 +1573,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
             return orig(self);
         }
 
-        return self;
+        return new Vector2((float) Math.Ceiling(self.X * Scale), (float) Math.Ceiling(self.Y * Scale)) / Scale;
     }
 
     private delegate Vector2 orig_Round(Vector2 self);
@@ -1585,7 +1585,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
             return orig(self);
         }
 
-        return self;
+        return new Vector2((float) Math.Round(self.X * Scale), (float) Math.Round(self.Y * Scale)) / Scale;
     }
 
 
