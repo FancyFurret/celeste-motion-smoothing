@@ -92,13 +92,7 @@ public static class SmoothingMath
     public static Vector2 Extrapolate(Vector2[] positionHistory, Vector2 speed, double elapsedSeconds)
     {
         #pragma warning disable CS0618
-        var timeScale = Engine.TimeRate * Engine.TimeRateB;
+        return positionHistory[0] + speed * Engine.TimeRate * Engine.TimeRateB * (float)elapsedSeconds;
         #pragma warning restore CS0618
-
-        // When the game is frozen or nearly frozen, skip extrapolation to avoid numerical instability
-        if (timeScale < 0.001f)
-            return positionHistory[0];
-
-        return positionHistory[0] + speed * timeScale * (float)elapsedSeconds;
     }
 }
