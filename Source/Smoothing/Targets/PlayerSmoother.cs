@@ -8,6 +8,12 @@ namespace Celeste.Mod.MotionSmoothing.Smoothing.Targets;
 
 public static class PlayerSmoother
 {
+    /// <summary>
+    /// Threshold for position delta below which we consider the player stationary.
+    /// This prevents jitter from floating-point noise or stale Speed values.
+    /// </summary>
+    private const float JitterThreshold = 0.01f;
+
     public static Vector2 Smooth(Player player, IPositionSmoothingState state, double elapsed, SmoothingMode mode)
     {
         return mode switch
@@ -38,25 +44,46 @@ public static class PlayerSmoother
             return state.OriginalDrawPosition;
 
         if (ActorPushTracker.Instance.ApplyPusherOffset(player, elapsed, SmoothingMode.Extrapolate, out var pushed,
-                out var pusherVelocity))
+                out var pusherPositionHistory))
         {
-            // Compute player's velocity relative to the pusher by subtracting the pusher's velocity
-            // from the player's total velocity (derived from position history).
-            // This ensures consistency with how the pusher's offset is calculated and avoids any
-            // discrepancies that could arise from using player.Speed directly.
-            var playerVelocity = (state.RealPositionHistory[0] - state.RealPositionHistory[1]) / SmoothingMath.SecondsPerUpdate;
-            var relativeVelocity = playerVelocity - pusherVelocity;
+            // If we don't have pusher position history, just return the pushed position
+            if (pusherPositionHistory == null)
+                return pushed;
+
+            // Compute player's velocity relative to the pusher by looking at the change in
+            // relative position between frames. This is more numerically stable than computing
+            // velocities separately and subtracting, because if the player moved with the pusher,
+            // the relative position change will be exactly zero.
+            var relativePosCurrent = state.RealPositionHistory[0] - pusherPositionHistory[0];
+            var relativePosPrev = state.RealPositionHistory[1] - pusherPositionHistory[1];
+            var relativePositionDelta = relativePosCurrent - relativePosPrev;
+
+            // If the relative position delta is very small, treat as stationary relative to pusher
+            if (relativePositionDelta.LengthSquared() < JitterThreshold * JitterThreshold)
+                return pushed;
+
+            var relativeVelocity = relativePositionDelta / SmoothingMath.SecondsPerUpdate;
 
             // Check if the player is inverted and flip the Y velocity accordingly
             if (GravityHelperImports.IsPlayerInverted?.Invoke() == true)
                 relativeVelocity.Y *= -1;
 
             #pragma warning disable CS0618
-            return pushed + relativeVelocity * Engine.TimeRate * Engine.TimeRateB * (float)elapsed;
+            var timeScale = Engine.TimeRate * Engine.TimeRateB;
             #pragma warning restore CS0618
+            return pushed + relativeVelocity * timeScale * (float)elapsed;
         }
 
-        // Check if the player is inverted and flip the speed accordingly
+        // For non-pusher case, check if player is actually moving based on position history.
+        // This is more reliable than using player.Speed, which can have residual values
+        // even when the player is stationary (e.g., after game freeze/unfreeze).
+        var positionDelta = state.RealPositionHistory[0] - state.RealPositionHistory[1];
+        if (positionDelta.LengthSquared() < JitterThreshold * JitterThreshold)
+            return state.OriginalDrawPosition;
+
+        // Use position history to derive velocity, but blend with player.Speed for responsiveness.
+        // player.Speed gives us the intended direction immediately, while position history
+        // confirms actual movement. We use player.Speed but only if position history shows movement.
         var speed = player.Speed;
         if (GravityHelperImports.IsPlayerInverted?.Invoke() == true)
             speed.Y *= -1;

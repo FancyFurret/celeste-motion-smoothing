@@ -71,16 +71,34 @@ public static class SmoothingMath
         #pragma warning restore CS0618
     }
 
+    /// <summary>
+    /// Threshold for position delta below which we consider the entity stationary.
+    /// This prevents jitter from floating-point noise when entities are not moving.
+    /// </summary>
+    private const float JitterThreshold = 0.01f;
+
     public static Vector2 Extrapolate(Vector2[] positionHistory, double elapsedSeconds)
     {
-        var speed = (positionHistory[0] - positionHistory[1]) / SecondsPerUpdate;
+        var positionDelta = positionHistory[0] - positionHistory[1];
+
+        // If the position delta is very small, treat the entity as stationary to prevent jitter
+        if (positionDelta.LengthSquared() < JitterThreshold * JitterThreshold)
+            return positionHistory[0];
+
+        var speed = positionDelta / SecondsPerUpdate;
         return Extrapolate(positionHistory, speed, elapsedSeconds);
     }
 
     public static Vector2 Extrapolate(Vector2[] positionHistory, Vector2 speed, double elapsedSeconds)
     {
         #pragma warning disable CS0618
-        return positionHistory[0] + speed * Engine.TimeRate * Engine.TimeRateB * (float)elapsedSeconds;
+        var timeScale = Engine.TimeRate * Engine.TimeRateB;
         #pragma warning restore CS0618
+
+        // When the game is frozen or nearly frozen, skip extrapolation to avoid numerical instability
+        if (timeScale < 0.001f)
+            return positionHistory[0];
+
+        return positionHistory[0] + speed * timeScale * (float)elapsedSeconds;
     }
 }
