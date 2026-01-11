@@ -1,6 +1,7 @@
 using Celeste.Mod.MotionSmoothing.Interop;
 using Celeste.Mod.MotionSmoothing.Smoothing.States;
 using Celeste.Mod.MotionSmoothing.Utilities;
+using IL.Celeste.Mod.Registry.DecalRegistryHandlers;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using Mono.Cecil.Cil;
@@ -536,18 +537,28 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 		// like this because we're drawing weird offset-pixel stuff in general. This whole dance is
 		// drawing stuff that will be hidden by the 181/180 scale matrix anyway, but it's necessary
 		// because the blurring from the bloom can still reach back up into the visible section!
+        HiresRenderer.EnableLargeTempABuffer();
+        HiresRenderer.EnableLargeTempBBuffer();
+
 		var renderTargets = Draw.SpriteBatch.GraphicsDevice.GetRenderTargets();
 
-		int width = HiresRenderer.OriginalGameplayBuffer?.Width ?? 320;
+        // Copy the level buffer into tempA since we can't draw from a texture into itself.
+        Engine.Instance.GraphicsDevice.SetRenderTarget(GameplayBuffers.TempA);
+
+        Draw.SpriteBatch.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend, SamplerState.PointClamp, DepthStencilState.None, RasterizerState.CullNone, null, Matrix.Identity);
+		Draw.SpriteBatch.Draw(GameplayBuffers.Level, Vector2.Zero, Color.White);
+		Draw.SpriteBatch.End();
+
+        int width = HiresRenderer.OriginalGameplayBuffer?.Width ?? 320;
 		int height = HiresRenderer.OriginalGameplayBuffer?.Height ?? 180;
 
-		Engine.Instance.GraphicsDevice.SetRenderTarget(target);
+		Engine.Instance.GraphicsDevice.SetRenderTarget(GameplayBuffers.Level);
 
 		Draw.SpriteBatch.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend, SamplerState.PointClamp, DepthStencilState.None, RasterizerState.CullNone, null, Matrix.Identity);
 
 		// Bottom edge: draw the last row one pixel lower
 		Draw.SpriteBatch.Draw(
-			target,
+			GameplayBuffers.TempA,
 			new Vector2(0, height - 1),
 			new Rectangle(0, height - 2, width, 1),
 			Color.White
@@ -555,7 +566,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
 		// Right edge: draw the last column one pixel further right
 		Draw.SpriteBatch.Draw(
-			target,
+			GameplayBuffers.TempA,
 			new Vector2(width - 1, 0),
 			new Rectangle(width - 2, 0, 1, height),
 			Color.White
@@ -566,9 +577,6 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 		Engine.Instance.GraphicsDevice.SetRenderTargets(renderTargets);
 
 
-
-		HiresRenderer.EnableLargeTempABuffer();
-        HiresRenderer.EnableLargeTempBBuffer();
 
         // This fixes issues with offsets happening in SJ's bloom masks.
         _excludeFromOffsetDrawing.Add(GameplayBuffers.Level.Target);
@@ -832,7 +840,9 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
 		var player = MotionSmoothingHandler.Instance.Player;
 
-		return player?.Holding?.Entity == self || self == player;
+		return player?.Holding?.Entity == self
+			|| self == player
+			|| self is Strawberry { Golden: true } strawberry && strawberry.Follower.Leader != null;
 	}
 
 	private static void RenderEntityAtSubpixelPosition(Entity self)
@@ -844,18 +854,35 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
 		var state = MotionSmoothingHandler.Instance.GetState(self) as IPositionSmoothingState;
 
-		var player = MotionSmoothingHandler.Instance.Player;
-
 		Vector2 offset = state.SmoothedRealPosition - state.SmoothedRealPosition.Round();
+		Vector2 spriteOffset = Vector2.Zero;
 
-		if (Math.Abs(player.Speed.X) < float.Epsilon)
+		if (self is Strawberry strawberry)
 		{
-			offset.X = 0;
+			// The visual-only bobbing animation of strawberry interacts really badly
+			// with position smoothing, so we just disable it, add the offset into ours,
+			// and then put it back later (necessary since it only gets set at 60fps).
+			spriteOffset = new Vector2(strawberry.sprite.X, strawberry.sprite.Y);
+
+			offset += spriteOffset;
+			
+			strawberry.sprite.X = 0;
+			strawberry.sprite.Y = 0;
 		}
 
-		if (Math.Abs(player.Speed.Y) < float.Epsilon)
+		else
 		{
-			offset.Y = 0;
+			var player = MotionSmoothingHandler.Instance.Player;
+
+			if (Math.Abs(player.Speed.X) < float.Epsilon)
+			{
+				offset.X = 0;
+			}
+
+			if (Math.Abs(player.Speed.Y) < float.Epsilon)
+			{
+				offset.Y = 0;
+			}
 		}
 
 		// Render the things below this entity.
@@ -881,6 +908,15 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 		self.Render();
 
 		GameplayRenderer.End();
+
+
+
+		// If we messed with a strawberry, put it back
+		if (self is Strawberry strawberry2)
+		{
+			strawberry2.sprite.X = spriteOffset.X;
+			strawberry2.sprite.Y = spriteOffset.Y;
+		}
 		
 
 		Engine.Instance.GraphicsDevice.SetRenderTarget(renderer.LargeGameplayBuffer);
@@ -1561,7 +1597,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
             return orig(self);
         }
 
-        return self;
+        return new Vector2((float) Math.Floor(self.X * Scale), (float) Math.Floor(self.Y * Scale)) / Scale;
     }
 
     private delegate Vector2 orig_Ceiling(Vector2 self);
@@ -1573,7 +1609,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
             return orig(self);
         }
 
-        return self;
+        return new Vector2((float) Math.Ceiling(self.X * Scale), (float) Math.Ceiling(self.Y * Scale)) / Scale;
     }
 
     private delegate Vector2 orig_Round(Vector2 self);
@@ -1585,7 +1621,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
             return orig(self);
         }
 
-        return self;
+        return new Vector2((float) Math.Round(self.X * Scale), (float) Math.Round(self.Y * Scale)) / Scale;
     }
 
 

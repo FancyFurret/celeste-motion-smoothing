@@ -5,7 +5,7 @@ namespace Celeste.Mod.MotionSmoothing.Smoothing;
 
 public static class SmoothingMath
 {
-    private static float SecondsPerUpdate => (float)(1f / MotionSmoothingModule.Settings.GameSpeed);
+    public static float SecondsPerUpdate => (float)(1f / MotionSmoothingModule.Settings.GameSpeed);
 
     public static float Smooth(float[] history, double elapsedSeconds, SmoothingMode mode)
     {
@@ -71,9 +71,21 @@ public static class SmoothingMath
         #pragma warning restore CS0618
     }
 
+    /// <summary>
+    /// Threshold for position delta below which we consider the entity stationary.
+    /// This prevents jitter from floating-point noise when entities are not moving.
+    /// </summary>
+    private const float JitterThreshold = 0.01f;
+
     public static Vector2 Extrapolate(Vector2[] positionHistory, double elapsedSeconds)
     {
-        var speed = (positionHistory[0] - positionHistory[1]) / SecondsPerUpdate;
+        var positionDelta = positionHistory[0] - positionHistory[1];
+
+        // If the position delta is very small, treat the entity as stationary to prevent jitter
+        if (positionDelta.LengthSquared() < JitterThreshold * JitterThreshold)
+            return positionHistory[0];
+
+        var speed = positionDelta / SecondsPerUpdate;
         return Extrapolate(positionHistory, speed, elapsedSeconds);
     }
 
