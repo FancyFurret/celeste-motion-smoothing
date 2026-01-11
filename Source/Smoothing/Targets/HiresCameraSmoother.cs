@@ -537,18 +537,28 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 		// like this because we're drawing weird offset-pixel stuff in general. This whole dance is
 		// drawing stuff that will be hidden by the 181/180 scale matrix anyway, but it's necessary
 		// because the blurring from the bloom can still reach back up into the visible section!
+        HiresRenderer.EnableLargeTempABuffer();
+        HiresRenderer.EnableLargeTempBBuffer();
+
 		var renderTargets = Draw.SpriteBatch.GraphicsDevice.GetRenderTargets();
 
-		int width = HiresRenderer.OriginalGameplayBuffer?.Width ?? 320;
+        // Copy the level buffer into tempA since we can't draw from a texture into itself.
+        Engine.Instance.GraphicsDevice.SetRenderTarget(GameplayBuffers.TempA);
+
+        Draw.SpriteBatch.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend, SamplerState.PointClamp, DepthStencilState.None, RasterizerState.CullNone, null, Matrix.Identity);
+		Draw.SpriteBatch.Draw(GameplayBuffers.Level, Vector2.Zero, Color.White);
+		Draw.SpriteBatch.End();
+
+        int width = HiresRenderer.OriginalGameplayBuffer?.Width ?? 320;
 		int height = HiresRenderer.OriginalGameplayBuffer?.Height ?? 180;
 
-		Engine.Instance.GraphicsDevice.SetRenderTarget(target);
+		Engine.Instance.GraphicsDevice.SetRenderTarget(GameplayBuffers.Level);
 
 		Draw.SpriteBatch.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend, SamplerState.PointClamp, DepthStencilState.None, RasterizerState.CullNone, null, Matrix.Identity);
 
 		// Bottom edge: draw the last row one pixel lower
 		Draw.SpriteBatch.Draw(
-			target,
+			GameplayBuffers.TempA,
 			new Vector2(0, height - 1),
 			new Rectangle(0, height - 2, width, 1),
 			Color.White
@@ -556,7 +566,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
 		// Right edge: draw the last column one pixel further right
 		Draw.SpriteBatch.Draw(
-			target,
+			GameplayBuffers.TempA,
 			new Vector2(width - 1, 0),
 			new Rectangle(width - 2, 0, 1, height),
 			Color.White
@@ -567,9 +577,6 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 		Engine.Instance.GraphicsDevice.SetRenderTargets(renderTargets);
 
 
-
-		HiresRenderer.EnableLargeTempABuffer();
-        HiresRenderer.EnableLargeTempBBuffer();
 
         // This fixes issues with offsets happening in SJ's bloom masks.
         _excludeFromOffsetDrawing.Add(GameplayBuffers.Level.Target);
