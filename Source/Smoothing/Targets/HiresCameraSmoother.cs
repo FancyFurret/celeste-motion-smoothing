@@ -835,7 +835,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
 		return player?.Holding?.Entity == self
 			|| self == player
-			|| self is Strawberry { Golden: true };
+			|| self is Strawberry { Golden: true } strawberry && strawberry.Follower.Leader != null;
 	}
 
 	private static void RenderEntityAtSubpixelPosition(Entity self)
