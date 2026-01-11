@@ -1,6 +1,7 @@
 using Celeste.Mod.MotionSmoothing.Interop;
 using Celeste.Mod.MotionSmoothing.Smoothing.States;
 using Celeste.Mod.MotionSmoothing.Utilities;
+using IL.Celeste.Mod.Registry.DecalRegistryHandlers;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using Mono.Cecil.Cil;
@@ -847,8 +848,22 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 		var state = MotionSmoothingHandler.Instance.GetState(self) as IPositionSmoothingState;
 
 		Vector2 offset = state.SmoothedRealPosition - state.SmoothedRealPosition.Round();
+		Vector2 spriteOffset = Vector2.Zero;
 
-		if (!(self is Strawberry))
+		if (self is Strawberry strawberry)
+		{
+			// The visual-only bobbing animation of strawberry interacts really badly
+			// with position smoothing, so we just disable it, add the offset into ours,
+			// and then put it back later (necessary since it only gets set at 60fps).
+			spriteOffset = new Vector2(strawberry.sprite.X, strawberry.sprite.Y);
+
+			offset += spriteOffset;
+			
+			strawberry.sprite.X = 0;
+			strawberry.sprite.Y = 0;
+		}
+
+		else
 		{
 			var player = MotionSmoothingHandler.Instance.Player;
 
@@ -886,6 +901,15 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 		self.Render();
 
 		GameplayRenderer.End();
+
+
+
+		// If we messed with a strawberry, put it back
+		if (self is Strawberry strawberry2)
+		{
+			strawberry2.sprite.X = spriteOffset.X;
+			strawberry2.sprite.Y = spriteOffset.Y;
+		}
 		
 
 		Engine.Instance.GraphicsDevice.SetRenderTarget(renderer.LargeGameplayBuffer);
