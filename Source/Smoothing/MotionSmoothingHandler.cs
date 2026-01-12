@@ -1,8 +1,10 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using Celeste.Mod.MotionSmoothing.Interop;
 using Celeste.Mod.MotionSmoothing.Smoothing.States;
 using Celeste.Mod.MotionSmoothing.Smoothing.Strategies;
+using Celeste.Mod.MotionSmoothing.Smoothing.Targets;
 using Celeste.Mod.MotionSmoothing.Utilities;
 using Microsoft.Xna.Framework;
 using Monocle;
@@ -31,7 +33,7 @@ public class MotionSmoothingHandler : ToggleableFeature<MotionSmoothingHandler>
     public override void Load()
     {
         base.Load();
-        SpeedrunToolImports.RegisterSaveLoadAction?.Invoke(null, (_, _) => SmoothAllObjects(), null, null, null, null);
+        SpeedrunToolImports.RegisterSaveLoadAction?.Invoke(null, OnSpeedRunToolLoadState, null, null, null, null);
     }
 
     public override void Enable()
@@ -312,5 +314,18 @@ public class MotionSmoothingHandler : ToggleableFeature<MotionSmoothingHandler>
             GraphicsComponent => new ComponentSmoothingState(),
             _ => null
         };
+    }
+
+    private void OnSpeedRunToolLoadState(Dictionary<Type, Dictionary<string, object>> savedValues, Level level)
+    {
+        SmoothAllObjects();
+
+        if (
+            MotionSmoothingModule.Settings.UnlockCameraStrategy == UnlockCameraStrategy.Hires
+            && MotionSmoothingModule.Settings.RenderMadelineWithSubpixels
+        ) {
+            HiresCameraSmoother.EnableHiresDistort();
+            HiresCameraSmoother.InitializeLargeTextures();
+        }
     }
 }
