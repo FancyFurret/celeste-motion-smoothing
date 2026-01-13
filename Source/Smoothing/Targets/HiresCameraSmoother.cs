@@ -159,7 +159,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
         On.Celeste.BloomRenderer.Apply += BloomRenderer_Apply;
         IL.Celeste.BloomRenderer.Apply += BloomRendererApplyHook;
-        
+
 		On.Celeste.GaussianBlur.Blur += GaussianBlur_Blur;
 
 		On.Celeste.BackdropRenderer.Update += BackdropRenderer_Update;
@@ -174,6 +174,8 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
         On.Celeste.Distort.Render += Distort_Render;
 		On.Celeste.Glitch.Apply += Glitch_Apply;
+
+		IL.Celeste.SeekerBarrierRenderer.OnRenderBloom += SeekerBarrierRendererRenderHook;
 
         On.Celeste.HudRenderer.RenderContent += HudRenderer_RenderContent;
 
@@ -261,6 +263,8 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
         On.Celeste.Distort.Render -= Distort_Render;
 		On.Celeste.Glitch.Apply -= Glitch_Apply;
+
+		IL.Celeste.SeekerBarrierRenderer.OnRenderBloom -= SeekerBarrierRendererRenderHook;
 
         On.Celeste.HudRenderer.RenderContent -= HudRenderer_RenderContent;
 
@@ -1005,6 +1009,26 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 		orig(source, timer, seed, amplitude);
 
 		HiresRenderer.DisableLargeTempABuffer();
+	}
+
+
+
+	private static void SeekerBarrierRendererRenderHook(ILContext il)
+	{
+		ILCursor cursor = new ILCursor(il);
+
+		// Find Draw.Line(Vector2, Vector2, Color)
+		if (cursor.TryGotoNext(MoveType.Before,
+			instr => instr.MatchCall(typeof(Draw).GetMethod("Line", [typeof(Vector2), typeof(Vector2), typeof(Color)]))))
+		{
+			// Backtrack to Color.get_White. The second Vector2 is on the stack right before this
+			if (cursor.TryGotoPrev(MoveType.Before,
+			instr => instr.MatchCall<Color>("get_White")))
+			{
+				// Round the Vector2 currently on top of the stack
+				cursor.Emit(OpCodes.Call, typeof(Calc).GetMethod("Round", [typeof(Vector2)]));
+			}
+		}
 	}
 
 
