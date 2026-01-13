@@ -101,6 +101,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 	public static void EnableHiresDistort()
 	{
         GFX.FxDistort = _fxHiresDistort;
+		_needSmallBufferSizeUpdate = true;
 	}
 
 	public static void DisableHiresDistort()

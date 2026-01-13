@@ -30,10 +30,12 @@ public class MotionSmoothingHandler : ToggleableFeature<MotionSmoothingHandler>
     private long _lastTicks;
     private bool _positionsWereUpdated;
 
+	private bool _wasEnabled = false;
+
     public override void Load()
     {
         base.Load();
-        SpeedrunToolImports.RegisterSaveLoadAction?.Invoke(null, OnSpeedRunToolLoadState, null, null, null, null);
+        SpeedrunToolImports.RegisterSaveLoadAction?.Invoke(null, SpeedrunToolAfterLoadState, null, null, SpeedrunToolBeforeLoadState, null);
     }
 
     public override void Enable()
@@ -316,16 +318,15 @@ public class MotionSmoothingHandler : ToggleableFeature<MotionSmoothingHandler>
         };
     }
 
-    private void OnSpeedRunToolLoadState(Dictionary<Type, Dictionary<string, object>> savedValues, Level level)
+	private void SpeedrunToolBeforeLoadState(Level level)
     {
-        SmoothAllObjects();
+		_wasEnabled = MotionSmoothingModule.Settings.Enabled;
+		MotionSmoothingModule.Settings.Enabled = false;
+    }
 
-        if (
-            MotionSmoothingModule.Settings.UnlockCameraStrategy == UnlockCameraStrategy.Hires
-            && MotionSmoothingModule.Settings.RenderMadelineWithSubpixels
-        ) {
-            HiresCameraSmoother.EnableHiresDistort();
-            HiresCameraSmoother.InitializeLargeTextures();
-        }
+    private void SpeedrunToolAfterLoadState(Dictionary<Type, Dictionary<string, object>> savedValues, Level level)
+    {
+		MotionSmoothingModule.Settings.Enabled = _wasEnabled;
+        SmoothAllObjects();
     }
 }
