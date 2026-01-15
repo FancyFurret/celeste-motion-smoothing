@@ -30,12 +30,9 @@ public class MotionSmoothingHandler : ToggleableFeature<MotionSmoothingHandler>
     private long _lastTicks;
     private bool _positionsWereUpdated;
 
-	private bool _wasEnabled = false;
-
     public override void Load()
     {
         base.Load();
-        SpeedrunToolImports.RegisterSaveLoadAction?.Invoke(null, SpeedrunToolAfterLoadState, null, null, SpeedrunToolBeforeLoadState, null);
     }
 
     public override void Enable()
@@ -216,7 +213,7 @@ public class MotionSmoothingHandler : ToggleableFeature<MotionSmoothingHandler>
         Instance.SmoothScreenWipe(self);
     }
 
-    private void SmoothAllObjects()
+    public void SmoothAllObjects()
     {
         if (Engine.Scene is not Level level) return;
 
@@ -316,17 +313,5 @@ public class MotionSmoothingHandler : ToggleableFeature<MotionSmoothingHandler>
             GraphicsComponent => new ComponentSmoothingState(),
             _ => null
         };
-    }
-
-	private void SpeedrunToolBeforeLoadState(Level level)
-    {
-		_wasEnabled = MotionSmoothingModule.Settings.Enabled;
-		MotionSmoothingModule.Settings.Enabled = false;
-    }
-
-    private void SpeedrunToolAfterLoadState(Dictionary<Type, Dictionary<string, object>> savedValues, Level level)
-    {
-		MotionSmoothingModule.Settings.Enabled = _wasEnabled;
-        SmoothAllObjects();
     }
 }
