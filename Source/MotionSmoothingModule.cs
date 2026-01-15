@@ -28,6 +28,8 @@ public class MotionSmoothingModule : EverestModule
     public bool InLevel => Engine.Scene is Level || Engine.Scene is LevelLoader ||
                            Engine.Scene is LevelExit || Engine.Scene is Emulator;
 
+	private bool _wasEnabled = false;
+
     public MotionSmoothingModule()
     {
         Instance = this;
@@ -62,12 +64,9 @@ public class MotionSmoothingModule : EverestModule
 
     public override void Load()
     {
-        DisableInliningPushSprite();
+		typeof(MotionSmoothingExports).ModInterop();
 
-        typeof(MotionSmoothingExports).ModInterop();
-        typeof(GravityHelperImports).ModInterop();
-        typeof(SpeedrunToolImports).ModInterop();
-        CelesteTasInterop.Load();
+        DisableInliningPushSprite();
 
         UpdateEveryNTicks.Load();
         MotionSmoothing.Load();
@@ -88,8 +87,6 @@ public class MotionSmoothingModule : EverestModule
 		On.Celeste.Godrays.Update += Godrays_Update;
 
         DisableMacOSVSync();
-
-        ApplySettings();
     }
 
     public override void Unload()
@@ -112,6 +109,19 @@ public class MotionSmoothingModule : EverestModule
 
         EnableMacOSVSync();
     }
+
+	public override void Initialize()
+	{
+        typeof(GravityHelperImports).ModInterop();
+        typeof(SpeedrunToolImports).ModInterop();
+        CelesteTasInterop.Load();
+
+		SpeedrunToolImports.RegisterSaveLoadAction?.Invoke(null, SpeedrunToolAfterLoadState, null, null, SpeedrunToolBeforeLoadState, null);
+
+		ApplySettings();
+	}
+
+
 
     public override void LoadContent(bool firstLoad)
     {
@@ -377,6 +387,20 @@ public class MotionSmoothingModule : EverestModule
 
         On.Monocle.Commands.Vsync -= VsyncHook;
         On.Celeste.MenuOptions.SetVSync -= SetVSyncHook;
+    }
+
+
+
+	private void SpeedrunToolBeforeLoadState(Level level)
+    {
+		_wasEnabled = Settings.Enabled;
+		Settings.Enabled = false;
+    }
+
+    private void SpeedrunToolAfterLoadState(Dictionary<Type, Dictionary<string, object>> savedValues, Level level)
+    {
+		Settings.Enabled = _wasEnabled;
+        MotionSmoothing.SmoothAllObjects();
     }
 
 

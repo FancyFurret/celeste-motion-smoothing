@@ -6,14 +6,3 @@
       Version: 1.4673.0
     - Name: DisplayMessageCommand
       Version: 1.0.4
-  OptionalDependencies:
-    - Name: SpeedrunTool
-      Version: 3.22.0
-    - Name: GravityHelper
-      Version: 1.2.0
-    - Name: SpirialisHelper
-      Version: 1.0.8
-    - Name: ExtendedCameraDynamics
-      Version: 1.1.2
-    - Name: ExtendedVariantMode
-      Version: 0.47.6
