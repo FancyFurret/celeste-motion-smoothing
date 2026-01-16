@@ -11,7 +11,9 @@ namespace Celeste.Mod.MotionSmoothing.Smoothing.Targets;
 
 public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
 {
-    private const float ZoomScaleMultiplier = 181f / 180f;
+    public static float ZoomScale = 181f / 180f;
+
+	public static Matrix ZoomMatrix = Matrix.CreateScale(ZoomScale);
     private const int HiresPixelSize = 1080 / 180;
     private const int BorderOffset = HiresPixelSize / 2;
 
@@ -66,12 +68,15 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
     {
         var offset = GetCameraOffset() * HiresPixelSize;
 
+        if (!MotionSmoothingModule.Settings.HideStretchedEdges)
+            offset += new Vector2(BorderOffset, BorderOffset);
+
         return Matrix.CreateTranslation(offset.X, offset.Y, 0);
     }
 
     public static float GetCameraScale()
     {
-        return ZoomScaleMultiplier;
+        return ZoomScale;
     }
 
     public static Vector2 GetSmoothedCameraPosition()
@@ -79,10 +84,37 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
         if (Engine.Scene is Level level)
         {
             var cameraState = (MotionSmoothingHandler.Instance.GetState(level.Camera) as IPositionSmoothingState)!;
-            return cameraState.SmoothedRealPosition;
+            var pos = cameraState.SmoothedRealPosition - new Vector2(.5f, .5f);
+            return pos;
         }
 
         return Vector2.Zero;
+    }
+
+    private static void RenderExtend(Vector2 origin, Vector2 offset, float scale)
+    {
+        const int textureWidth = 320;
+        const int textureHeight = 180;
+
+        if (MotionSmoothingModule.Settings.HideStretchedEdges)
+            return;
+        if (((Level)Engine.Scene).ScreenPadding > 0)
+            return;
+
+        var effect = SaveData.Instance.Assists.MirrorMode ? SpriteEffects.FlipHorizontally : SpriteEffects.None;
+        var texture = GameplayBuffers.Level;
+
+        Draw.SpriteBatch.Draw(texture, origin + offset + new Vector2(0, textureHeight * scale),
+            new Rectangle(0, textureHeight - 1, textureWidth, 1), Color.White, 0.0f, origin, scale, effect, 0.0f);
+
+        Draw.SpriteBatch.Draw(texture, origin + offset + new Vector2(textureWidth * scale, 0),
+            new Rectangle(textureWidth - 1, 0, 1, textureHeight), Color.White, 0.0f, origin, scale, effect, 0.0f);
+
+        Draw.SpriteBatch.Draw(texture, origin + offset + new Vector2(0, -1 * scale),
+            new Rectangle(0, 0, textureWidth, 1), Color.White, 0.0f, origin, scale, effect, 0.0f);
+
+        Draw.SpriteBatch.Draw(texture, origin + offset + new Vector2(-1 * scale, 0),
+            new Rectangle(0, 0, 1, textureHeight), Color.White, 0.0f, origin, scale, effect, 0.0f);
     }
 
     private static void LevelRenderHook(ILContext il)
@@ -104,6 +136,15 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
             cursor.EmitDelegate(GetCameraScale);
             cursor.EmitMul();
             cursor.EmitStloc(8);
+        }
+
+        // (For the extend mode) Extend the level to the edges
+        cursor.GotoNext(MoveType.After, instr => instr.MatchCallvirt<SpriteBatch>(nameof(SpriteBatch.Draw)));
+        {
+            cursor.EmitLdloc(5); // origin
+            cursor.EmitLdloc(9); // offset
+            cursor.EmitLdloc(8); // scale
+            cursor.EmitDelegate(RenderExtend);
         }
     }
 

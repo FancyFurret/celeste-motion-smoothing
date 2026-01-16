@@ -17,9 +17,9 @@ namespace Celeste.Mod.MotionSmoothing.Smoothing.Targets;
 
 public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 {
-    private const float ZoomScale = 180f / 180f;
+    public static float ZoomScale = 181f / 180f;
 
-	private static Matrix ZoomMatrix = Matrix.CreateScale(ZoomScale);
+	public static Matrix ZoomMatrix = Matrix.CreateScale(ZoomScale);
 
 	public static float Scale = 6f;
 
@@ -539,9 +539,8 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 		// This first bit is kind of a goofy fix. We extend the level buffer down and right, since
 		// otherwise there's a gap of background after the gameplay ends (since it's offset). We use
 		// the level buffer itself because it's past the foreground layer, and we can't *just* extend
-		// like this because we're drawing weird offset-pixel stuff in general. This whole dance is
-		// drawing stuff that will be hidden by the 181/180 scale matrix anyway, but it's necessary
-		// because the blurring from the bloom can still reach back up into the visible section!
+		// like this because we're drawing weird offset-pixel stuff in general. This whole dance is 
+		// necessary because the blurring from the bloom can still reach back up into the visible section!
         HiresRenderer.EnableLargeTempABuffer();
         HiresRenderer.EnableLargeTempBBuffer();
 
@@ -558,8 +557,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
 		Draw.SpriteBatch.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend, SamplerState.PointClamp, DepthStencilState.None, RasterizerState.CullNone, null, Matrix.Identity);
 
-		int scale = (int) Scale;
-		Vector2 offset = GetCameraOffset() * Scale;
+		Vector2 offset = -GetCameraOffset() * Scale;
 		int gapX = (int)Math.Ceiling(offset.X);
 		int gapY = (int)Math.Ceiling(offset.Y);
 

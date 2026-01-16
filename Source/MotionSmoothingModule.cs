@@ -66,6 +66,22 @@ public class MotionSmoothingModule : EverestModule
     {
 		typeof(MotionSmoothingExports).ModInterop();
 
+
+		// Normally we'd do this in Initialize, but SpeedrunTool
+		// crashes on loading a state if we don't do it here.
+		EverestModuleMetadata speedrunTool = new() {
+			Name = "SpeedrunTool",
+			Version = new Version(3, 22, 0)
+		};
+
+		if (Everest.Loader.DependencyLoaded(speedrunTool))
+		{
+			typeof(SpeedrunToolImports).ModInterop();
+			SpeedrunToolImports.RegisterSaveLoadAction?.Invoke(null, SpeedrunToolAfterLoadState, null, null, SpeedrunToolBeforeLoadState, null);
+		}
+
+		
+
         DisableInliningPushSprite();
 
         UpdateEveryNTicks.Load();
@@ -120,17 +136,6 @@ public class MotionSmoothingModule : EverestModule
 		if (Everest.Loader.DependencyLoaded(gravityHelper))
 		{
 			typeof(GravityHelperImports).ModInterop();
-		}
-
-		EverestModuleMetadata speedrunTool = new() {
-			Name = "SpeedrunTool",
-			Version = new Version(1, 2, 0)
-		};
-
-		if (Everest.Loader.DependencyLoaded(speedrunTool))
-		{
-			typeof(SpeedrunToolImports).ModInterop();
-			SpeedrunToolImports.RegisterSaveLoadAction?.Invoke(null, SpeedrunToolAfterLoadState, null, null, SpeedrunToolBeforeLoadState, null);
 		}
         
         CelesteTasInterop.Load();
@@ -204,6 +209,9 @@ public class MotionSmoothingModule : EverestModule
             UnlockedCameraSmoother.Disable();
             HiresCameraSmoother.Enable();
 
+			HiresCameraSmoother.ZoomScale = Settings.HideStretchedEdges ? 181f / 180f : 1;
+			HiresCameraSmoother.ZoomMatrix = Matrix.CreateScale(HiresCameraSmoother.ZoomScale);
+
 			if (Settings.RenderMadelineWithSubpixels)
 			{
 				HiresCameraSmoother.EnableHiresDistort();
@@ -220,6 +228,9 @@ public class MotionSmoothingModule : EverestModule
         {
             HiresCameraSmoother.Disable();
             UnlockedCameraSmoother.Enable();
+
+			UnlockedCameraSmoother.ZoomScale = Settings.HideStretchedEdges ? 181f / 180f : 1;
+			UnlockedCameraSmoother.ZoomMatrix = Matrix.CreateScale(UnlockedCameraSmoother.ZoomScale);
         }
         
         else
@@ -439,17 +450,15 @@ public class MotionSmoothingModule : EverestModule
 		return Vector2.Zero;
     }
 
-	private static Matrix ZoomedMatrix = Matrix.CreateScale(181f / 180f);
-
 	public static Matrix GetLevelZoomMatrix()
 	{
 		switch (Settings.UnlockCameraStrategy)
 		{
 			case UnlockCameraStrategy.Hires:
-				return ZoomedMatrix;
+				return HiresCameraSmoother.ZoomMatrix;
 
 			case UnlockCameraStrategy.Unlock:
-				return ZoomedMatrix;
+				return UnlockedCameraSmoother.ZoomMatrix;
 
 			case UnlockCameraStrategy.Off:
 				return Matrix.Identity;
