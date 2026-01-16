@@ -112,11 +112,28 @@ public class MotionSmoothingModule : EverestModule
 
 	public override void Initialize()
 	{
-        typeof(GravityHelperImports).ModInterop();
-        typeof(SpeedrunToolImports).ModInterop();
-        CelesteTasInterop.Load();
+		EverestModuleMetadata gravityHelper = new() {
+			Name = "GravityHelper",
+			Version = new Version(1, 2, 0)
+		};
 
-		SpeedrunToolImports.RegisterSaveLoadAction?.Invoke(null, SpeedrunToolAfterLoadState, null, null, SpeedrunToolBeforeLoadState, null);
+		if (Everest.Loader.DependencyLoaded(gravityHelper))
+		{
+			typeof(GravityHelperImports).ModInterop();
+		}
+
+		EverestModuleMetadata speedrunTool = new() {
+			Name = "SpeedrunTool",
+			Version = new Version(1, 2, 0)
+		};
+
+		if (Everest.Loader.DependencyLoaded(speedrunTool))
+		{
+			typeof(SpeedrunToolImports).ModInterop();
+			SpeedrunToolImports.RegisterSaveLoadAction?.Invoke(null, SpeedrunToolAfterLoadState, null, null, SpeedrunToolBeforeLoadState, null);
+		}
+        
+        CelesteTasInterop.Load();
 
 		ApplySettings();
 	}
