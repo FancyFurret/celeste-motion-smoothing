@@ -669,8 +669,6 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
         if (!_currentlyRenderingBackground)
         {
             orig(self, scene);
-			UnsmoothCameraPosition(level);
-
 			_disableFloorFunctions = false;
             return;
         }
@@ -960,7 +958,6 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
             return;
         }
 		
-		_disableFloorFunctions = false;
 		_currentlyRenderingBackground = false;
 
 		var renderTargets = Draw.SpriteBatch.GraphicsDevice.GetRenderTargets();
@@ -1012,6 +1009,15 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
 	private static void Glitch_Apply(On.Celeste.Glitch.orig_Apply orig, VirtualRenderTarget source, float timer, float seed, float amplitude)
 	{
+		if (Engine.Scene is not Level level)
+		{
+			orig(source, timer, seed, amplitude);
+			return;
+		}
+
+		_disableFloorFunctions = false;
+		UnsmoothCameraPosition(level);
+
 		HiresRenderer.EnableLargeTempABuffer();
 
 		orig(source, timer, seed, amplitude);
