@@ -17,7 +17,7 @@ namespace Celeste.Mod.MotionSmoothing.Smoothing.Targets;
 
 public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 {
-    private const float ZoomScale = 181f / 180f;
+    private const float ZoomScale = 180f / 180f;
 
 	private static Matrix ZoomMatrix = Matrix.CreateScale(ZoomScale);
 
@@ -32,6 +32,8 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
     private static bool _offsetDrawing = false;
     // Textures can be added to this to prevent offset drawing when they are the target.
     private static HashSet<Texture> _excludeFromOffsetDrawing = new HashSet<Texture>();
+
+	private static bool _scaleSourceAndDestinationForLargeTextures = true;
 
 	// A blunt tool for fixing weird mods like SpirialisHelper. When this is enabled,
 	// spritebatch.begin will use the 181/180 scale matrix.
@@ -552,28 +554,41 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 		Draw.SpriteBatch.Draw(GameplayBuffers.Level, Vector2.Zero, Color.White);
 		Draw.SpriteBatch.End();
 
-        int width = HiresRenderer.OriginalGameplayBuffer?.Width ?? 320;
-		int height = HiresRenderer.OriginalGameplayBuffer?.Height ?? 180;
-
 		Engine.Instance.GraphicsDevice.SetRenderTarget(GameplayBuffers.Level);
 
 		Draw.SpriteBatch.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend, SamplerState.PointClamp, DepthStencilState.None, RasterizerState.CullNone, null, Matrix.Identity);
 
-		// Bottom edge: draw the last row one pixel lower
-		Draw.SpriteBatch.Draw(
-			GameplayBuffers.TempA,
-			new Vector2(0, height - 1),
-			new Rectangle(0, height - 2, width, 1),
-			Color.White
-		);
+		int scale = (int) Scale;
+		Vector2 offset = GetCameraOffset() * Scale;
+		int gapX = (int)Math.Ceiling(offset.X);
+		int gapY = (int)Math.Ceiling(offset.Y);
 
-		// Right edge: draw the last column one pixel further right
-		Draw.SpriteBatch.Draw(
-			GameplayBuffers.TempA,
-			new Vector2(width - 1, 0),
-			new Rectangle(width - 2, 0, 1, height),
-			Color.White
-		);
+		_scaleSourceAndDestinationForLargeTextures = false;
+
+		if (gapX > 0)
+		{
+			var sourceRectangle = new Rectangle(1920 - gapX - 1, 0, 1, 1080 - gapY);
+			var destinationRectangle = new Rectangle(1920 - gapX, 0, gapX, 1080 - gapY);
+			Draw.SpriteBatch.Draw(GameplayBuffers.TempA, destinationRectangle, sourceRectangle, Color.White);
+		}
+
+		// Bottom edge: last contentful row → stretched to fill gap
+		if (gapY > 0)
+		{
+			var sourceRectangle = new Rectangle(0, 1080 - gapY - 1, 1920 - gapX, 1);
+			var destinationRectangle = new Rectangle(0, 1080 - gapY, 1920 - gapX, gapY);
+			Draw.SpriteBatch.Draw(GameplayBuffers.TempA, destinationRectangle, sourceRectangle, Color.White);
+		}
+
+		// Corner: single pixel stretched to fill
+		if (gapX > 0 && gapY > 0)
+		{
+			var sourceRectangle = new Rectangle(1920 - gapX - 1, 1080 - gapY - 1, 1, 1);
+			var destinationRectangle = new Rectangle(1920 - gapX, 1080 - gapY, gapX, gapY);
+			Draw.SpriteBatch.Draw(GameplayBuffers.TempA, destinationRectangle, sourceRectangle, Color.White);
+		}
+
+		_scaleSourceAndDestinationForLargeTextures = true;
 
 		Draw.SpriteBatch.End();
 
@@ -1213,7 +1228,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
     private static void SpriteBatch_Draw2(Action<SpriteBatch, Texture2D, Vector2, Rectangle?, Color> orig, SpriteBatch self, Texture2D texture, Vector2 position, Rectangle? sourceRectangle, Color color)
     {
-        if (_largeTextures.Contains(texture))
+        if (_largeTextures.Contains(texture) && _scaleSourceAndDestinationForLargeTextures)
 		{
 			if (
 				sourceRectangle is Rectangle rect
@@ -1229,7 +1244,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
     private static void SpriteBatch_Draw3(Action<SpriteBatch, Texture2D, Vector2, Rectangle?, Color, float, Vector2, float, SpriteEffects, float> orig, SpriteBatch self, Texture2D texture, Vector2 position, Rectangle? sourceRectangle, Color color, float rotation, Vector2 origin, float scale, SpriteEffects effects, float layerDepth)
     {
-        if (_largeTextures.Contains(texture))
+        if (_largeTextures.Contains(texture) && _scaleSourceAndDestinationForLargeTextures)
 		{
 			origin *= Scale;
 
@@ -1247,7 +1262,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
     private static void SpriteBatch_Draw4(Action<SpriteBatch, Texture2D, Vector2, Rectangle?, Color, float, Vector2, Vector2, SpriteEffects, float> orig, SpriteBatch self, Texture2D texture, Vector2 position, Rectangle? sourceRectangle, Color color, float rotation, Vector2 origin, Vector2 scale, SpriteEffects effects, float layerDepth)
     {
-        if (_largeTextures.Contains(texture))
+        if (_largeTextures.Contains(texture) && _scaleSourceAndDestinationForLargeTextures)
 		{
 			origin *= Scale;
 
@@ -1265,7 +1280,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
     private static void SpriteBatch_Draw6(Action<SpriteBatch, Texture2D, Rectangle, Rectangle?, Color> orig, SpriteBatch self, Texture2D texture, Rectangle destinationRectangle, Rectangle? sourceRectangle, Color color)
     {
-        if (_largeTextures.Contains(texture))
+        if (_largeTextures.Contains(texture) && _scaleSourceAndDestinationForLargeTextures)
 		{
 			if (
 				sourceRectangle is Rectangle rect
@@ -1281,7 +1296,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
     private static void SpriteBatch_Draw7(Action<SpriteBatch, Texture2D, Rectangle, Rectangle?, Color, float, Vector2, SpriteEffects, float> orig, SpriteBatch self, Texture2D texture, Rectangle destinationRectangle, Rectangle? sourceRectangle, Color color, float rotation, Vector2 origin, SpriteEffects effects, float layerDepth)
     {
-        if (_largeTextures.Contains(texture))
+        if (_largeTextures.Contains(texture) && _scaleSourceAndDestinationForLargeTextures)
 		{
 			origin *= Scale;
 
@@ -1322,7 +1337,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
         // If instead we're drawing a natively large texture to a large one or the screen with an offset
         // (e.g. SJ's color grade masks or TempA to its bloom masks), that offset needs to be scaled.
 		// We do *not* scale the width and height because we aren't changing the size of the texture!
-        else if ((_currentRenderTarget == null || _currentlyScaling) && _largeTextures.Contains(texture))
+        else if ((_currentRenderTarget == null || _currentlyScaling) && _largeTextures.Contains(texture) && _scaleSourceAndDestinationForLargeTextures)
         {
             destinationX *= Scale;
             destinationY *= Scale;
