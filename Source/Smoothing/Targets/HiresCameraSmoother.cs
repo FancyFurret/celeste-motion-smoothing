@@ -194,11 +194,10 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
         }
 
         AddHook(new Hook(typeof(SpriteBatch).GetMethod("Begin",
-            new[]
-            {
+            [
                 typeof(SpriteSortMode), typeof(BlendState), typeof(SamplerState),
                 typeof(DepthStencilState), typeof(RasterizerState), typeof(Effect), typeof(Matrix)
-            })!, SpriteBatch_Begin));
+            ])!, SpriteBatch_Begin));
 
         HookSpriteBatchDraw();
 
@@ -208,20 +207,18 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 		AddHook(new Hook(typeof(SpriteBatch).GetMethod("End", Type.EmptyTypes)!, SpriteBatch_End));
 
         AddHook(new Hook(typeof(GraphicsDevice).GetMethod("SetRenderTargets",
-            new[] { typeof(RenderTargetBinding[])
-        })!, GraphicsDevice_SetRenderTargets));
+            [ typeof(RenderTargetBinding[])
+        ])!, GraphicsDevice_SetRenderTargets));
 
         AddHook(new Hook(typeof(VirtualRenderTarget).GetMethod("Dispose", Type.EmptyTypes)!, VirtualRenderTarget_Dispose));
-
-		// AddHook(new Hook(typeof(VirtualRenderTarget).GetMethod("Reload", BindingFlags.NonPublic | BindingFlags.Instance)!, VirtualRenderTarget_Reload));
 
         HookDrawVertices<VertexPositionColor>();
         HookDrawVertices<VertexPositionColorTexture>();
         HookDrawVertices<LightingRenderer.VertexPositionColorMaskTexture>();
 
-        AddHook(new Hook(typeof(Calc).GetMethod(nameof(Calc.Floor), new[] { typeof(Vector2) })!, FloorHook));
-        AddHook(new Hook(typeof(Calc).GetMethod(nameof(Calc.Ceiling), new[] { typeof(Vector2) })!, CeilingHook));
-        AddHook(new Hook(typeof(Calc).GetMethod(nameof(Calc.Round), new[] { typeof(Vector2) })!, RoundHook));
+        AddHook(new Hook(typeof(Calc).GetMethod(nameof(Calc.Floor), [typeof(Vector2)])!, FloorHook));
+        AddHook(new Hook(typeof(Calc).GetMethod(nameof(Calc.Ceiling), [typeof(Vector2)])!, CeilingHook));
+        AddHook(new Hook(typeof(Calc).GetMethod(nameof(Calc.Round), [typeof(Vector2)])!, RoundHook));
 
 		if (MotionSmoothingModule.Settings.RenderMadelineWithSubpixels)
 		{
@@ -499,16 +496,9 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
     private static void AfterLevelClear(Level level)
     {
-        if (MotionSmoothingModule.Settings.RenderBackgroundHires)
-        {
-            _disableFloorFunctions = true;
-            SmoothCameraPosition(level);
-        }
+		_disableFloorFunctions = MotionSmoothingModule.Settings.RenderBackgroundHires;
 
-        else
-        {
-            _disableFloorFunctions = false;
-        }
+		SmoothCameraPosition(level);
     }
 
 
@@ -536,6 +526,14 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
     private static void BloomRenderer_Apply(On.Celeste.BloomRenderer.orig_Apply orig, BloomRenderer self, VirtualRenderTarget target, Scene scene)
     {
+		if (scene is not Level level)
+		{
+			orig(self, target, scene);
+			return;
+		}
+
+		UnsmoothCameraPosition(level);
+
 		// This first bit is kind of a goofy fix. We extend the level buffer down and right, since
 		// otherwise there's a gap of background after the gameplay ends (since it's offset). We use
 		// the level buffer itself because it's past the foreground layer, and we can't *just* extend
@@ -592,6 +590,8 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
 		HiresRenderer.DisableLargeTempABuffer();
         HiresRenderer.DisableLargeTempBBuffer();
+
+		SmoothCameraPosition(level);
     }
 
     // Effect cutouts need to be offset in order for them not to jitter.
@@ -649,35 +649,43 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
 	private static void BackdropRenderer_Update(On.Celeste.BackdropRenderer.orig_Update orig, BackdropRenderer self, Scene scene)
 	{
-		_disableFloorFunctions = true;
+		_disableFloorFunctions = MotionSmoothingModule.Settings.RenderBackgroundHires;
 		orig(self, scene);
 		_disableFloorFunctions = false;
 	}
 
     private static void BackdropRenderer_Render(On.Celeste.BackdropRenderer.orig_Render orig, BackdropRenderer self, Scene scene)
     {
-        if (HiresRenderer.Instance is not { } renderer)
+        if (HiresRenderer.Instance is not { } renderer || scene is not Level level)
         {
             orig(self, scene);
             return;
         }
 
-        // The foreground gets rendered with an offset to move with the gameplay.
+		_disableFloorFunctions = MotionSmoothingModule.Settings.RenderBackgroundHires;
+
+        // The foreground gets rendered like normal, and the smoothed camera position automatically lines it
+		// up with the gameplay. We don't menually offset this because then parallax foregrounds don't work.
         if (!_currentlyRenderingBackground)
         {
-            _offsetDrawing = true;
             orig(self, scene);
-            _offsetDrawing = false;
+			_disableFloorFunctions = false;
             return;
         }
 
-        // When rendering the background Hires, we don't need to composite anything
-        // ourselves.
+        // When rendering the background Hires, we don't need to composite anything ourselves.
         if (MotionSmoothingModule.Settings.RenderBackgroundHires)
         {
+			// Some things like SJ's styleground masks can call BackdropRenderer.Render outside of
+			// Level.Render, so this is a possible place to check for the destination buffer.
+			if (!_largeTextures.Contains(_currentRenderTarget) && _currentRenderTarget is Texture2D texture2D)
+			{
+				HotCreateLargeBuffer(texture2D);
+			}
+
             // The background very much does *not* get an offset, unlike the foreground.
             orig(self, scene);
-            _currentlyRenderingBackground = false;
+			_disableFloorFunctions = false;
             return;
         }
 
@@ -704,10 +712,11 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
         orig(self, scene);
 
 		_offsetDrawing = false;
-        _currentlyRenderingBackground = false;
 
         HiresRenderer.EnableLargeLevelBuffer();
         Engine.Instance.GraphicsDevice.SetRenderTarget(GameplayBuffers.Level);
+
+		_disableFloorFunctions = false;
     }
 
 	private static void BackdropRendererRenderHook(ILContext il)
@@ -949,12 +958,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
             return;
         }
 		
-		_disableFloorFunctions = false;
-
-		if (MotionSmoothingModule.Settings.RenderBackgroundHires)
-        {
-            UnsmoothCameraPosition(level);
-        }
+		_currentlyRenderingBackground = false;
 
 		var renderTargets = Draw.SpriteBatch.GraphicsDevice.GetRenderTargets();
 
@@ -1005,6 +1009,15 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
 	private static void Glitch_Apply(On.Celeste.Glitch.orig_Apply orig, VirtualRenderTarget source, float timer, float seed, float amplitude)
 	{
+		if (Engine.Scene is not Level level)
+		{
+			orig(source, timer, seed, amplitude);
+			return;
+		}
+
+		_disableFloorFunctions = false;
+		UnsmoothCameraPosition(level);
+
 		HiresRenderer.EnableLargeTempABuffer();
 
 		orig(source, timer, seed, amplitude);
@@ -1062,8 +1075,8 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
         if (cursor.TryGotoNext(MoveType.After, instr => instr.MatchLdloc0()))
         {
             cursor.EmitDelegate(GetCameraScale);
-            cursor.EmitCall(typeof(Matrix).GetMethod(nameof(Matrix.CreateScale), new[] { typeof(float) })!);
-            cursor.EmitCall(typeof(Matrix).GetMethod("op_Multiply", new[] { typeof(Matrix), typeof(Matrix) })!);
+            cursor.EmitCall(typeof(Matrix).GetMethod(nameof(Matrix.CreateScale), [typeof(float)])!);
+            cursor.EmitCall(typeof(Matrix).GetMethod("op_Multiply", [typeof(Matrix), typeof(Matrix)])!);
         }
     }
 
@@ -1187,15 +1200,15 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
     {
 		// The bizarre numbering is just the order these overloads appear in the SpriteBatch class.
 
-        AddHook(new Hook(typeof(SpriteBatch).GetMethod("Draw", new[] { typeof(Texture2D), typeof(Vector2), typeof(Rectangle?), typeof(Color) })!, SpriteBatch_Draw2));
+        AddHook(new Hook(typeof(SpriteBatch).GetMethod("Draw", [typeof(Texture2D), typeof(Vector2), typeof(Rectangle?), typeof(Color)])!, SpriteBatch_Draw2));
 
-        AddHook(new Hook(typeof(SpriteBatch).GetMethod("Draw", new[] { typeof(Texture2D), typeof(Vector2), typeof(Rectangle?), typeof(Color), typeof(float), typeof(Vector2), typeof(float), typeof(SpriteEffects), typeof(float) })!, SpriteBatch_Draw3));
+        AddHook(new Hook(typeof(SpriteBatch).GetMethod("Draw", [typeof(Texture2D), typeof(Vector2), typeof(Rectangle?), typeof(Color), typeof(float), typeof(Vector2), typeof(float), typeof(SpriteEffects), typeof(float)])!, SpriteBatch_Draw3));
 
-        AddHook(new Hook(typeof(SpriteBatch).GetMethod("Draw", new[] { typeof(Texture2D), typeof(Vector2), typeof(Rectangle?), typeof(Color), typeof(float), typeof(Vector2), typeof(Vector2), typeof(SpriteEffects), typeof(float) })!, SpriteBatch_Draw4));
+        AddHook(new Hook(typeof(SpriteBatch).GetMethod("Draw", [typeof(Texture2D), typeof(Vector2), typeof(Rectangle?), typeof(Color), typeof(float), typeof(Vector2), typeof(Vector2), typeof(SpriteEffects), typeof(float)])!, SpriteBatch_Draw4));
 
-        AddHook(new Hook(typeof(SpriteBatch).GetMethod("Draw", new[] { typeof(Texture2D), typeof(Rectangle), typeof(Rectangle?), typeof(Color) })!, SpriteBatch_Draw6));
+        AddHook(new Hook(typeof(SpriteBatch).GetMethod("Draw", [typeof(Texture2D), typeof(Rectangle), typeof(Rectangle?), typeof(Color)])!, SpriteBatch_Draw6));
 
-        AddHook(new Hook(typeof(SpriteBatch).GetMethod("Draw", new[] { typeof(Texture2D), typeof(Rectangle), typeof(Rectangle?), typeof(Color), typeof(float), typeof(Vector2), typeof(SpriteEffects), typeof(float) })!, SpriteBatch_Draw7));
+        AddHook(new Hook(typeof(SpriteBatch).GetMethod("Draw", [typeof(Texture2D), typeof(Rectangle), typeof(Rectangle?), typeof(Color), typeof(float), typeof(Vector2), typeof(SpriteEffects), typeof(float)])!, SpriteBatch_Draw7));
     }
 
     private static void SpriteBatch_Draw2(Action<SpriteBatch, Texture2D, Vector2, Rectangle?, Color> orig, SpriteBatch self, Texture2D texture, Vector2 position, Rectangle? sourceRectangle, Color color)
