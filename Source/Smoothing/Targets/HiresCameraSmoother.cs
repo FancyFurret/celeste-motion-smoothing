@@ -230,17 +230,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 			EnableHiresDistort();
 		}
 
-
-
-		EverestModuleMetadata spirialisHelper = new() {
-			Name = "SpirialisHelper",
-			Version = new Version(1, 0, 8)
-		};
-
-		if (Everest.Loader.DependencyLoaded(spirialisHelper))
-		{
-			AddSpirialisHook();
-		}
+		HookUnmaintainedMods();
     }
 
     protected override void Unhook()
@@ -1746,13 +1736,40 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
     }
 
 
+
+	private void HookUnmaintainedMods()
+	{
+		EverestModuleMetadata spirialisHelper = new() {
+			Name = "SpirialisHelper",
+			Version = new Version(1, 0, 8)
+		};
+
+		if (Everest.Loader.DependencyLoaded(spirialisHelper))
+		{
+			AddSpirialisHelperHook();
+		}
+
+
+
+		EverestModuleMetadata vivHelper = new() {
+			Name = "VivHelper",
+			Version = new Version(1, 14, 7)
+		};
+
+		if (Everest.Loader.DependencyLoaded(vivHelper))
+		{
+			AddVivHelperHook();
+		}
+	}
+
+
 	private delegate void orig_DrawTimeStopEntities(object self);
 
-	private Hook spirialisHook;
+	private Hook spirialisHelperHook;
 
 	// noinlining necessary to avoid crashes when the jit attempts inline this method while jitting methods that use this function
 	[MethodImpl(MethodImplOptions.NoInlining)]
-	private void AddSpirialisHook()
+	private void AddSpirialisHelperHook()
 	{
 		Type t_TimeController = Type.GetType("Celeste.Mod.Spirialis.TimeController, Spirialis");
 		MethodInfo m_DrawTimeStopEntities = t_TimeController?.GetMethod(
@@ -1762,7 +1779,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
 		if (m_DrawTimeStopEntities != null)
 		{
-			spirialisHook = new Hook(m_DrawTimeStopEntities, DrawTimeStopEntitiesHook);
+			spirialisHelperHook = new Hook(m_DrawTimeStopEntities, DrawTimeStopEntitiesHook);
 		}
 	}
 
@@ -1771,5 +1788,24 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 		_forceOffsetZoomDrawing = true;
 		orig(self);
 		_forceOffsetZoomDrawing = false;
+	}
+
+
+
+	private ILHook vivHelperHook;
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	private void AddVivHelperHook()
+	{
+		Type t_HoldableBarrierRenderer = Type.GetType("VivHelper.Entities.HoldableBarrierRenderer, VivHelper");
+		MethodInfo m_OnRenderBloom = t_HoldableBarrierRenderer?.GetMethod(
+			"OnRenderBloom",
+			BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic
+		);
+
+		if (m_OnRenderBloom != null)
+		{
+			vivHelperHook = new ILHook(m_OnRenderBloom, SeekerBarrierRendererRenderHook);
+		}
 	}
 }
