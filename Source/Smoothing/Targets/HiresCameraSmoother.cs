@@ -40,6 +40,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 	private static bool _forceOffsetZoomDrawing = false;
     private static bool _currentlyRenderingBackground = false;
 	private static bool _currentlyRenderingGameplay = false;
+    private static bool _currentlyRenderingPlayerOnTopOfFlash = false;
     private static bool _allowParallaxOneBackgrounds = false;
     private static bool _disableFloorFunctions = false;
 
@@ -175,6 +176,8 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
         IL.Monocle.EntityList.RenderOnlyFullMatch += EntityListRenderHook;
         IL.Monocle.EntityList.RenderExcept += EntityListRenderHook;
 
+        On.Celeste.Player.Render += Player_Render;
+
         On.Celeste.Distort.Render += Distort_Render;
 		On.Celeste.Glitch.Apply += Glitch_Apply;
 
@@ -260,6 +263,8 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
         IL.Monocle.EntityList.RenderOnly -= EntityListRenderHook;
         IL.Monocle.EntityList.RenderOnlyFullMatch -= EntityListRenderHook;
         IL.Monocle.EntityList.RenderExcept -= EntityListRenderHook;
+
+        On.Celeste.Player.Render -= Player_Render;
 
         On.Celeste.Distort.Render -= Distort_Render;
 		On.Celeste.Glitch.Apply -= Glitch_Apply;
@@ -410,6 +415,12 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
             }
         }
 
+        if (cursor.TryGotoNext(MoveType.After,
+            instr => instr.MatchLdfld<Level>("flashDrawPlayer")))
+        {
+            cursor.EmitDelegate(FlagCurrentlyRenderingPlayerOnTopOfFlash);
+        }
+
         // Replce the definition of the scale matrix
 
         if (cursor.TryGotoNext(MoveType.After,
@@ -476,6 +487,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
         _excludeFromOffsetDrawing.Clear();
         _allowParallaxOneBackgrounds = false;
         _currentlyRenderingBackground = true;
+        _currentlyRenderingPlayerOnTopOfFlash = false;
         _disableFloorFunctions = false;
 
         ComputeSmoothedCameraData(level);
@@ -501,6 +513,13 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 		_disableFloorFunctions = MotionSmoothingModule.Settings.RenderBackgroundHires;
 
 		SmoothCameraPosition(level);
+    }
+
+
+
+    private static void FlagCurrentlyRenderingPlayerOnTopOfFlash()
+    {
+		_currentlyRenderingPlayerOnTopOfFlash = true;
     }
 
 
@@ -669,7 +688,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
     private static void BackdropRenderer_Render(On.Celeste.BackdropRenderer.orig_Render orig, BackdropRenderer self, Scene scene)
     {
-        if (HiresRenderer.Instance is not { } renderer || scene is not Level level)
+        if (HiresRenderer.Instance is not { } renderer)
         {
             orig(self, scene);
             return;
@@ -961,11 +980,62 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 		GameplayRenderer.Begin();
 	}
 
+    private static void Player_Render(On.Celeste.Player.orig_Render orig, Player self)
+    {
+        if (HiresRenderer.Instance is not { } renderer || !_currentlyRenderingPlayerOnTopOfFlash)
+        {
+            orig(self);
+            return;
+        }
+
+        var renderTargets = Draw.SpriteBatch.GraphicsDevice.GetRenderTargets();
+
+
+
+        var state = MotionSmoothingHandler.Instance.GetState(self) as IPositionSmoothingState;
+
+		Vector2 offset = state.SmoothedRealPosition - state.SmoothedRealPosition.Round();
+
+        if (Math.Abs(self.Speed.X) < float.Epsilon)
+        {
+            offset.X = 0;
+        }
+
+        if (Math.Abs(self.Speed.Y) < float.Epsilon)
+        {
+            offset.Y = 0;
+        }
+
+
+
+        Engine.Instance.GraphicsDevice.SetRenderTarget(renderer.SmallBuffer);
+        Engine.Instance.GraphicsDevice.Clear(Color.Transparent);
+
+        orig(self);
+
+        Draw.SpriteBatch.End();
+
+        Engine.Instance.GraphicsDevice.SetRenderTargets(renderTargets);
+
+        Strategies.PushSpriteSmoother.TemporarilyDisablePushSpriteSmoothing = true;
+		Draw.SpriteBatch.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend, SamplerState.PointClamp, DepthStencilState.None, RasterizerState.CullNone, null, Matrix.Identity);
+		Draw.SpriteBatch.Draw(GameplayBuffers.Gameplay, Vector2.Zero, Color.White);
+		Draw.SpriteBatch.End();
+		Strategies.PushSpriteSmoother.TemporarilyDisablePushSpriteSmoothing = false;
+
+
+
+        // There's still a SpriteBatch.End coming, so we throw in an extra begin
+        Draw.SpriteBatch.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend, SamplerState.PointClamp, DepthStencilState.None, RasterizerState.CullNone, null, Matrix.Identity);
+
+        _currentlyRenderingPlayerOnTopOfFlash = false;
+    }
+
 	
 
     private static void Distort_Render(On.Celeste.Distort.orig_Render orig, Texture2D source, Texture2D map, bool hasDistortion)
     {
-		if (HiresRenderer.Instance is not { } renderer || Engine.Scene is not Level level)
+        if (HiresRenderer.Instance is not { } renderer)
         {
 			orig(source, map, hasDistortion);
             return;
