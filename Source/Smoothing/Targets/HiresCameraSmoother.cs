@@ -17,9 +17,9 @@ namespace Celeste.Mod.MotionSmoothing.Smoothing.Targets;
 
 public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 {
-    private const float ZoomScale = 181f / 180f;
+    public static float ZoomScale = 181f / 180f;
 
-	private static Matrix ZoomMatrix = Matrix.CreateScale(ZoomScale);
+	public static Matrix ZoomMatrix = Matrix.CreateScale(ZoomScale);
 
 	public static float Scale = 6f;
 
@@ -33,11 +33,14 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
     // Textures can be added to this to prevent offset drawing when they are the target.
     private static HashSet<Texture> _excludeFromOffsetDrawing = new HashSet<Texture>();
 
+	private static bool _scaleSourceAndDestinationForLargeTextures = true;
+
 	// A blunt tool for fixing weird mods like SpirialisHelper. When this is enabled,
 	// spritebatch.begin will use the 181/180 scale matrix.
 	private static bool _forceOffsetZoomDrawing = false;
     private static bool _currentlyRenderingBackground = false;
 	private static bool _currentlyRenderingGameplay = false;
+    private static bool _currentlyRenderingPlayerOnTopOfFlash = false;
     private static bool _allowParallaxOneBackgrounds = false;
     private static bool _disableFloorFunctions = false;
 
@@ -173,6 +176,8 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
         IL.Monocle.EntityList.RenderOnlyFullMatch += EntityListRenderHook;
         IL.Monocle.EntityList.RenderExcept += EntityListRenderHook;
 
+        On.Celeste.Player.Render += Player_Render;
+
         On.Celeste.Distort.Render += Distort_Render;
 		On.Celeste.Glitch.Apply += Glitch_Apply;
 
@@ -258,6 +263,8 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
         IL.Monocle.EntityList.RenderOnly -= EntityListRenderHook;
         IL.Monocle.EntityList.RenderOnlyFullMatch -= EntityListRenderHook;
         IL.Monocle.EntityList.RenderExcept -= EntityListRenderHook;
+
+        On.Celeste.Player.Render -= Player_Render;
 
         On.Celeste.Distort.Render -= Distort_Render;
 		On.Celeste.Glitch.Apply -= Glitch_Apply;
@@ -408,6 +415,12 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
             }
         }
 
+        if (cursor.TryGotoNext(MoveType.After,
+            instr => instr.MatchLdfld<Level>("flashDrawPlayer")))
+        {
+            cursor.EmitDelegate(FlagCurrentlyRenderingPlayerOnTopOfFlash);
+        }
+
         // Replce the definition of the scale matrix
 
         if (cursor.TryGotoNext(MoveType.After,
@@ -474,6 +487,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
         _excludeFromOffsetDrawing.Clear();
         _allowParallaxOneBackgrounds = false;
         _currentlyRenderingBackground = true;
+        _currentlyRenderingPlayerOnTopOfFlash = false;
         _disableFloorFunctions = false;
 
         ComputeSmoothedCameraData(level);
@@ -499,6 +513,13 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 		_disableFloorFunctions = MotionSmoothingModule.Settings.RenderBackgroundHires;
 
 		SmoothCameraPosition(level);
+    }
+
+
+
+    private static void FlagCurrentlyRenderingPlayerOnTopOfFlash()
+    {
+		_currentlyRenderingPlayerOnTopOfFlash = true;
     }
 
 
@@ -537,9 +558,8 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 		// This first bit is kind of a goofy fix. We extend the level buffer down and right, since
 		// otherwise there's a gap of background after the gameplay ends (since it's offset). We use
 		// the level buffer itself because it's past the foreground layer, and we can't *just* extend
-		// like this because we're drawing weird offset-pixel stuff in general. This whole dance is
-		// drawing stuff that will be hidden by the 181/180 scale matrix anyway, but it's necessary
-		// because the blurring from the bloom can still reach back up into the visible section!
+		// like this because we're drawing weird offset-pixel stuff in general. This whole dance is 
+		// necessary because the blurring from the bloom can still reach back up into the visible section!
         HiresRenderer.EnableLargeTempABuffer();
         HiresRenderer.EnableLargeTempBBuffer();
 
@@ -552,28 +572,40 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 		Draw.SpriteBatch.Draw(GameplayBuffers.Level, Vector2.Zero, Color.White);
 		Draw.SpriteBatch.End();
 
-        int width = HiresRenderer.OriginalGameplayBuffer?.Width ?? 320;
-		int height = HiresRenderer.OriginalGameplayBuffer?.Height ?? 180;
-
 		Engine.Instance.GraphicsDevice.SetRenderTarget(GameplayBuffers.Level);
 
 		Draw.SpriteBatch.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend, SamplerState.PointClamp, DepthStencilState.None, RasterizerState.CullNone, null, Matrix.Identity);
 
-		// Bottom edge: draw the last row one pixel lower
-		Draw.SpriteBatch.Draw(
-			GameplayBuffers.TempA,
-			new Vector2(0, height - 1),
-			new Rectangle(0, height - 2, width, 1),
-			Color.White
-		);
+		Vector2 offset = -GetCameraOffset() * Scale;
+		int gapX = (int)Math.Ceiling(offset.X);
+		int gapY = (int)Math.Ceiling(offset.Y);
 
-		// Right edge: draw the last column one pixel further right
-		Draw.SpriteBatch.Draw(
-			GameplayBuffers.TempA,
-			new Vector2(width - 1, 0),
-			new Rectangle(width - 2, 0, 1, height),
-			Color.White
-		);
+		_scaleSourceAndDestinationForLargeTextures = false;
+
+		if (gapX > 0)
+		{
+			var sourceRectangle = new Rectangle(1920 - gapX - 1, 0, 1, 1080 - gapY);
+			var destinationRectangle = new Rectangle(1920 - gapX, 0, gapX, 1080 - gapY);
+			Draw.SpriteBatch.Draw(GameplayBuffers.TempA, destinationRectangle, sourceRectangle, Color.White);
+		}
+
+		// Bottom edge: last contentful row → stretched to fill gap
+		if (gapY > 0)
+		{
+			var sourceRectangle = new Rectangle(0, 1080 - gapY - 1, 1920 - gapX, 1);
+			var destinationRectangle = new Rectangle(0, 1080 - gapY, 1920 - gapX, gapY);
+			Draw.SpriteBatch.Draw(GameplayBuffers.TempA, destinationRectangle, sourceRectangle, Color.White);
+		}
+
+		// Corner: single pixel stretched to fill
+		if (gapX > 0 && gapY > 0)
+		{
+			var sourceRectangle = new Rectangle(1920 - gapX - 1, 1080 - gapY - 1, 1, 1);
+			var destinationRectangle = new Rectangle(1920 - gapX, 1080 - gapY, gapX, gapY);
+			Draw.SpriteBatch.Draw(GameplayBuffers.TempA, destinationRectangle, sourceRectangle, Color.White);
+		}
+
+		_scaleSourceAndDestinationForLargeTextures = true;
 
 		Draw.SpriteBatch.End();
 
@@ -656,7 +688,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
     private static void BackdropRenderer_Render(On.Celeste.BackdropRenderer.orig_Render orig, BackdropRenderer self, Scene scene)
     {
-        if (HiresRenderer.Instance is not { } renderer || scene is not Level level)
+        if (HiresRenderer.Instance is not { } renderer)
         {
             orig(self, scene);
             return;
@@ -948,11 +980,62 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 		GameplayRenderer.Begin();
 	}
 
+    private static void Player_Render(On.Celeste.Player.orig_Render orig, Player self)
+    {
+        if (HiresRenderer.Instance is not { } renderer || !_currentlyRenderingPlayerOnTopOfFlash)
+        {
+            orig(self);
+            return;
+        }
+
+        var renderTargets = Draw.SpriteBatch.GraphicsDevice.GetRenderTargets();
+
+
+
+        var state = MotionSmoothingHandler.Instance.GetState(self) as IPositionSmoothingState;
+
+		Vector2 offset = state.SmoothedRealPosition - state.SmoothedRealPosition.Round();
+
+        if (Math.Abs(self.Speed.X) < float.Epsilon)
+        {
+            offset.X = 0;
+        }
+
+        if (Math.Abs(self.Speed.Y) < float.Epsilon)
+        {
+            offset.Y = 0;
+        }
+
+
+
+        Engine.Instance.GraphicsDevice.SetRenderTarget(renderer.SmallBuffer);
+        Engine.Instance.GraphicsDevice.Clear(Color.Transparent);
+
+        orig(self);
+
+        Draw.SpriteBatch.End();
+
+        Engine.Instance.GraphicsDevice.SetRenderTargets(renderTargets);
+
+        Strategies.PushSpriteSmoother.TemporarilyDisablePushSpriteSmoothing = true;
+		Draw.SpriteBatch.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend, SamplerState.PointClamp, DepthStencilState.None, RasterizerState.CullNone, null, Matrix.Identity);
+		Draw.SpriteBatch.Draw(GameplayBuffers.Gameplay, Vector2.Zero, Color.White);
+		Draw.SpriteBatch.End();
+		Strategies.PushSpriteSmoother.TemporarilyDisablePushSpriteSmoothing = false;
+
+
+
+        // There's still a SpriteBatch.End coming, so we throw in an extra begin
+        Draw.SpriteBatch.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend, SamplerState.PointClamp, DepthStencilState.None, RasterizerState.CullNone, null, Matrix.Identity);
+
+        _currentlyRenderingPlayerOnTopOfFlash = false;
+    }
+
 	
 
     private static void Distort_Render(On.Celeste.Distort.orig_Render orig, Texture2D source, Texture2D map, bool hasDistortion)
     {
-		if (HiresRenderer.Instance is not { } renderer || Engine.Scene is not Level level)
+        if (HiresRenderer.Instance is not { } renderer)
         {
 			orig(source, map, hasDistortion);
             return;
@@ -1213,7 +1296,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
     private static void SpriteBatch_Draw2(Action<SpriteBatch, Texture2D, Vector2, Rectangle?, Color> orig, SpriteBatch self, Texture2D texture, Vector2 position, Rectangle? sourceRectangle, Color color)
     {
-        if (_largeTextures.Contains(texture))
+        if (_largeTextures.Contains(texture) && _scaleSourceAndDestinationForLargeTextures)
 		{
 			if (
 				sourceRectangle is Rectangle rect
@@ -1229,7 +1312,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
     private static void SpriteBatch_Draw3(Action<SpriteBatch, Texture2D, Vector2, Rectangle?, Color, float, Vector2, float, SpriteEffects, float> orig, SpriteBatch self, Texture2D texture, Vector2 position, Rectangle? sourceRectangle, Color color, float rotation, Vector2 origin, float scale, SpriteEffects effects, float layerDepth)
     {
-        if (_largeTextures.Contains(texture))
+        if (_largeTextures.Contains(texture) && _scaleSourceAndDestinationForLargeTextures)
 		{
 			origin *= Scale;
 
@@ -1247,7 +1330,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
     private static void SpriteBatch_Draw4(Action<SpriteBatch, Texture2D, Vector2, Rectangle?, Color, float, Vector2, Vector2, SpriteEffects, float> orig, SpriteBatch self, Texture2D texture, Vector2 position, Rectangle? sourceRectangle, Color color, float rotation, Vector2 origin, Vector2 scale, SpriteEffects effects, float layerDepth)
     {
-        if (_largeTextures.Contains(texture))
+        if (_largeTextures.Contains(texture) && _scaleSourceAndDestinationForLargeTextures)
 		{
 			origin *= Scale;
 
@@ -1265,7 +1348,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
     private static void SpriteBatch_Draw6(Action<SpriteBatch, Texture2D, Rectangle, Rectangle?, Color> orig, SpriteBatch self, Texture2D texture, Rectangle destinationRectangle, Rectangle? sourceRectangle, Color color)
     {
-        if (_largeTextures.Contains(texture))
+        if (_largeTextures.Contains(texture) && _scaleSourceAndDestinationForLargeTextures)
 		{
 			if (
 				sourceRectangle is Rectangle rect
@@ -1281,7 +1364,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
     private static void SpriteBatch_Draw7(Action<SpriteBatch, Texture2D, Rectangle, Rectangle?, Color, float, Vector2, SpriteEffects, float> orig, SpriteBatch self, Texture2D texture, Rectangle destinationRectangle, Rectangle? sourceRectangle, Color color, float rotation, Vector2 origin, SpriteEffects effects, float layerDepth)
     {
-        if (_largeTextures.Contains(texture))
+        if (_largeTextures.Contains(texture) && _scaleSourceAndDestinationForLargeTextures)
 		{
 			origin *= Scale;
 
@@ -1322,7 +1405,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
         // If instead we're drawing a natively large texture to a large one or the screen with an offset
         // (e.g. SJ's color grade masks or TempA to its bloom masks), that offset needs to be scaled.
 		// We do *not* scale the width and height because we aren't changing the size of the texture!
-        else if ((_currentRenderTarget == null || _currentlyScaling) && _largeTextures.Contains(texture))
+        else if ((_currentRenderTarget == null || _currentlyScaling) && _largeTextures.Contains(texture) && _scaleSourceAndDestinationForLargeTextures)
         {
             destinationX *= Scale;
             destinationY *= Scale;

@@ -36,6 +36,7 @@ public class MotionSmoothingSettings : EverestModuleSettings
     private UnlockCameraStrategy _unlockCameraStrategy = UnlockCameraStrategy.Hires;
     private bool _renderBackgroundHires = true;
     private bool _renderMadelineWithSubpixels = true;
+	private bool _hideStretchedEdges = true;
     private SmoothingMode _smoothingMode = SmoothingMode.Extrapolate;
     private UpdateMode _updateMode = UpdateMode.Interval;
 
@@ -47,6 +48,7 @@ public class MotionSmoothingSettings : EverestModuleSettings
 
     private TextMenu.Item _renderBackgroundHiresItem;
     private TextMenu.Item _renderMadelineWithSubpixelsItem;
+	private TextMenu.Item _hideStretchedEdgesItem;
 
     public bool Enabled
     {
@@ -143,6 +145,10 @@ public class MotionSmoothingSettings : EverestModuleSettings
             _renderBackgroundHiresItem.Selectable = !shouldDisableRenderBackgroundHires;
 			_renderMadelineWithSubpixelsItem.Disabled = shouldDisableRenderBackgroundHires;
 			_renderMadelineWithSubpixelsItem.Selectable = !shouldDisableRenderBackgroundHires;
+
+			bool shouldDisableHideStretchedEdges = UnlockCameraStrategy == UnlockCameraStrategy.Off;
+            _hideStretchedEdgesItem.Disabled = shouldDisableHideStretchedEdges;
+            _hideStretchedEdgesItem.Selectable = !shouldDisableHideStretchedEdges;
         });
 
         menu.Add(strategySlider);
@@ -240,6 +246,48 @@ public class MotionSmoothingSettings : EverestModuleSettings
 			"Madeline's sprite appear much more smooth and clear when\n" +
             "moving. When not moving, Madeline will always be drawn aligned\n" +
             "to the grid, so that subpixel information cannot be gleaned.\n"
+        );
+    }
+
+
+
+	public bool HideStretchedEdges
+    {
+        get => _hideStretchedEdges;
+        set
+        {
+            _hideStretchedEdges = value;
+            MotionSmoothingModule.Instance.ApplySettings();
+        }
+    }
+
+    public void CreateHideStretchedEdgesEntry(TextMenu menu, bool inGame)
+    {
+        _hideStretchedEdgesItem = new TextMenu.OnOff(
+            "Hide Stretched Level Edges",
+            _hideStretchedEdges
+        );
+
+        (_hideStretchedEdgesItem as TextMenu.OnOff).Change(value =>
+        {
+            HideStretchedEdges = value;
+        });
+
+        // Set initial state based on UnlockCameraStrategy
+        bool shouldDisable = UnlockCameraStrategy == UnlockCameraStrategy.Off;
+        _hideStretchedEdgesItem.Disabled = shouldDisable;
+        _hideStretchedEdgesItem.Selectable = !shouldDisable;
+
+        menu.Add(_hideStretchedEdgesItem);
+
+        _hideStretchedEdgesItem.AddDescription(
+            menu,
+            "Camera smoothing causes gaps on the right and bottom screen\n" +
+            "edges, since offsetting the gameplay leaves nothing to fill\n" +
+            "the gap. This setting very slightly zooms in the level to hide\n" +
+			"these, but it can be turned off to stretch the level edges to\n" +
+            "the screen edges to cover the gaps instead. It's recommended to\n" +
+			"leave this on."
         );
     }
 
