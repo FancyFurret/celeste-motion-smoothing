@@ -157,10 +157,12 @@ public class MotionSmoothingModule : EverestModule
 
         if (!Settings.Enabled)
         {
-            ApplyFramerate();
-
             UpdateEveryNTicks.Disable();
             DecoupledGameTick.Disable();
+
+            // Reset to vanilla 60fps - must be done after disabling strategies
+            // so the vanilla Game.Tick() uses the correct target elapsed time
+            Engine.Instance.TargetElapsedTime = TimeSpan.FromTicks(166667);
 
             MotionSmoothing.Disable();
             UnlockedCameraSmoother.Disable();
