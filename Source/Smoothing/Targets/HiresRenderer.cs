@@ -132,8 +132,10 @@ public class HiresRenderer : Renderer
 		int vanillaWidth = GameplayBuffers.Gameplay.Width;
 		int vanillaHeight = GameplayBuffers.Gameplay.Height;
 
-		int largeWidth = vanillaWidth * 6;
-		int largeHeight = vanillaHeight * 6;
+		int largeWidth = 1920;
+		int largeHeight = 1080;
+
+		HiresCameraSmoother.Scale = 1920f / vanillaWidth;
 
 		Instance = new HiresRenderer(
 			GameplayBuffers.Create(largeWidth, largeHeight),

@@ -1,7 +1,6 @@
 using Celeste.Mod.MotionSmoothing.Interop;
 using Celeste.Mod.MotionSmoothing.Smoothing.States;
 using Celeste.Mod.MotionSmoothing.Utilities;
-using IL.Celeste.Mod.Registry.DecalRegistryHandlers;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using Mono.Cecil.Cil;
@@ -135,7 +134,8 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
     public static void InitializeLargeTextures()
 	{
-		HiresRenderer.Create();
+		try { HiresRenderer.Create(); }
+		catch (Exception) { return; }
 
         if (HiresRenderer.Instance is not { } renderer)
         {
@@ -230,17 +230,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 			EnableHiresDistort();
 		}
 
-
-
-		EverestModuleMetadata spirialisHelper = new() {
-			Name = "SpirialisHelper",
-			Version = new Version(1, 0, 8)
-		};
-
-		if (Everest.Loader.DependencyLoaded(spirialisHelper))
-		{
-			AddSpirialisHook();
-		}
+		HookUnmaintainedMods();
     }
 
     protected override void Unhook()
@@ -540,7 +530,11 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
     {
 		// Note that we leave the scale intact here! That's because the SpriteBatch.Draw
 		// hook will strip it off later.
-        return Matrix.CreateScale(Scale * ZoomScale) * Engine.ScreenMatrix;
+
+		// This is also the one single place that we use 6f instead of the actual scale value.
+		// This is to account for ExCameraDynamics adjusting the scale value itself -- we leave
+		// this alone to prevent the whole level from being stuck in the top-left.
+        return Matrix.CreateScale(6f * ZoomScale) * Engine.ScreenMatrix;
     }
 
 
@@ -576,6 +570,9 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
 		Draw.SpriteBatch.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend, SamplerState.PointClamp, DepthStencilState.None, RasterizerState.CullNone, null, Matrix.Identity);
 
+		int width = GameplayBuffers.Level.Width;
+		int height = GameplayBuffers.Level.Height;
+
 		Vector2 offset = -GetCameraOffset() * Scale;
 		int gapX = (int)Math.Ceiling(offset.X);
 		int gapY = (int)Math.Ceiling(offset.Y);
@@ -584,24 +581,24 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
 		if (gapX > 0)
 		{
-			var sourceRectangle = new Rectangle(1920 - gapX - 1, 0, 1, 1080 - gapY);
-			var destinationRectangle = new Rectangle(1920 - gapX, 0, gapX, 1080 - gapY);
+			var sourceRectangle = new Rectangle(width - gapX - 1, 0, 1, height - gapY);
+			var destinationRectangle = new Rectangle(width - gapX, 0, gapX, height - gapY);
 			Draw.SpriteBatch.Draw(GameplayBuffers.TempA, destinationRectangle, sourceRectangle, Color.White);
 		}
 
 		// Bottom edge: last contentful row → stretched to fill gap
 		if (gapY > 0)
 		{
-			var sourceRectangle = new Rectangle(0, 1080 - gapY - 1, 1920 - gapX, 1);
-			var destinationRectangle = new Rectangle(0, 1080 - gapY, 1920 - gapX, gapY);
+			var sourceRectangle = new Rectangle(0, height - gapY - 1, width - gapX, 1);
+			var destinationRectangle = new Rectangle(0, height - gapY, width - gapX, gapY);
 			Draw.SpriteBatch.Draw(GameplayBuffers.TempA, destinationRectangle, sourceRectangle, Color.White);
 		}
 
 		// Corner: single pixel stretched to fill
 		if (gapX > 0 && gapY > 0)
 		{
-			var sourceRectangle = new Rectangle(1920 - gapX - 1, 1080 - gapY - 1, 1, 1);
-			var destinationRectangle = new Rectangle(1920 - gapX, 1080 - gapY, gapX, gapY);
+			var sourceRectangle = new Rectangle(width - gapX - 1, height - gapY - 1, 1, 1);
+			var destinationRectangle = new Rectangle(width - gapX, height - gapY, gapX, gapY);
 			Draw.SpriteBatch.Draw(GameplayBuffers.TempA, destinationRectangle, sourceRectangle, Color.White);
 		}
 
@@ -1746,13 +1743,54 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
     }
 
 
-	private delegate void orig_DrawTimeStopEntities(object self);
 
-	private Hook spirialisHook;
+	private void HookUnmaintainedMods()
+	{
+		EverestModuleMetadata spirialisHelper = new() {
+			Name = "SpirialisHelper",
+			Version = new Version(1, 0, 8)
+		};
+
+		if (Everest.Loader.DependencyLoaded(spirialisHelper))
+		{
+			AddSpirialisHelperHook();
+		}
+
+
+
+		EverestModuleMetadata vivHelper = new() {
+			Name = "VivHelper",
+			Version = new Version(1, 14, 7)
+		};
+
+		if (Everest.Loader.DependencyLoaded(vivHelper))
+		{
+			AddVivHelperHook();
+		}
+
+
+
+		EverestModuleMetadata extendedCameraDynamics = new() {
+			Name = "ExtendedCameraDynamics",
+			Version = new Version(1, 1, 2)
+		};
+
+		// Check for exactly v1.1.2
+		if (Everest.Loader.TryGetDependency(extendedCameraDynamics, out var extendedCameraDynamicsModule))
+		{
+			if (extendedCameraDynamicsModule.Metadata.Version.Equals(new Version(1, 1, 2)))
+			{
+				AddExtendedCameraDynamicsHook();
+			}
+		}
+	}
+
+
+	private delegate void orig_DrawTimeStopEntities(object self);
 
 	// noinlining necessary to avoid crashes when the jit attempts inline this method while jitting methods that use this function
 	[MethodImpl(MethodImplOptions.NoInlining)]
-	private void AddSpirialisHook()
+	private void AddSpirialisHelperHook()
 	{
 		Type t_TimeController = Type.GetType("Celeste.Mod.Spirialis.TimeController, Spirialis");
 		MethodInfo m_DrawTimeStopEntities = t_TimeController?.GetMethod(
@@ -1762,7 +1800,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
 		if (m_DrawTimeStopEntities != null)
 		{
-			spirialisHook = new Hook(m_DrawTimeStopEntities, DrawTimeStopEntitiesHook);
+			AddHook(new Hook(m_DrawTimeStopEntities, DrawTimeStopEntitiesHook));
 		}
 	}
 
@@ -1771,5 +1809,64 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 		_forceOffsetZoomDrawing = true;
 		orig(self);
 		_forceOffsetZoomDrawing = false;
+	}
+
+
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	private void AddVivHelperHook()
+	{
+		Type t_HoldableBarrierRenderer = Type.GetType("VivHelper.Entities.HoldableBarrierRenderer, VivHelper");
+		MethodInfo m_OnRenderBloom = t_HoldableBarrierRenderer?.GetMethod(
+			"OnRenderBloom",
+			BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic
+		);
+
+		if (m_OnRenderBloom != null)
+		{
+			AddHook(new ILHook(m_OnRenderBloom, SeekerBarrierRendererRenderHook));
+		}
+	}
+
+
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	private void AddExtendedCameraDynamicsHook()
+	{
+		Type t_CameraZoomHooks = Type.GetType("Celeste.Mod.ExCameraDynamics.Code.Hooks.CameraZoomHooks, ExCameraDynamics");
+		
+		MethodInfo m_ResizeVanillaBuffers = t_CameraZoomHooks?.GetMethod(
+			"ResizeVanillaBuffers",
+			BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic
+		);
+
+		if (m_ResizeVanillaBuffers != null)
+		{
+			AddHook(new Hook(m_ResizeVanillaBuffers, ResizeVanillaBuffersHook));
+		}
+
+		MethodInfo m_ResizeBufferToZoom = t_CameraZoomHooks?.GetMethod(
+			"ResizeBufferToZoom",
+			BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic
+		);
+
+		if (m_ResizeBufferToZoom != null)
+		{
+			AddHook(new Hook(m_ResizeBufferToZoom, ResizeBufferToZoomHook));
+		}
+	}
+
+	private delegate void orig_ResizeVanillaBuffers(float zoomTarget);
+	private static void ResizeVanillaBuffersHook(orig_ResizeVanillaBuffers orig, float zoomTarget)
+	{
+		orig(zoomTarget);
+		InitializeLargeTextures();
+	}
+
+	private delegate void orig_ResizeBufferToZoom(VirtualRenderTarget target);
+	private static void ResizeBufferToZoomHook(orig_ResizeBufferToZoom orig, VirtualRenderTarget target)
+	{
+		target = MotionSmoothingModule.GetResizableBuffer(target);
+		orig(target);
 	}
 }
