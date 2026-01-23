@@ -135,7 +135,8 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
     public static void InitializeLargeTextures()
 	{
-		HiresRenderer.Create();
+		try { HiresRenderer.Create(); }
+		catch (Exception) { return; }
 
         if (HiresRenderer.Instance is not { } renderer)
         {
@@ -1760,12 +1761,26 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 		{
 			AddVivHelperHook();
 		}
+
+
+
+		EverestModuleMetadata extendedCameraDynamics = new() {
+			Name = "ExtendedCameraDynamics",
+			Version = new Version(1, 1, 2)
+		};
+
+		// Check for exactly v1.1.2
+		if (Everest.Loader.TryGetDependency(extendedCameraDynamics, out var extendedCameraDynamicsModule))
+		{
+			if (extendedCameraDynamicsModule.Metadata.Version.Equals(new Version(1, 1, 2)))
+			{
+				AddExtendedCameraDynamicsHook();
+			}
+		}
 	}
 
 
 	private delegate void orig_DrawTimeStopEntities(object self);
-
-	private Hook spirialisHelperHook;
 
 	// noinlining necessary to avoid crashes when the jit attempts inline this method while jitting methods that use this function
 	[MethodImpl(MethodImplOptions.NoInlining)]
@@ -1779,7 +1794,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
 		if (m_DrawTimeStopEntities != null)
 		{
-			spirialisHelperHook = new Hook(m_DrawTimeStopEntities, DrawTimeStopEntitiesHook);
+			AddHook(new Hook(m_DrawTimeStopEntities, DrawTimeStopEntitiesHook));
 		}
 	}
 
@@ -1792,8 +1807,6 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
 
 
-	private ILHook vivHelperHook;
-
 	[MethodImpl(MethodImplOptions.NoInlining)]
 	private void AddVivHelperHook()
 	{
@@ -1805,7 +1818,51 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
 		if (m_OnRenderBloom != null)
 		{
-			vivHelperHook = new ILHook(m_OnRenderBloom, SeekerBarrierRendererRenderHook);
+			AddHook(new ILHook(m_OnRenderBloom, SeekerBarrierRendererRenderHook));
 		}
+	}
+
+
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	private void AddExtendedCameraDynamicsHook()
+	{
+		Type t_CameraZoomHooks = Type.GetType("Celeste.Mod.ExCameraDynamics.Code.Hooks.CameraZoomHooks, ExCameraDynamics");
+		
+		MethodInfo m_ResizeVanillaBuffers = t_CameraZoomHooks?.GetMethod(
+			"ResizeVanillaBuffers",
+			BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic
+		);
+
+		if (m_ResizeVanillaBuffers != null)
+		{
+			AddHook(new Hook(m_ResizeVanillaBuffers, ResizeVanillaBuffersHook));
+		}
+
+		MethodInfo m_ResizeBufferToZoom = t_CameraZoomHooks?.GetMethod(
+			"ResizeBufferToZoom",
+			BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic
+		);
+
+		if (m_ResizeBufferToZoom != null)
+		{
+			AddHook(new Hook(m_ResizeBufferToZoom, ResizeBufferToZoomHook));
+		}
+	}
+
+	private delegate void orig_ResizeVanillaBuffers(float zoomTarget);
+	private static void ResizeVanillaBuffersHook(orig_ResizeVanillaBuffers orig, float zoomTarget)
+	{
+		orig(zoomTarget);
+		InitializeLargeTextures();
+		Console.WriteLine("---------------------- RELOADED");
+	}
+
+	private delegate void orig_ResizeBufferToZoom(VirtualRenderTarget target);
+	private static void ResizeBufferToZoomHook(orig_ResizeBufferToZoom orig, VirtualRenderTarget target)
+	{
+		target = MotionSmoothingModule.GetResizableBuffer(target);
+		orig(target);
+		Console.WriteLine("---------------------- RELOADED");
 	}
 }
