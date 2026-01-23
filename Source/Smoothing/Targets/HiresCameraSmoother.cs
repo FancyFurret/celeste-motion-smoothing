@@ -1,7 +1,6 @@
 using Celeste.Mod.MotionSmoothing.Interop;
 using Celeste.Mod.MotionSmoothing.Smoothing.States;
 using Celeste.Mod.MotionSmoothing.Utilities;
-using IL.Celeste.Mod.Registry.DecalRegistryHandlers;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using Mono.Cecil.Cil;
@@ -531,7 +530,11 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
     {
 		// Note that we leave the scale intact here! That's because the SpriteBatch.Draw
 		// hook will strip it off later.
-        return Matrix.CreateScale(Scale * ZoomScale) * Engine.ScreenMatrix;
+
+		// This is also the one single place that we use 6f instead of the actual scale value.
+		// This is to account for ExCameraDynamics adjusting the scale value itself -- we leave
+		// this alone to prevent the whole level from being stuck in the top-left.
+        return Matrix.CreateScale(6f * ZoomScale) * Engine.ScreenMatrix;
     }
 
 
