@@ -1855,7 +1855,6 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 	{
 		orig(zoomTarget);
 		InitializeLargeTextures();
-		Console.WriteLine("---------------------- RELOADED");
 	}
 
 	private delegate void orig_ResizeBufferToZoom(VirtualRenderTarget target);
@@ -1863,6 +1862,5 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 	{
 		target = MotionSmoothingModule.GetResizableBuffer(target);
 		orig(target);
-		Console.WriteLine("---------------------- RELOADED");
 	}
 }
