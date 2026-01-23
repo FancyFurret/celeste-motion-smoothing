@@ -567,6 +567,9 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
 		Draw.SpriteBatch.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend, SamplerState.PointClamp, DepthStencilState.None, RasterizerState.CullNone, null, Matrix.Identity);
 
+		int width = GameplayBuffers.Level.Width;
+		int height = GameplayBuffers.Level.Height;
+
 		Vector2 offset = -GetCameraOffset() * Scale;
 		int gapX = (int)Math.Ceiling(offset.X);
 		int gapY = (int)Math.Ceiling(offset.Y);
@@ -575,24 +578,24 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
 		if (gapX > 0)
 		{
-			var sourceRectangle = new Rectangle(1920 - gapX - 1, 0, 1, 1080 - gapY);
-			var destinationRectangle = new Rectangle(1920 - gapX, 0, gapX, 1080 - gapY);
+			var sourceRectangle = new Rectangle(width - gapX - 1, 0, 1, height - gapY);
+			var destinationRectangle = new Rectangle(width - gapX, 0, gapX, height - gapY);
 			Draw.SpriteBatch.Draw(GameplayBuffers.TempA, destinationRectangle, sourceRectangle, Color.White);
 		}
 
 		// Bottom edge: last contentful row → stretched to fill gap
 		if (gapY > 0)
 		{
-			var sourceRectangle = new Rectangle(0, 1080 - gapY - 1, 1920 - gapX, 1);
-			var destinationRectangle = new Rectangle(0, 1080 - gapY, 1920 - gapX, gapY);
+			var sourceRectangle = new Rectangle(0, height - gapY - 1, width - gapX, 1);
+			var destinationRectangle = new Rectangle(0, height - gapY, width - gapX, gapY);
 			Draw.SpriteBatch.Draw(GameplayBuffers.TempA, destinationRectangle, sourceRectangle, Color.White);
 		}
 
 		// Corner: single pixel stretched to fill
 		if (gapX > 0 && gapY > 0)
 		{
-			var sourceRectangle = new Rectangle(1920 - gapX - 1, 1080 - gapY - 1, 1, 1);
-			var destinationRectangle = new Rectangle(1920 - gapX, 1080 - gapY, gapX, gapY);
+			var sourceRectangle = new Rectangle(width - gapX - 1, height - gapY - 1, 1, 1);
+			var destinationRectangle = new Rectangle(width - gapX, height - gapY, gapX, gapY);
 			Draw.SpriteBatch.Draw(GameplayBuffers.TempA, destinationRectangle, sourceRectangle, Color.White);
 		}
 
