@@ -1254,7 +1254,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
         // If we're drawing to a large target, scale.
         if (_largeTextures.Contains(_currentRenderTarget))
         {
-            transformMatrix = transformMatrix * Matrix.CreateScale(Scale);
+            transformMatrix = Matrix.CreateScale(Scale) * transformMatrix;
 
             _currentlyScaling = true;
         }
@@ -1433,11 +1433,8 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
         // we're handling here are when the *source* is large.
 		if (_largeTextures.Contains(texture))
 		{
-			// If we're drawing something large and it's going to be scaled, we need to
-            // not do that scaling to avoid drawing at 36x. Similarly, drawing something
-			// large to the screen should also get unscaled. That's because if a buffer
-            // has become 6x larger, then it definitely used to have a scaling matrix,
-            // and so now it ought not to.
+			// We're drawing a large texture. If the target is also large (or screen), we need
+			// to handle this specially to avoid double-scaling.
 			if (_currentlyScaling || _currentRenderTarget == null)
 			{
                 if ((bool)_beginCalledField.GetValue(Draw.SpriteBatch))
@@ -1445,6 +1442,11 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
                     if (_lastSpriteBatchBeginParams is var (sortMode, blendState, samplerState, depthStencilState, rasterizerState, effect, matrix))
                     {
                         Draw.SpriteBatch.End();
+
+                        // For screen rendering, we need to unscale the matrix since the screen
+                        // expects the large texture to fill the display. For large-to-large
+                        // rendering, both coordinate systems are already at 6x, so we also use
+                        // the unscaled matrix.
                         Draw.SpriteBatch.Begin(sortMode, blendState, samplerState, depthStencilState, rasterizerState, effect, Matrix.CreateScale(1f / Scale) * matrix);
 
                         if (_offsetDrawing && _internalLargeTextures.Contains(_currentRenderTarget) && !_excludeFromOffsetDrawing.Contains(_currentRenderTarget))
@@ -1503,21 +1505,21 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
             if ((bool)_beginCalledField.GetValue(Draw.SpriteBatch))
             {
-                // Since we're drawing something large into the new large buffer,
-                // we ditch the scale exactly like above. However, at this point,
-				// we're drawing something large into something large (either officially
-				// or not), but *it's not being scaled*. Since we're applying an inverse
-				// scale matrix to destination coordinates that weren't scaled in the first
-				// place, we have to now multiply them by Scale to offset it.
+                // We're drawing a large texture into a hot-created large buffer.
+                // Both are at 6x scale, so the matrix should transform world coords
+                // to large buffer coords: Scale(6) * camera. The Begin hook applies
+                // Scale(6) * matrix, so we just pass the original camera matrix and
+                // don't scale the position (wwe do scale down the desintation
+				// coordinates though).
                 if (_lastSpriteBatchBeginParams is var (sortMode, blendState, samplerState, depthStencilState, rasterizerState, effect, matrix))
-                {	
+                {
                     Draw.SpriteBatch.End();
-                    Draw.SpriteBatch.Begin(sortMode, blendState, samplerState, depthStencilState, rasterizerState, effect, Matrix.CreateScale(1f / Scale) * matrix);
+                    Draw.SpriteBatch.Begin(sortMode, blendState, samplerState, depthStencilState, rasterizerState, effect, matrix);
 
                     // We completely skip the offset check since this can never be an internal
 					// render target.
 
-                    orig(self, texture, sourceX, sourceY, sourceW, sourceH, Scale * offsetDestinationX, Scale * offsetDestinationY, destinationW, destinationH, color, originX, originY, rotationSin, rotationCos, depth, effects);
+                    orig(self, texture, sourceX, sourceY, sourceW, sourceH, offsetDestinationX, offsetDestinationY, destinationW / Scale, destinationH / Scale, color, originX, originY, rotationSin, rotationCos, depth, effects);
 
                     Draw.SpriteBatch.End();
                     Draw.SpriteBatch.Begin(sortMode, blendState, samplerState, depthStencilState, rasterizerState, effect, matrix);
