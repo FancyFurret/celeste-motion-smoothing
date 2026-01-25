@@ -36,7 +36,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
 	// A blunt tool for fixing weird mods like SpirialisHelper. When this is enabled,
 	// spritebatch.begin will use the 181/180 scale matrix.
-	private static bool _forceOffsetZoomDrawing = false;
+	private static bool _forceOffsetZoomDrawingToScreen = false;
     private static bool _currentlyRenderingBackground = false;
 	private static bool _currentlyRenderingGameplay = false;
     private static bool _currentlyRenderingPlayerOnTopOfFlash = false;
@@ -214,6 +214,11 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
         AddHook(new Hook(typeof(GraphicsDevice).GetMethod("SetRenderTargets",
             [ typeof(RenderTargetBinding[])
         ])!, GraphicsDevice_SetRenderTargets));
+
+        AddHook(new Hook(
+            typeof(TextureCollection).GetProperty("Item").GetSetMethod(),
+            TextureCollection_SetItem
+        ));
 
         AddHook(new Hook(typeof(VirtualRenderTarget).GetMethod("Dispose", Type.EmptyTypes)!, VirtualRenderTarget_Dispose));
 
@@ -411,8 +416,20 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
             cursor.EmitDelegate(FlagCurrentlyRenderingPlayerOnTopOfFlash);
         }
 
-        // Replce the definition of the scale matrix
 
+
+        // // Debug: disable level clearing to be able to draw buffers
+        // // opaquely to the screen for debugging.
+        // if (cursor.TryGotoNext(
+        //     i => i.MatchCall(typeof(Color), "get_Black")
+        // )) {
+        //     cursor.Index -= 2;
+        //     cursor.RemoveRange(4);
+        // }
+
+
+
+        // Replce the definition of the scale matrix
         if (cursor.TryGotoNext(MoveType.After,
            instr => instr.MatchCallvirt<GraphicsDevice>("set_Viewport")))
         {
@@ -1240,6 +1257,26 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
     }
 
 
+    
+    // This hooks calls like Engine.Graphics.GraphicsDevice.Textures[1] = BloomBuffer,
+    // which otherwise wouldn't use the hot-created buffer.
+    private delegate void orig_TextureCollection_SetItem(TextureCollection self, int index, Texture texture);
+
+    private static void TextureCollection_SetItem(orig_TextureCollection_SetItem orig, TextureCollection self, int index, Texture texture)
+    {
+        // Swap small texture for its large version if one exists
+        if (texture is Texture2D texture2D && _largeExternalTextureMap.TryGetValue(texture2D, out var largeRenderTarget))
+        {
+            if (largeRenderTarget?.Target != null)
+            {
+                texture = largeRenderTarget.Target;
+            }
+        }
+        
+        orig(self, index, texture);
+    }
+
+
 
     private delegate void orig_SpriteBatch_Begin(SpriteBatch self, SpriteSortMode sortMode, BlendState blendState,
         SamplerState samplerState, DepthStencilState depthStencilState, RasterizerState rasterizerState, Effect effect, Matrix transformMatrix);
@@ -1259,7 +1296,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
             _currentlyScaling = true;
         }
 
-		else if (_forceOffsetZoomDrawing && _currentRenderTarget == null)
+		else if (_forceOffsetZoomDrawingToScreen && _currentRenderTarget == null)
 		{
 			transformMatrix = ZoomMatrix * transformMatrix;
 		}
@@ -1414,20 +1451,26 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
         float offsetDestinationY = destinationY;
 
         // Apply the subpixel offset if needed. We only allow offsetting to our own buffers,
-		// or when _forceOffsetZoomDrawing overrides it.
+		// or when _forceOffsetZoomDrawing overrides it and we're drawing to the screen.
         if (
 			(
 				_offsetDrawing
 				&& _internalLargeTextures.Contains(_currentRenderTarget)
 				&& !_excludeFromOffsetDrawing.Contains(_currentRenderTarget)
 			) || (
-				_forceOffsetZoomDrawing && _currentRenderTarget == null
+				_forceOffsetZoomDrawingToScreen && _currentRenderTarget == null
 			)
 		) {
             Vector2 offset = GetCameraOffset();
             offsetDestinationX = destinationX + offset.X * (_currentlyScaling ? 1 : Scale);
             offsetDestinationY = destinationY + offset.Y * (_currentlyScaling ? 1 : Scale);
         }
+
+
+
+        bool sourceAndTargetAreSimilarSize = _currentRenderTarget is Texture2D targetTexture2D
+            && Math.Abs(targetTexture2D.Width - texture.Width) < 8
+			&& Math.Abs(targetTexture2D.Height - texture.Height) < 8;
 
         // We handle scaling when the target is large in the Begin hook, so the only things
         // we're handling here are when the *source* is large.
@@ -1464,17 +1507,17 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
                 return;
 			}
 
-            if (_currentRenderTarget is not Texture2D targetTexture2D)
+
+
+            if (_currentRenderTarget is not Texture2D targetTexture2D2)
             {
                 orig(self, texture, sourceX, sourceY, sourceW, sourceH, offsetDestinationX, offsetDestinationY, destinationW, destinationH, color, originX, originY, rotationSin, rotationCos, depth, effects);
                 return;
-            }
-
-
+			}            
 
             // If we get to this point, then we're drawing something large into something
             // small. Danger! We need to replace that small buffer with a larger one.
-            var createdSuccessfully = HotCreateLargeBuffer(targetTexture2D);
+            var createdSuccessfully = HotCreateLargeBuffer(targetTexture2D2);
 
 			// If we failed to create a large buffer, but we're drawing something into a buffer
 			// that's very nearly the same size as the source, then we can just assume something
@@ -1486,17 +1529,14 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 			// to be large, since it isn't actually. So we use this somewhat sneaky heuristic to
 			// check: if we're drawing with scale, like CelesteNet does, then we don't mark the
 			// target as large.
-			if (
-				!createdSuccessfully
-				&& Math.Abs(targetTexture2D.Width - texture.Width) < 8
-				&& Math.Abs(targetTexture2D.Height - texture.Height) < 8
-			) {
+			if (!createdSuccessfully && sourceAndTargetAreSimilarSize)
+            {
 				bool hasScaling = _lastSpriteBatchBeginParams is (_, _, _, _, _, _, var matrix)
 					&& MatrixHasSignificantScaling(matrix);
 
 				if (!hasScaling)
 				{
-					_largeTextures.Add(targetTexture2D);
+					_largeTextures.Add(targetTexture2D2);
 				}
 			}
 			
@@ -1516,7 +1556,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
                     // We completely skip the offset check since this can never be an internal
 					// render target.
-
+                    Console.WriteLine("Exempted an unofficial large texture from being scaled");
                     orig(self, texture, sourceX, sourceY, sourceW, sourceH, Scale * offsetDestinationX, Scale * offsetDestinationY, destinationW, destinationH, color, originX, originY, rotationSin, rotationCos, depth, effects);
 
                     Draw.SpriteBatch.End();
@@ -1527,13 +1567,42 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 			return;
 		}
 
+        // We've comprehensively handled the case where the source is in _largeTextures,
+        // but there can be cases where it's not but should still be conidered large (when
+        // it happens to be the exact same size as the target).
+        else if (
+            _currentlyScaling
+            && sourceAndTargetAreSimilarSize
+            && (bool)_beginCalledField.GetValue(Draw.SpriteBatch)
+            && _lastSpriteBatchBeginParams is var (sortMode, blendState, samplerState, depthStencilState, rasterizerState, effect, matrix)
+        ) {
+            
+            Draw.SpriteBatch.End();
+            Draw.SpriteBatch.Begin(sortMode, blendState, samplerState, depthStencilState, rasterizerState, effect, Matrix.CreateScale(1f / Scale) * matrix);
+
+            if (_offsetDrawing && _internalLargeTextures.Contains(_currentRenderTarget) && !_excludeFromOffsetDrawing.Contains(_currentRenderTarget))
+            {
+                Vector2 offset = GetCameraOffset();
+                offsetDestinationX = destinationX + offset.X * Scale;
+                offsetDestinationY = destinationY + offset.Y * Scale;
+            }
+
+            Console.WriteLine("Exempted an unofficial large texture from being scaled");
+            orig(self, texture, sourceX, sourceY, sourceW, sourceH, offsetDestinationX, offsetDestinationY, destinationW, destinationH, color, originX, originY, rotationSin, rotationCos, depth, effects);
+
+            Draw.SpriteBatch.End();
+            Draw.SpriteBatch.Begin(sortMode, blendState, samplerState, depthStencilState, rasterizerState, effect, matrix);
+
+            return;
+        }
+
 
 
         orig(self, texture, sourceX, sourceY, sourceW, sourceH, offsetDestinationX, offsetDestinationY, destinationW, destinationH, color, originX, originY, rotationSin, rotationCos, depth, effects);
     }
 
 
-	// Detects when a target appears to 
+
 	private static bool MatrixHasSignificantScaling(Matrix m)
 	{
 		float scaleX = new Vector2(m.M11, m.M12).Length();
@@ -1806,9 +1875,9 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
 	private static void DrawTimeStopEntitiesHook(orig_DrawTimeStopEntities orig, object self)
 	{
-		_forceOffsetZoomDrawing = true;
+		_forceOffsetZoomDrawingToScreen = true;
 		orig(self);
-		_forceOffsetZoomDrawing = false;
+		_forceOffsetZoomDrawingToScreen = false;
 	}
 
 
