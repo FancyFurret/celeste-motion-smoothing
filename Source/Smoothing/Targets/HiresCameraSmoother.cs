@@ -59,8 +59,11 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
     private static HashSet<Texture> _largeTextures = new HashSet<Texture>();
 
     // Meanwhile this just contains the four textures we make and nothing else.
-    // Offsetting the camera position is only allowed when drawing into one of these.
+    // Offsetting the camera position is only allowed when drawing into one of these...
     private static HashSet<Texture> _internalLargeTextures = new HashSet<Texture>();
+
+    // And these! When we draw one into another, it spreads.
+    private static HashSet<Texture> _offsetableLargeTextures = new HashSet<Texture>();
 
 	private static Effect _fxHiresDistort;
 	private static Effect _fxOrigDistort;
@@ -554,27 +557,17 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
         return Matrix.CreateScale(6f * ZoomScale) * Engine.ScreenMatrix;
     }
 
+    
 
-
-    private static void BloomRenderer_Apply(On.Celeste.BloomRenderer.orig_Apply orig, BloomRenderer self, VirtualRenderTarget target, Scene scene)
+    private static void FixLevelEdgesForBloom()
     {
-		if (scene is not Level level)
-		{
-			orig(self, target, scene);
-			return;
-		}
-
-		UnsmoothCameraPosition(level);
-
-		// This first bit is kind of a goofy fix. We extend the level buffer down and right, since
+        // This is kind of a goofy fix. We extend the level buffer down and right, since
 		// otherwise there's a gap of background after the gameplay ends (since it's offset). We use
 		// the level buffer itself because it's past the foreground layer, and we can't *just* extend
 		// like this because we're drawing weird offset-pixel stuff in general. This whole dance is 
 		// necessary because the blurring from the bloom can still reach back up into the visible section!
-        HiresRenderer.EnableLargeTempABuffer();
-        HiresRenderer.EnableLargeTempBBuffer();
 
-		var renderTargets = Draw.SpriteBatch.GraphicsDevice.GetRenderTargets();
+        var renderTargets = Draw.SpriteBatch.GraphicsDevice.GetRenderTargets();
 
         // Copy the level buffer into tempA since we can't draw from a texture into itself.
         Engine.Instance.GraphicsDevice.SetRenderTarget(GameplayBuffers.TempA);
@@ -624,8 +617,25 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 		Draw.SpriteBatch.End();
 
 		Engine.Instance.GraphicsDevice.SetRenderTargets(renderTargets);
+    }
 
+    private static void BloomRenderer_Apply(On.Celeste.BloomRenderer.orig_Apply orig, BloomRenderer self, VirtualRenderTarget target, Scene scene)
+    {
+		if (scene is not Level level)
+		{
+			orig(self, target, scene);
+			return;
+		}
 
+		UnsmoothCameraPosition(level);
+
+        HiresRenderer.EnableLargeTempABuffer();
+        HiresRenderer.EnableLargeTempBBuffer();
+
+        FixLevelEdgesForBloom();
+
+        _offsetableLargeTextures.Clear();
+        _offsetableLargeTextures.Add(GameplayBuffers.TempA.Target);
 
         // This fixes issues with offsets happening in SJ's bloom masks.
         _excludeFromOffsetDrawing.Add(GameplayBuffers.Level.Target);
@@ -636,6 +646,8 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
 		HiresRenderer.DisableLargeTempABuffer();
         HiresRenderer.DisableLargeTempBBuffer();
+
+        _offsetableLargeTextures.Clear();
 
 		SmoothCameraPosition(level);
     }
@@ -1414,7 +1426,19 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
         orig(self, texture, destinationRectangle, sourceRectangle, color, rotation, origin, effects, layerDepth);
     }
 
+    
 
+    private static bool ShouldOffsetDrawing(Texture sourceTexture)
+    {
+        return (
+            _offsetDrawing
+            && (_internalLargeTextures.Contains(_currentRenderTarget) || _offsetableLargeTextures.Contains(_currentRenderTarget))
+            && !(_offsetableLargeTextures.Contains(_currentRenderTarget) && _offsetableLargeTextures.Contains(sourceTexture))
+            && !_excludeFromOffsetDrawing.Contains(_currentRenderTarget)
+        ) || (
+            _forceOffsetZoomDrawingToScreen && _currentRenderTarget == null
+        );
+    }
 
 	private delegate void orig_PushSprite(SpriteBatch self, Texture2D texture, float sourceX, float sourceY, float sourceW, float sourceH, float destinationX, float destinationY, float destinationW, float destinationH, Color color, float originX, float originY, float rotationSin, float rotationCos, float depth, byte effects);
 
@@ -1452,15 +1476,8 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
         // Apply the subpixel offset if needed. We only allow offsetting to our own buffers,
 		// or when _forceOffsetZoomDrawing overrides it and we're drawing to the screen.
-        if (
-			(
-				_offsetDrawing
-				&& _internalLargeTextures.Contains(_currentRenderTarget)
-				&& !_excludeFromOffsetDrawing.Contains(_currentRenderTarget)
-			) || (
-				_forceOffsetZoomDrawingToScreen && _currentRenderTarget == null
-			)
-		) {
+        if (ShouldOffsetDrawing(texture))
+        {
             Vector2 offset = GetCameraOffset();
             offsetDestinationX = destinationX + offset.X * (_currentlyScaling ? 1 : Scale);
             offsetDestinationY = destinationY + offset.Y * (_currentlyScaling ? 1 : Scale);
@@ -1476,6 +1493,12 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
         // we're handling here are when the *source* is large.
 		if (_largeTextures.Contains(texture))
 		{
+            if (_offsetableLargeTextures.Contains(texture))
+            {
+                Console.WriteLine("Adding to offsetable");
+                _offsetableLargeTextures.Add(_currentRenderTarget);
+            }
+
 			// If we're drawing something large and it's going to be scaled, we need to
             // not do that scaling to avoid drawing at 36x. Similarly, drawing something
 			// large to the screen should also get unscaled. That's because if a buffer
@@ -1490,7 +1513,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
                         Draw.SpriteBatch.End();
                         Draw.SpriteBatch.Begin(sortMode, blendState, samplerState, depthStencilState, rasterizerState, effect, Matrix.CreateScale(1f / Scale) * matrix);
 
-                        if (_offsetDrawing && _internalLargeTextures.Contains(_currentRenderTarget) && !_excludeFromOffsetDrawing.Contains(_currentRenderTarget))
+                        if (ShouldOffsetDrawing(texture))
                         {
                             Vector2 offset = GetCameraOffset();
                             offsetDestinationX = destinationX + offset.X * Scale;
@@ -1576,11 +1599,15 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
             && (bool)_beginCalledField.GetValue(Draw.SpriteBatch)
             && _lastSpriteBatchBeginParams is var (sortMode, blendState, samplerState, depthStencilState, rasterizerState, effect, matrix)
         ) {
-            
+            if (_offsetableLargeTextures.Contains(texture))
+            {
+                _offsetableLargeTextures.Add(_currentRenderTarget);
+            }
+
             Draw.SpriteBatch.End();
             Draw.SpriteBatch.Begin(sortMode, blendState, samplerState, depthStencilState, rasterizerState, effect, Matrix.CreateScale(1f / Scale) * matrix);
 
-            if (_offsetDrawing && _internalLargeTextures.Contains(_currentRenderTarget) && !_excludeFromOffsetDrawing.Contains(_currentRenderTarget))
+            if (ShouldOffsetDrawing(texture))
             {
                 Vector2 offset = GetCameraOffset();
                 offsetDestinationX = destinationX + offset.X * Scale;
