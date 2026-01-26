@@ -1241,6 +1241,14 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 				if (largeRenderTarget?.Target != null)
 				{
 					renderTargetBindings[i] = new RenderTargetBinding(largeRenderTarget.Target);
+
+                    // If we're in a phase where some buffers are offsetable (like bloom rendering),
+                    // propagate offsetability to this hot-created buffer. This ensures that related
+                    // buffers (like StyleMaskHelper's FadeBuffer) also get offset applied.
+                    if (_offsetableLargeTextures.Count > 0)
+                    {
+                        _offsetableLargeTextures.Add(largeRenderTarget.Target);
+                    }
 				}
 
 				else
@@ -1250,6 +1258,29 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 					_largeTextures.Remove(largeRenderTarget?.Target);
 				}
 			}
+
+            // If we're in the bloom rendering phase (offsetable buffers exist) and this is a
+            // small external buffer that matches TempA's size, proactively hot-create it.
+            // This handles StyleMaskHelper's FadeBuffer which needs to align with offset
+            // content in other bloom buffers.
+            else if (
+                _offsetableLargeTextures.Count > 0
+                && renderTargetBindings[i].RenderTarget is Texture2D smallTexture
+                && !_largeTextures.Contains(smallTexture)
+                && !_internalLargeTextures.Contains(smallTexture)
+                && GameplayBuffers.TempA != null
+                && smallTexture.Width == GameplayBuffers.TempA.Width
+                && smallTexture.Height == GameplayBuffers.TempA.Height
+            ) {
+                if (HotCreateLargeBuffer(smallTexture))
+                {
+                    if (_largeExternalTextureMap.TryGetValue(smallTexture, out var newLargeTarget) && newLargeTarget?.Target != null)
+                    {
+                        renderTargetBindings[i] = new RenderTargetBinding(newLargeTarget.Target);
+                        _offsetableLargeTextures.Add(newLargeTarget.Target);
+                    }
+                }
+            }
         }
 
         bool needToRestartSpriteBatch = _currentRenderTarget != renderTargetBindings[0].RenderTarget && (bool)_beginCalledField.GetValue(Draw.SpriteBatch);
@@ -1430,14 +1461,51 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
     private static bool ShouldOffsetDrawing(Texture sourceTexture)
     {
-        return (
+        // Standard offset drawing: when _offsetDrawing is enabled and we're drawing into
+        // an internal or offsetable large texture (but not when both source and target are
+        // offsetable, to avoid double-offsetting).
+        if (
             _offsetDrawing
             && (_internalLargeTextures.Contains(_currentRenderTarget) || _offsetableLargeTextures.Contains(_currentRenderTarget))
             && !(_offsetableLargeTextures.Contains(_currentRenderTarget) && _offsetableLargeTextures.Contains(sourceTexture))
             && !_excludeFromOffsetDrawing.Contains(_currentRenderTarget)
-        ) || (
-            _forceOffsetZoomDrawingToScreen && _currentRenderTarget == null
-        );
+        ) {
+            Console.WriteLine("offsetting");
+            return true;
+        }
+
+        // Force offset when drawing to screen with zoom
+        if (_forceOffsetZoomDrawingToScreen && _currentRenderTarget == null)
+        {
+            Console.WriteLine("offsetting");
+            return true;
+        }
+
+        // Always offset when drawing non-offsetable content into an offsetable buffer.
+        // This handles cases like StyleMaskHelper drawing mask rects into bloom buffers
+        // that inherited offsetability from TempA, even after _offsetDrawing is disabled.
+        if (
+            _offsetableLargeTextures.Contains(_currentRenderTarget)
+            && !_offsetableLargeTextures.Contains(sourceTexture)
+            && !_excludeFromOffsetDrawing.Contains(_currentRenderTarget)
+        ) {
+            Console.WriteLine("offsetting");
+            return true;
+        }
+
+        if (
+            _offsetDrawing
+            && (_internalLargeTextures.Contains(_currentRenderTarget) || _offsetableLargeTextures.Contains(_currentRenderTarget))
+            && sourceTexture is Texture2D sourceTexture2D
+            && _currentRenderTarget is Texture2D targetTexture2D
+            && sourceTexture2D.Width < targetTexture2D.Width - 8
+            && sourceTexture2D.Height < targetTexture2D.Height - 8
+        ) {
+            Console.WriteLine("offsetting");
+            return true;
+        }
+
+        return false;
     }
 
 	private delegate void orig_PushSprite(SpriteBatch self, Texture2D texture, float sourceX, float sourceY, float sourceW, float sourceH, float destinationX, float destinationY, float destinationW, float destinationH, Color color, float originX, float originY, float rotationSin, float rotationCos, float depth, byte effects);
@@ -1458,6 +1526,19 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
             destinationH *= Scale;
             destinationX *= Scale;
             destinationY *= Scale;
+        }
+
+        // When drawing an offsetable texture into another large texture, spread the
+        // offsetability BEFORE we compute whether to offset. This ensures that external
+        // buffers (like StyleMaskHelper's BloomBuffer) get the offset applied immediately.
+        // Note: we don't require _offsetDrawing because mods like StyleMaskHelper run after
+        // DisableOffsetDrawing but still need this spreading to happen.
+        if (
+            _offsetableLargeTextures.Contains(texture)
+            && _largeTextures.Contains(_currentRenderTarget)
+            && !_excludeFromOffsetDrawing.Contains(_currentRenderTarget)
+        ) {
+            _offsetableLargeTextures.Add(_currentRenderTarget);
         }
 
         // If instead we're drawing a natively large texture to a large one or the screen with an offset
@@ -1493,12 +1574,6 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
         // we're handling here are when the *source* is large.
 		if (_largeTextures.Contains(texture))
 		{
-            if (_offsetableLargeTextures.Contains(texture))
-            {
-                Console.WriteLine("Adding to offsetable");
-                _offsetableLargeTextures.Add(_currentRenderTarget);
-            }
-
 			// If we're drawing something large and it's going to be scaled, we need to
             // not do that scaling to avoid drawing at 36x. Similarly, drawing something
 			// large to the screen should also get unscaled. That's because if a buffer
@@ -1573,14 +1648,28 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 				// scale matrix to destination coordinates that weren't scaled in the first
 				// place, we have to now multiply them by Scale to offset it.
                 if (_lastSpriteBatchBeginParams is var (sortMode, blendState, samplerState, depthStencilState, rasterizerState, effect, matrix))
-                {	
+                {
                     Draw.SpriteBatch.End();
                     Draw.SpriteBatch.Begin(sortMode, blendState, samplerState, depthStencilState, rasterizerState, effect, Matrix.CreateScale(1f / Scale) * matrix);
 
-                    // We completely skip the offset check since this can never be an internal
-					// render target.
-                    Console.WriteLine("Exempted an unofficial large texture from being scaled");
-                    orig(self, texture, sourceX, sourceY, sourceW, sourceH, Scale * offsetDestinationX, Scale * offsetDestinationY, destinationW, destinationH, color, originX, originY, rotationSin, rotationCos, depth, effects);
+                    // If the source texture is offsetable, the hot-created buffer should also
+                    // be offsetable, and we need to apply the offset now since we didn't earlier
+                    // (the target wasn't in _largeTextures yet when we computed the offset).
+                    // Note: we check _offsetableLargeTextures even if _offsetDrawing is false,
+                    // because mods like StyleMaskHelper run after DisableOffsetDrawing but still
+                    // need offset applied for TempA draws.
+                    float finalDestinationX = Scale * destinationX;
+                    float finalDestinationY = Scale * destinationY;
+
+                    if (_offsetableLargeTextures.Contains(texture) && !_excludeFromOffsetDrawing.Contains(_currentRenderTarget))
+                    {
+                        _offsetableLargeTextures.Add(_currentRenderTarget);
+                        Vector2 offset = GetCameraOffset();
+                        finalDestinationX += offset.X * Scale;
+                        finalDestinationY += offset.Y * Scale;
+                    }
+
+                    orig(self, texture, sourceX, sourceY, sourceW, sourceH, finalDestinationX, finalDestinationY, destinationW, destinationH, color, originX, originY, rotationSin, rotationCos, depth, effects);
 
                     Draw.SpriteBatch.End();
                     Draw.SpriteBatch.Begin(sortMode, blendState, samplerState, depthStencilState, rasterizerState, effect, matrix);
@@ -1599,11 +1688,6 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
             && (bool)_beginCalledField.GetValue(Draw.SpriteBatch)
             && _lastSpriteBatchBeginParams is var (sortMode, blendState, samplerState, depthStencilState, rasterizerState, effect, matrix)
         ) {
-            if (_offsetableLargeTextures.Contains(texture))
-            {
-                _offsetableLargeTextures.Add(_currentRenderTarget);
-            }
-
             Draw.SpriteBatch.End();
             Draw.SpriteBatch.Begin(sortMode, blendState, samplerState, depthStencilState, rasterizerState, effect, Matrix.CreateScale(1f / Scale) * matrix);
 
