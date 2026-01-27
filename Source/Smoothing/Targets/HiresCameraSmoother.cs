@@ -52,6 +52,11 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
     // when they get other large buffers drawn into them.
 	private static Dictionary<Texture, VirtualRenderTarget> _largeExternalTextureMap = new Dictionary<Texture, VirtualRenderTarget>();
 
+    private static bool _enableLargeGameplayBuffer = false;
+    private static bool _enableLargeLevelBuffer = false;
+    private static bool _enableLargeTempABuffer = false;
+    private static bool _enableLargeTempBBuffer = false;
+
 	private const int MAX_EXTERNAL_BUFFERS = 32;
 
     // This is a set containing just the large versions of large textures, but
@@ -109,6 +114,11 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 	{
         GFX.FxDistort = _fxOrigDistort;
 	}
+
+    public static void DisableLargeGameplayBuffer()
+    {
+        _enableLargeGameplayBuffer = false;
+    }
 
 
 
@@ -499,17 +509,17 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
         if (MotionSmoothingModule.Settings.RenderBackgroundHires)
         {
-            HiresRenderer.EnableLargeLevelBuffer();
+            _enableLargeLevelBuffer = true;
         }
 
         else
         {
-            HiresRenderer.DisableLargeLevelBuffer();
+            _enableLargeLevelBuffer = false;
         }
 
 		if (MotionSmoothingModule.Settings.RenderMadelineWithSubpixels)
 		{
-			HiresRenderer.DisableLargeGameplayBuffer();
+			_enableLargeGameplayBuffer = false;
 		}
     }
 
@@ -612,8 +622,8 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
 		UnsmoothCameraPosition(level);
 
-        HiresRenderer.EnableLargeTempABuffer();
-        HiresRenderer.EnableLargeTempBBuffer();
+        _enableLargeTempABuffer = true;
+        _enableLargeTempBBuffer = true;
 
         HideStretchedLevelEdges();
 
@@ -633,8 +643,8 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
             HideStretchedLevelEdges();
         }
 
-		HiresRenderer.DisableLargeTempABuffer();
-        HiresRenderer.DisableLargeTempBBuffer();
+		_enableLargeTempABuffer = false;
+        _enableLargeTempBBuffer = false;
 
 		SmoothCameraPosition(level);
     }
@@ -760,7 +770,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
 		_offsetWhenDrawnTo.Clear();
 
-        HiresRenderer.EnableLargeLevelBuffer();
+        _enableLargeLevelBuffer = true;
         Engine.Instance.GraphicsDevice.SetRenderTarget(GameplayBuffers.Level);
 
 		_disableFloorFunctions = false;
@@ -859,7 +869,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 			));
 		}
 
-		HiresRenderer.EnableLargeGameplayBuffer();
+		_enableLargeGameplayBuffer = true;
     }
 
 	private static void EntityListRenderHook(ILContext il)
@@ -1127,11 +1137,11 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 		_disableFloorFunctions = false;
 		UnsmoothCameraPosition(level);
 
-		HiresRenderer.EnableLargeTempABuffer();
+		_enableLargeTempABuffer = true;
 
 		orig(source, timer, seed, amplitude);
 
-		HiresRenderer.DisableLargeTempABuffer();
+		_enableLargeTempABuffer = false;
 	}
 
 
@@ -1221,11 +1231,110 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
     }
 
 
+
+    private static VirtualRenderTarget GetLargeTargetOrNull(Texture texture)
+    {
+        if (HiresRenderer.Instance is not { } renderer)
+        {
+            return null;
+        }
+
+        if (_largeExternalTextureMap.TryGetValue(texture, out var largeRenderTarget))
+        {
+            if (largeRenderTarget?.Target != null)
+            {
+                return largeRenderTarget;
+            }
+
+            else
+            {
+                // Large target was disposed, remove stale entry
+                _largeExternalTextureMap.Remove(texture);
+                _largeTextures.Remove(largeRenderTarget?.Target);
+            }
+        }
+
+        else if (texture == GameplayBuffers.Gameplay.Target && _enableLargeGameplayBuffer)
+        {
+            return renderer.LargeGameplayBuffer;
+        }
+
+        else if (texture == GameplayBuffers.Level.Target && _enableLargeLevelBuffer)
+        {
+            return renderer.LargeLevelBuffer;
+        }
+
+        else if (texture == GameplayBuffers.TempA.Target && _enableLargeTempABuffer)
+        {
+            return renderer.LargeTempABuffer;
+        }
+
+        else if (texture == GameplayBuffers.TempB.Target && _enableLargeTempBBuffer)
+        {
+            return renderer.LargeTempBBuffer;
+        }
+
+        return null;
+    }
+
+    private static Texture GetPotentiallyLargeTexture(Texture texture)
+    {
+        if (HiresRenderer.Instance is not { } renderer)
+        {
+            return texture;
+        }
+
+        if (_largeExternalTextureMap.TryGetValue(texture, out var largeRenderTarget))
+        {
+            if (largeRenderTarget?.Target != null)
+            {
+                return largeRenderTarget.Target;
+            }
+
+            else
+            {
+                // Large target was disposed, remove stale entry
+                _largeExternalTextureMap.Remove(texture);
+                _largeTextures.Remove(largeRenderTarget?.Target);
+                return texture;
+            }
+        }
+
+        else if (texture == GameplayBuffers.Gameplay.Target && _enableLargeGameplayBuffer)
+        {
+            return renderer.LargeGameplayBuffer;
+        }
+
+        else if (texture == GameplayBuffers.Level.Target && _enableLargeLevelBuffer)
+        {
+            return renderer.LargeLevelBuffer;
+        }
+
+        else if (texture == GameplayBuffers.TempA.Target && _enableLargeTempABuffer)
+        {
+            return renderer.LargeTempABuffer;
+        }
+
+        else if (texture == GameplayBuffers.TempB.Target && _enableLargeTempBBuffer)
+        {
+            return renderer.LargeTempBBuffer;
+        }
+
+        return texture;
+    }
+
+
     
     private delegate void orig_SetRenderTargets(GraphicsDevice self, RenderTargetBinding[] renderTargets);
 
     private static void GraphicsDevice_SetRenderTargets(orig_SetRenderTargets orig, GraphicsDevice self, RenderTargetBinding[] renderTargetBindings)
     {
+        if (HiresRenderer.Instance is not { } renderer)
+        {
+            orig(self, renderTargetBindings);
+            return;
+        }
+
         if (renderTargetBindings == null || renderTargetBindings.Length == 0)
         {
             _currentRenderTarget = null;
@@ -1236,20 +1345,10 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
         for (int i = 0; i < renderTargetBindings.Length; i++)
         {
             // If there's a large version of this, then we use that instead.
-            if (_largeExternalTextureMap.TryGetValue(renderTargetBindings[i].RenderTarget, out VirtualRenderTarget largeRenderTarget))
-			{
-				if (largeRenderTarget?.Target != null)
-				{
-					renderTargetBindings[i] = new RenderTargetBinding(largeRenderTarget.Target);
-				}
-
-				else
-				{
-					// Large target was disposed, remove stale entry
-					_largeExternalTextureMap.Remove(renderTargetBindings[i].RenderTarget);
-					_largeTextures.Remove(largeRenderTarget?.Target);
-				}
-			}
+            if (renderTargetBindings[i].RenderTarget is Texture texture && GetLargeTargetOrNull(texture) is VirtualRenderTarget largeRenderTarget)
+            {
+                renderTargetBindings[i] = new RenderTargetBinding(largeRenderTarget.Target);
+            }
         }
 
         bool needToRestartSpriteBatch = _currentRenderTarget != renderTargetBindings[0].RenderTarget && (bool)_beginCalledField.GetValue(Draw.SpriteBatch);
@@ -1276,16 +1375,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
     private static void TextureCollection_SetItem(orig_TextureCollection_SetItem orig, TextureCollection self, int index, Texture texture)
     {
-        // Swap small texture for its large version if one exists
-        if (texture is Texture2D texture2D && _largeExternalTextureMap.TryGetValue(texture2D, out var largeRenderTarget))
-        {
-            if (largeRenderTarget?.Target != null)
-            {
-                texture = largeRenderTarget.Target;
-            }
-        }
-        
-        orig(self, index, texture);
+        orig(self, index, GetPotentiallyLargeTexture(texture));
     }
 
 
@@ -1473,10 +1563,12 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 			return;
 		}
 
+        var largeTexture = GetPotentiallyLargeTexture(texture);
+
         // If you're drawing the small version of this texture, no you're not!
-        if (_largeExternalTextureMap.TryGetValue(texture, out VirtualRenderTarget largeRenderTarget))
+        if (largeTexture != texture && largeTexture is Texture2D largeTexture2D)
         {
-            texture = largeRenderTarget.Target;
+            texture = largeTexture2D;
             destinationW *= Scale;
             destinationH *= Scale;
             destinationX *= Scale;
