@@ -616,7 +616,15 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
 		Engine.Instance.GraphicsDevice.SetRenderTargets(renderTargets);
     }
+    
 
+
+    // In order to allow other mods' code to mess with the bloom as they see fit, as well
+    // as support vanilla's desire to draw cutouts and entities into the bloom mask at positions
+    // corresponding to gameplay objects (which we've offset), we instead draw all entities like
+    // normal, but draw the level with an *inverse* offset to line up the gameplay, and then draw
+    // that whole thing back into the level buffer with a regular offset to line it up with the
+    // game again.
     private static void BloomRenderer_Apply(On.Celeste.BloomRenderer.orig_Apply orig, BloomRenderer self, VirtualRenderTarget target, Scene scene)
     {
 		if (scene is not Level level || HiresRenderer.Instance is not { } renderer)
@@ -633,8 +641,13 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
         HideStretchedLevelEdges();
 
         _offsetWhenDrawnTo.Clear();
-        _inverseOffsetWhenDrawnFrom.Clear();
         _offsetWhenDrawnTo.Add(renderer.LargeLevelBuffer);
+
+        _inverseOffsetWhenDrawnFrom.Clear();
+        // This is a lil weird -- it's what the output of the gaussian blur 
+        // (i.e. GameplayBuffers.Level) becomes after it gets scaled up
+        // by the time we're checking for what's in here.
+        _inverseOffsetWhenDrawnFrom.Add(renderer.LargeLevelBuffer);
 
         orig(self, target, scene);
 
@@ -658,19 +671,19 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
     {
         var cursor = new ILCursor(il);
 
-        if (cursor.TryGotoNext(MoveType.After,
-            instr => instr.MatchCall(typeof(GaussianBlur), "Blur")))
-        {
-            // Stack currently has the Texture2D return value
-            // Dup it so we can pass to delegate while preserving for stloc
-            cursor.Emit(OpCodes.Dup);
-            cursor.EmitDelegate(enableInverseOffsetDrawing);
-        }
+        // if (cursor.TryGotoNext(MoveType.After,
+        //     instr => instr.MatchCall(typeof(GaussianBlur), "Blur")))
+        // {
+        //     // Stack currently has the Texture2D return value
+        //     // Dup it so we can pass to delegate while preserving for stloc
+        //     cursor.Emit(OpCodes.Dup);
+        //     cursor.EmitDelegate(enableInverseOffsetDrawing);
+        // }
 
-        static void enableInverseOffsetDrawing(Texture2D texture)
-        {
-            _inverseOffsetWhenDrawnFrom.Add(texture);
-        }
+        // static void enableInverseOffsetDrawing(Texture2D texture)
+        // {
+        //     _inverseOffsetWhenDrawnFrom.Add(texture);
+        // }
     }
 
 
