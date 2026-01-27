@@ -30,6 +30,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
     
     // Large textures can be added to this to receive the subpixel offset when drawn to.
     private static HashSet<Texture> _offsetWhenDrawnTo = new HashSet<Texture>();
+    private static HashSet<Texture> _inverseOffsetWhenDrawnFrom = new HashSet<Texture>();
 
 	private static bool _scaleSourceAndDestinationForLargeTextures = true;
 
@@ -603,7 +604,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
     private static void BloomRenderer_Apply(On.Celeste.BloomRenderer.orig_Apply orig, BloomRenderer self, VirtualRenderTarget target, Scene scene)
     {
-		if (scene is not Level level)
+		if (scene is not Level level || HiresRenderer.Instance is not { } renderer)
 		{
 			orig(self, target, scene);
 			return;
@@ -616,7 +617,15 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
         FixLevelEdgesForBloom();
 
+        _offsetWhenDrawnTo.Clear();
+        _inverseOffsetWhenDrawnFrom.Clear();
+        _offsetWhenDrawnTo.Add(renderer.LargeLevelBuffer);
+
         orig(self, target, scene);
+
+        _offsetWhenDrawnTo.Clear();
+        _inverseOffsetWhenDrawnFrom.Clear();
+
 
 		HiresRenderer.DisableLargeTempABuffer();
         HiresRenderer.DisableLargeTempBBuffer();
@@ -624,37 +633,23 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 		SmoothCameraPosition(level);
     }
 
-    // Effect cutouts need to be offset in order for them not to jitter.
     private static void BloomRendererApplyHook(ILContext il)
     {
         var cursor = new ILCursor(il);
 
-        // if (cursor.TryGotoNext(MoveType.After,
-        //     instr => instr.MatchCall(typeof(GaussianBlur), "Blur")))
-        // {
-        //     Console.WriteLine("-------------------- FOUND1!!!!");
-        //     cursor.EmitDelegate(enableOffsetDrawing);
-        // }
+        if (cursor.TryGotoNext(MoveType.After,
+            instr => instr.MatchCall(typeof(GaussianBlur), "Blur")))
+        {
+            // Stack currently has the Texture2D return value
+            // Dup it so we can pass to delegate while preserving for stloc
+            cursor.Emit(OpCodes.Dup);
+            cursor.EmitDelegate(enableInverseOffsetDrawing);
+        }
 
-        // static void enableOffsetDrawing()
-        // {
-        //     _offsetWhenDrawnTo.Clear();
-        //     // We intentionally don't offset when drawing things back to the level buffer,
-        //     // since the gameplay is already offset in it.
-        //     _offsetWhenDrawnTo.Add(GameplayBuffers.TempA.Target);
-        // }
-
-        // if (cursor.TryGotoNext(MoveType.After,
-        //     instr => instr.MatchLdsfld(typeof(BloomRenderer), "BlurredScreenToMask")))
-        // {
-        //     Console.WriteLine("-------------------- FOUND2!!!!");
-        //     cursor.EmitDelegate(disableOffsetDrawing);
-        // }
-
-        // static void disableOffsetDrawing()
-        // {
-        //     _offsetWhenDrawnTo.Clear();
-        // }
+        static void enableInverseOffsetDrawing(Texture2D texture)
+        {
+            _inverseOffsetWhenDrawnFrom.Add(texture);
+        }
     }
 
 
@@ -1427,23 +1422,28 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
     
 
-    private static bool ShouldOffsetDrawing(Texture sourceTexture)
+    private static Vector2 GetCurrentDrawingOffset(Texture sourceTexture, float x, float y)
     {
-        // Standard offset drawing: when _offsetDrawing is enabled and we're drawing into
-        // an internal or offsetable large texture (but not when both source and target are
-        // offsetable, to avoid double-offsetting).
         if (_offsetWhenDrawnTo.Contains(_currentRenderTarget))
         {
-            return true;
+            Vector2 offset = GetCameraOffset();
+            return new Vector2(x + offset.X * (_currentlyScaling ? 1 : Scale), y + offset.Y * (_currentlyScaling ? 1 : Scale));
+        }
+
+        if (_inverseOffsetWhenDrawnFrom.Contains(sourceTexture))
+        {
+            Vector2 offset = GetCameraOffset();
+            return new Vector2(x - offset.X * (_currentlyScaling ? 1 : Scale), y - offset.Y * (_currentlyScaling ? 1 : Scale));
         }
 
         // Force offset when drawing to screen with zoom
         if (_forceOffsetZoomDrawingToScreen && _currentRenderTarget == null)
         {
-            return true;
+            Vector2 offset = GetCameraOffset();
+            return new Vector2(x + offset.X * (_currentlyScaling ? 1 : Scale), y + offset.Y * (_currentlyScaling ? 1 : Scale));
         }
 
-        return false;
+        return new Vector2(x, y);
     }
 
 	private delegate void orig_PushSprite(SpriteBatch self, Texture2D texture, float sourceX, float sourceY, float sourceW, float sourceH, float destinationX, float destinationY, float destinationW, float destinationH, Color color, float originX, float originY, float rotationSin, float rotationCos, float depth, byte effects);
@@ -1477,17 +1477,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
 
 
-        float offsetDestinationX = destinationX;
-        float offsetDestinationY = destinationY;
-
-        // Apply the subpixel offset if needed. We only allow offsetting to our own buffers,
-		// or when _forceOffsetZoomDrawing overrides it and we're drawing to the screen.
-        if (ShouldOffsetDrawing(texture))
-        {
-            Vector2 offset = GetCameraOffset();
-            offsetDestinationX = destinationX + offset.X * (_currentlyScaling ? 1 : Scale);
-            offsetDestinationY = destinationY + offset.Y * (_currentlyScaling ? 1 : Scale);
-        }
+        Vector2 offsetDestination = GetCurrentDrawingOffset(texture, destinationX, destinationY);
 
 
 
@@ -1512,15 +1502,10 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
                     {
                         Draw.SpriteBatch.End();
                         Draw.SpriteBatch.Begin(sortMode, blendState, samplerState, depthStencilState, rasterizerState, effect, Matrix.CreateScale(1f / Scale) * matrix);
+                        
+                        offsetDestination = GetCurrentDrawingOffset(texture, destinationX, destinationY);
 
-                        if (ShouldOffsetDrawing(texture))
-                        {
-                            Vector2 offset = GetCameraOffset();
-                            offsetDestinationX = destinationX + offset.X * Scale;
-                            offsetDestinationY = destinationY + offset.Y * Scale;
-                        }
-
-                        orig(self, texture, sourceX, sourceY, sourceW, sourceH, offsetDestinationX, offsetDestinationY, destinationW, destinationH, color, originX, originY, rotationSin, rotationCos, depth, effects);
+                        orig(self, texture, sourceX, sourceY, sourceW, sourceH, offsetDestination.X, offsetDestination.Y, destinationW, destinationH, color, originX, originY, rotationSin, rotationCos, depth, effects);
 
                         Draw.SpriteBatch.End();
                         Draw.SpriteBatch.Begin(sortMode, blendState, samplerState, depthStencilState, rasterizerState, effect, matrix);
@@ -1534,7 +1519,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
             if (_currentRenderTarget is not Texture2D targetTexture2D2)
             {
-                orig(self, texture, sourceX, sourceY, sourceW, sourceH, offsetDestinationX, offsetDestinationY, destinationW, destinationH, color, originX, originY, rotationSin, rotationCos, depth, effects);
+                orig(self, texture, sourceX, sourceY, sourceW, sourceH, offsetDestination.X, offsetDestination.Y, destinationW, destinationH, color, originX, originY, rotationSin, rotationCos, depth, effects);
                 return;
 			}            
 
@@ -1583,17 +1568,9 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
                     // Note: we check _offsetableLargeTextures even if _offsetDrawing is false,
                     // because mods like StyleMaskHelper run after DisableOffsetDrawing but still
                     // need offset applied for TempA draws.
-                    float finalDestinationX = Scale * destinationX;
-                    float finalDestinationY = Scale * destinationY;
+                    offsetDestination = GetCurrentDrawingOffset(texture, destinationX, destinationY);
 
-                    if (ShouldOffsetDrawing(texture))
-                    {
-                        Vector2 offset = GetCameraOffset();
-                        finalDestinationX += offset.X * Scale;
-                        finalDestinationY += offset.Y * Scale;
-                    }
-
-                    orig(self, texture, sourceX, sourceY, sourceW, sourceH, finalDestinationX, finalDestinationY, destinationW, destinationH, color, originX, originY, rotationSin, rotationCos, depth, effects);
+                    orig(self, texture, sourceX, sourceY, sourceW, sourceH, offsetDestination.X, offsetDestination.Y, destinationW, destinationH, color, originX, originY, rotationSin, rotationCos, depth, effects);
 
                     Draw.SpriteBatch.End();
                     Draw.SpriteBatch.Begin(sortMode, blendState, samplerState, depthStencilState, rasterizerState, effect, matrix);
@@ -1615,15 +1592,9 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
             Draw.SpriteBatch.End();
             Draw.SpriteBatch.Begin(sortMode, blendState, samplerState, depthStencilState, rasterizerState, effect, Matrix.CreateScale(1f / Scale) * matrix);
 
-            if (ShouldOffsetDrawing(texture))
-            {
-                Vector2 offset = GetCameraOffset();
-                offsetDestinationX = destinationX + offset.X * Scale;
-                offsetDestinationY = destinationY + offset.Y * Scale;
-            }
+            offsetDestination = GetCurrentDrawingOffset(texture, destinationX, destinationY);
 
-            Console.WriteLine("Exempted an unofficial large texture from being scaled");
-            orig(self, texture, sourceX, sourceY, sourceW, sourceH, offsetDestinationX, offsetDestinationY, destinationW, destinationH, color, originX, originY, rotationSin, rotationCos, depth, effects);
+            orig(self, texture, sourceX, sourceY, sourceW, sourceH, offsetDestination.X, offsetDestination.Y, destinationW, destinationH, color, originX, originY, rotationSin, rotationCos, depth, effects);
 
             Draw.SpriteBatch.End();
             Draw.SpriteBatch.Begin(sortMode, blendState, samplerState, depthStencilState, rasterizerState, effect, matrix);
@@ -1633,7 +1604,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
 
 
-        orig(self, texture, sourceX, sourceY, sourceW, sourceH, offsetDestinationX, offsetDestinationY, destinationW, destinationH, color, originX, originY, rotationSin, rotationCos, depth, effects);
+        orig(self, texture, sourceX, sourceY, sourceW, sourceH, offsetDestination.X, offsetDestination.Y, destinationW, destinationH, color, originX, originY, rotationSin, rotationCos, depth, effects);
     }
 
 
