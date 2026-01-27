@@ -1241,7 +1241,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
     private static VirtualRenderTarget GetLargeTargetOrNull(Texture texture)
     {
-        if (HiresRenderer.Instance is not { } renderer)
+        if (HiresRenderer.Instance is not { } renderer || texture == null)
         {
             return null;
         }
@@ -1286,7 +1286,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
     private static Texture GetPotentiallyLargeTexture(Texture texture)
     {
-        if (HiresRenderer.Instance is not { } renderer)
+        if (HiresRenderer.Instance is not { } renderer || texture == null)
         {
             return texture;
         }
