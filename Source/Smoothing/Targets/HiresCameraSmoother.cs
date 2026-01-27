@@ -554,6 +554,11 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
     private static void HideStretchedLevelEdges()
     {
+        if (HiresRenderer.Instance is not { } renderer)
+        {
+            return;
+        }
+
         // This is kind of a goofy fix. We extend the level buffer down and right, since
 		// otherwise there's a gap of background after the gameplay ends (since it's offset). We use
 		// the level buffer itself because it's past the foreground layer, and we can't *just* extend
@@ -563,18 +568,18 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
         var renderTargets = Draw.SpriteBatch.GraphicsDevice.GetRenderTargets();
 
         // Copy the level buffer into tempA since we can't draw from a texture into itself.
-        Engine.Instance.GraphicsDevice.SetRenderTarget(GameplayBuffers.TempA);
+        Engine.Instance.GraphicsDevice.SetRenderTarget(renderer.LargeTempABuffer);
 
         Draw.SpriteBatch.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend, SamplerState.PointClamp, DepthStencilState.None, RasterizerState.CullNone, null, Matrix.Identity);
-		Draw.SpriteBatch.Draw(GameplayBuffers.Level, Vector2.Zero, Color.White);
+		Draw.SpriteBatch.Draw(renderer.LargeLevelBuffer, Vector2.Zero, Color.White);
 		Draw.SpriteBatch.End();
 
-		Engine.Instance.GraphicsDevice.SetRenderTarget(GameplayBuffers.Level);
+		Engine.Instance.GraphicsDevice.SetRenderTarget(renderer.LargeLevelBuffer);
 
 		Draw.SpriteBatch.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend, SamplerState.PointClamp, DepthStencilState.None, RasterizerState.CullNone, null, Matrix.Identity);
 
-		int width = GameplayBuffers.Level.Width;
-		int height = GameplayBuffers.Level.Height;
+		int width = renderer.LargeLevelBuffer.Width;
+		int height = renderer.LargeLevelBuffer.Height;
 
 		Vector2 offset = -GetCameraOffset() * Scale;
 		int gapX = (int)Math.Ceiling(offset.X);
@@ -586,7 +591,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 		{
 			var sourceRectangle = new Rectangle(width - gapX - 1, 0, 1, height - gapY);
 			var destinationRectangle = new Rectangle(width - gapX, 0, gapX, height - gapY);
-			Draw.SpriteBatch.Draw(GameplayBuffers.TempA, destinationRectangle, sourceRectangle, Color.White);
+			Draw.SpriteBatch.Draw(renderer.LargeTempABuffer, destinationRectangle, sourceRectangle, Color.White);
 		}
 
 		// Bottom edge: last contentful row → stretched to fill gap
@@ -594,7 +599,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 		{
 			var sourceRectangle = new Rectangle(0, height - gapY - 1, width - gapX, 1);
 			var destinationRectangle = new Rectangle(0, height - gapY, width - gapX, gapY);
-			Draw.SpriteBatch.Draw(GameplayBuffers.TempA, destinationRectangle, sourceRectangle, Color.White);
+			Draw.SpriteBatch.Draw(renderer.LargeTempABuffer, destinationRectangle, sourceRectangle, Color.White);
 		}
 
 		// Corner: single pixel stretched to fill
@@ -602,7 +607,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 		{
 			var sourceRectangle = new Rectangle(width - gapX - 1, height - gapY - 1, 1, 1);
 			var destinationRectangle = new Rectangle(width - gapX, height - gapY, gapX, gapY);
-			Draw.SpriteBatch.Draw(GameplayBuffers.TempA, destinationRectangle, sourceRectangle, Color.White);
+			Draw.SpriteBatch.Draw(renderer.LargeTempABuffer, destinationRectangle, sourceRectangle, Color.White);
 		}
 
 		_scaleSourceAndDestinationForLargeTextures = true;
@@ -837,6 +842,8 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 			orig(self, scene);
 			return;
 		}
+
+        _enableLargeGameplayBuffer = false;
 
 		// If we're rendering with subpixels, we need to draw everything at 6x. Every
 		// time we encounter an entity that needs to be rendered at a fractional position
