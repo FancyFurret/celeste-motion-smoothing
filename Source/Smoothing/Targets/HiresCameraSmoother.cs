@@ -542,7 +542,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
     
 
-    private static void FixLevelEdgesForBloom()
+    private static void HideStretchedLevelEdges()
     {
         // This is kind of a goofy fix. We extend the level buffer down and right, since
 		// otherwise there's a gap of background after the gameplay ends (since it's offset). We use
@@ -615,7 +615,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
         HiresRenderer.EnableLargeTempABuffer();
         HiresRenderer.EnableLargeTempBBuffer();
 
-        FixLevelEdgesForBloom();
+        HideStretchedLevelEdges();
 
         _offsetWhenDrawnTo.Clear();
         _inverseOffsetWhenDrawnFrom.Clear();
@@ -626,6 +626,12 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
         _offsetWhenDrawnTo.Clear();
         _inverseOffsetWhenDrawnFrom.Clear();
 
+        if (!MotionSmoothingModule.Settings.HideStretchedEdges)
+        {
+            // We only do this a second time here because we're covering up the gap where the bloom was left
+            // which will be completely hidden by the zoom, unlike the blooming edges from before.
+            HideStretchedLevelEdges();
+        }
 
 		HiresRenderer.DisableLargeTempABuffer();
         HiresRenderer.DisableLargeTempBBuffer();
@@ -1300,6 +1306,17 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
             transformMatrix = transformMatrix * Matrix.CreateScale(Scale);
 
             _currentlyScaling = true;
+
+            // Disable the use of linear filtering and replace it with nearest neighbor.
+            if (samplerState == SamplerState.LinearClamp)
+            {
+                samplerState = SamplerState.PointClamp;
+            }
+
+            else if (samplerState == SamplerState.LinearWrap)
+            {
+                samplerState = SamplerState.PointWrap;
+            }
         }
 
 		else if (_forceOffsetZoomDrawingToScreen && _currentRenderTarget == null)
