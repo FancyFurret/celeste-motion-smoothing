@@ -1908,7 +1908,12 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
     }
 
 
-
+    
+    // These all use the hardcoded value of 6 and not Scale: when using ExCameraDynamics,
+    // scale can be any integer <= 6, but these functions also impact e.g. the background
+    // parallax, so it would be very jittery when using a large gameplay buffer. We don't
+    // want to disable rounding entirely, though, since there can rarely be gaps in the
+    // background if we do that.
 
     private delegate Vector2 orig_Floor(Vector2 self);
 
@@ -1919,7 +1924,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
             return orig(self);
         }
 
-        return new Vector2((float) Math.Floor(self.X * Scale), (float) Math.Floor(self.Y * Scale)) / Scale;
+        return new Vector2((float) Math.Floor(self.X * 6), (float) Math.Floor(self.Y * 6)) / 6;
     }
 
     private delegate Vector2 orig_Ceiling(Vector2 self);
@@ -1931,7 +1936,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
             return orig(self);
         }
 
-        return new Vector2((float) Math.Ceiling(self.X * Scale), (float) Math.Ceiling(self.Y * Scale)) / Scale;
+        return new Vector2((float) Math.Ceiling(self.X * 6), (float) Math.Ceiling(self.Y * 6)) / 6;
     }
 
     private delegate Vector2 orig_Round(Vector2 self);
@@ -1943,7 +1948,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
             return orig(self);
         }
 
-        return new Vector2((float) Math.Round(self.X * Scale), (float) Math.Round(self.Y * Scale)) / Scale;
+        return new Vector2((float) Math.Round(self.X * 6), (float) Math.Round(self.Y * 6)) / 6;
     }
 
 
