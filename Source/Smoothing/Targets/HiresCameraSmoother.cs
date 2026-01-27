@@ -621,8 +621,6 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 		HiresRenderer.DisableLargeTempABuffer();
         HiresRenderer.DisableLargeTempBBuffer();
 
-        _offsetWhenDrawnTo.Clear();
-
 		SmoothCameraPosition(level);
     }
 
@@ -631,32 +629,32 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
     {
         var cursor = new ILCursor(il);
 
-        if (cursor.TryGotoNext(MoveType.After,
-            instr => instr.MatchCall(typeof(GaussianBlur), "Blur")))
-        {
-            Console.WriteLine("-------------------- FOUND1!!!!");
-            cursor.EmitDelegate(enableOffsetDrawing);
-        }
+        // if (cursor.TryGotoNext(MoveType.After,
+        //     instr => instr.MatchCall(typeof(GaussianBlur), "Blur")))
+        // {
+        //     Console.WriteLine("-------------------- FOUND1!!!!");
+        //     cursor.EmitDelegate(enableOffsetDrawing);
+        // }
 
-        static void enableOffsetDrawing()
-        {
-            _offsetWhenDrawnTo.Clear();
-            // We intentionally don't offset when drawing things back to the level buffer,
-            // since the gameplay is already offset in it.
-            _offsetWhenDrawnTo.Add(GameplayBuffers.TempA.Target);
-        }
+        // static void enableOffsetDrawing()
+        // {
+        //     _offsetWhenDrawnTo.Clear();
+        //     // We intentionally don't offset when drawing things back to the level buffer,
+        //     // since the gameplay is already offset in it.
+        //     _offsetWhenDrawnTo.Add(GameplayBuffers.TempA.Target);
+        // }
 
-        if (cursor.TryGotoNext(MoveType.After,
-            instr => instr.MatchLdsfld(typeof(BloomRenderer), "BlurredScreenToMask")))
-        {
-            Console.WriteLine("-------------------- FOUND2!!!!");
-            cursor.EmitDelegate(disableOffsetDrawing);
-        }
+        // if (cursor.TryGotoNext(MoveType.After,
+        //     instr => instr.MatchLdsfld(typeof(BloomRenderer), "BlurredScreenToMask")))
+        // {
+        //     Console.WriteLine("-------------------- FOUND2!!!!");
+        //     cursor.EmitDelegate(disableOffsetDrawing);
+        // }
 
-        static void disableOffsetDrawing()
-        {
-            _offsetWhenDrawnTo.Clear();
-        }
+        // static void disableOffsetDrawing()
+        // {
+        //     _offsetWhenDrawnTo.Clear();
+        // }
     }
 
 
@@ -1242,15 +1240,6 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 				if (largeRenderTarget?.Target != null)
 				{
 					renderTargetBindings[i] = new RenderTargetBinding(largeRenderTarget.Target);
-
-                    // If we're in a phase where some buffers are offsetable (like bloom rendering),
-                    // propagate offsetability to this hot-created buffer. This ensures that related
-                    // buffers (like StyleMaskHelper's FadeBuffer) also get offset applied.
-                    if (_offsetWhenDrawnTo.Count > 0)
-                    {
-                        // TODO: Test if really necessary :/
-                        _offsetWhenDrawnTo.Add(largeRenderTarget.Target);
-                    }
 				}
 
 				else
@@ -1260,29 +1249,6 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 					_largeTextures.Remove(largeRenderTarget?.Target);
 				}
 			}
-
-            // If we're in the bloom rendering phase (offsetable buffers exist) and this is a
-            // small external buffer that matches TempA's size, proactively hot-create it.
-            // This handles StyleMaskHelper's FadeBuffer which needs to align with offset
-            // content in other bloom buffers.
-            else if (
-                _offsetWhenDrawnTo.Count > 0
-                && renderTargetBindings[i].RenderTarget is Texture2D smallTexture
-                && !_largeTextures.Contains(smallTexture)
-                && !_internalLargeTextures.Contains(smallTexture)
-                && GameplayBuffers.TempA != null
-                && smallTexture.Width == GameplayBuffers.TempA.Width
-                && smallTexture.Height == GameplayBuffers.TempA.Height
-            ) {
-                if (HotCreateLargeBuffer(smallTexture))
-                {
-                    if (_largeExternalTextureMap.TryGetValue(smallTexture, out var newLargeTarget) && newLargeTarget?.Target != null)
-                    {
-                        renderTargetBindings[i] = new RenderTargetBinding(newLargeTarget.Target);
-                        _offsetWhenDrawnTo.Add(newLargeTarget.Target);
-                    }
-                }
-            }
         }
 
         bool needToRestartSpriteBatch = _currentRenderTarget != renderTargetBindings[0].RenderTarget && (bool)_beginCalledField.GetValue(Draw.SpriteBatch);
@@ -1466,10 +1432,8 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
         // Standard offset drawing: when _offsetDrawing is enabled and we're drawing into
         // an internal or offsetable large texture (but not when both source and target are
         // offsetable, to avoid double-offsetting).
-        if (
-            _offsetWhenDrawnTo.Contains(_currentRenderTarget)
-            && !_offsetWhenDrawnTo.Contains(sourceTexture)
-        ) {
+        if (_offsetWhenDrawnTo.Contains(_currentRenderTarget))
+        {
             return true;
         }
 
@@ -1500,17 +1464,6 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
             destinationH *= Scale;
             destinationX *= Scale;
             destinationY *= Scale;
-        }
-
-        // When drawing an offsetable texture into any large texture, spread the
-        // offsetability BEFORE we compute whether to offset. This ensures that external
-        // buffers (like StyleMaskHelper's BloomBuffer) get the offset applied immediately.
-        if (
-            _offsetWhenDrawnTo.Contains(texture)
-            && _largeTextures.Contains(_currentRenderTarget)
-            && _currentRenderTarget != renderer.LargeLevelBuffer.Target
-        ) {
-            _offsetWhenDrawnTo.Add(_currentRenderTarget);
         }
 
         // If instead we're drawing a natively large texture to a large one or the screen with an offset
@@ -1633,12 +1586,8 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
                     float finalDestinationX = Scale * destinationX;
                     float finalDestinationY = Scale * destinationY;
 
-                    if (
-                        _offsetWhenDrawnTo.Contains(texture)
-                        && _largeTextures.Contains(_currentRenderTarget)
-                        && _currentRenderTarget != renderer.LargeLevelBuffer.Target
-                    ) {
-                        _offsetWhenDrawnTo.Add(_currentRenderTarget);
+                    if (ShouldOffsetDrawing(texture))
+                    {
                         Vector2 offset = GetCameraOffset();
                         finalDestinationX += offset.X * Scale;
                         finalDestinationY += offset.Y * Scale;
