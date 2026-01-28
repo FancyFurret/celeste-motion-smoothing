@@ -498,7 +498,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 			Logger.Log(LogLevel.Verbose, "MotionSmoothingModule", $"Too many large external buffers! ({_largeExternalTextureMap.Count})");
 			DestroyExternalLargeTextures();
 		}
-
+        
         _offsetWhenDrawnTo.Clear();
         _allowParallaxOneBackgrounds = false;
         _currentlyRenderingBackground = true;
@@ -1578,10 +1578,16 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
         var largeTexture = GetPotentiallyLargeTexture(texture);
 
-        // If you're drawing the small version of this texture, no you're not!
-        if (largeTexture != texture && largeTexture is Texture2D largeTexture2D)
+        bool changedTexture = largeTexture != texture;
+
+        if (largeTexture is Texture2D largeTexture2D)
         {
             texture = largeTexture2D;
+        }
+
+        // If you're drawing the small version of this texture, no you're not!
+        if (changedTexture)
+        {
             destinationW *= Scale;
             destinationH *= Scale;
             destinationX *= Scale;
@@ -1591,8 +1597,11 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
         // If instead we're drawing a natively large texture to a large one or the screen with an offset
         // (e.g. SJ's color grade masks or TempA to its bloom masks), that offset needs to be scaled.
 		// We do *not* scale the width and height because we aren't changing the size of the texture!
-        else if ((_currentRenderTarget == null || _currentlyScaling) && _largeTextures.Contains(texture) && _scaleSourceAndDestinationForLargeTextures)
-        {
+        else if (
+            (_currentRenderTarget == null || _currentlyScaling)
+            && _largeTextures.Contains(texture)
+            && _scaleSourceAndDestinationForLargeTextures
+        ) {
             destinationX *= Scale;
             destinationY *= Scale;
         }
