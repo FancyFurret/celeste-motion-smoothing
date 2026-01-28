@@ -36,7 +36,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
 	// A blunt tool for fixing weird mods like SpirialisHelper. When this is enabled,
 	// spritebatch.begin will use the 181/180 scale matrix.
-	private static bool _forceOffsetZoomDrawingToScreen = false;
+	private static bool _forceZoomDrawingToScreen = false;
     private static bool _currentlyRenderingBackground = false;
 	private static bool _currentlyRenderingGameplay = false;
     private static bool _currentlyRenderingPlayerOnTopOfFlash = false;
@@ -1429,7 +1429,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
             }
         }
 
-		else if (_forceOffsetZoomDrawingToScreen && _currentRenderTarget == null)
+		else if (_forceZoomDrawingToScreen && _currentRenderTarget == null)
 		{
 			transformMatrix = ZoomMatrix * transformMatrix;
 		}
@@ -1561,13 +1561,6 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
         {
             Vector2 offset = GetCameraOffset();
             return new Vector2(x - offset.X * scale, y - offset.Y * scale);
-        }
-
-        // Force offset when drawing to screen with zoom
-        if (_forceOffsetZoomDrawingToScreen && _currentRenderTarget == null)
-        {
-            Vector2 offset = GetCameraOffset();
-            return new Vector2(x + offset.X * scale, y + offset.Y * scale);
         }
 
         return new Vector2(x, y);
@@ -2015,9 +2008,9 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
 	private static void DrawTimeStopEntitiesHook(orig_DrawTimeStopEntities orig, object self)
 	{
-		_forceOffsetZoomDrawingToScreen = true;
+		_forceZoomDrawingToScreen = true;
 		orig(self);
-		_forceOffsetZoomDrawingToScreen = false;
+		_forceZoomDrawingToScreen = false;
 	}
 
 
