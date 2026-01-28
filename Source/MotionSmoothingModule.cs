@@ -211,6 +211,8 @@ public class MotionSmoothingModule : EverestModule
             UnlockedCameraSmoother.Disable();
             HiresCameraSmoother.Enable();
 
+            HiresCameraSmoother.InitializeLargeTextures();
+
 			HiresCameraSmoother.ZoomScale = Settings.HideStretchedEdges ? 181f / 180f : 1;
 			HiresCameraSmoother.ZoomMatrix = Matrix.CreateScale(HiresCameraSmoother.ZoomScale);
 

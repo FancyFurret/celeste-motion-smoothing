@@ -9,6 +9,7 @@ using MonoMod.Cil;
 using MonoMod.RuntimeDetour;
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Reflection;
 using System.Runtime.CompilerServices;
 
@@ -517,10 +518,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
             _enableLargeLevelBuffer = false;
         }
 
-		if (MotionSmoothingModule.Settings.RenderMadelineWithSubpixels)
-		{
-			_enableLargeGameplayBuffer = false;
-		}
+		_enableLargeGameplayBuffer = false;
     }
 
     private static void AfterLevelClear(Level level)
@@ -1803,6 +1801,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
             _largeTextures.Add(largeTarget.Target);
         }
 
+        Logger.Log(LogLevel.Verbose, "MotionSmoothingModule", new StackTrace(true).ToString());
         Logger.Log(LogLevel.Verbose, "MotionSmoothingModule", $"Hot created a {largeTarget.Target.Width}x{largeTarget.Target.Height} buffer! Total existing: {_largeExternalTextureMap.Count}");
 
         return true;
@@ -1827,7 +1826,8 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
             if (largeRenderTarget?.Target is Texture2D texture2D)
             {
-                Logger.Log(LogLevel.Verbose, "MotionSmoothingModule", $"Disposing a {texture2D.Width}x{texture2D.Height} hot-created buffer. Total left: {_largeExternalTextureMap.Count}");
+                Logger.Log(LogLevel.Verbose, "MotionSmoothingModule", new StackTrace(true).ToString());
+                Logger.Log(LogLevel.Verbose, "MotionSmoothingModule", $"Disposed a {texture2D.Width}x{texture2D.Height} hot-created buffer. Total left: {_largeExternalTextureMap.Count}");
 
                 largeRenderTarget?.Dispose();
             }
