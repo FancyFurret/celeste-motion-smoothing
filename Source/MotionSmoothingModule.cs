@@ -210,7 +210,11 @@ public class MotionSmoothingModule : EverestModule
         {
             UnlockedCameraSmoother.Disable();
             HiresCameraSmoother.Enable();
-
+            
+            // We jettison the external large textures: we unconditionally use their large
+            // versions, but if we disable rendering Madeline with subpixels, then some of them
+            // will be too big for the new gameplay buffer size. There's really no other way to 
+            // deal with that than to start over with them.
             HiresCameraSmoother.InitializeLargeTextures();
 
 			HiresCameraSmoother.ZoomScale = Settings.HideStretchedEdges ? 181f / 180f : 1;

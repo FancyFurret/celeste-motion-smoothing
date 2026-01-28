@@ -752,7 +752,15 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 			// Level.Render, so this is a possible place to check for the destination buffer.
 			if (!_largeTextures.Contains(_currentRenderTarget) && _currentRenderTarget is Texture2D texture2D)
 			{
-				HotCreateLargeBuffer(texture2D);
+				if (HotCreateLargeBuffer(texture2D))
+                {
+                    #if DEBUG
+                        Logger.Log(LogLevel.Verbose, "MotionSmoothingModule", new StackTrace(true).ToString());
+                        Logger.Log(LogLevel.Verbose, "MotionSmoothingModule", $"Hot created a {texture2D.Width * Scale}x{texture2D.Height * Scale} buffer!");
+                        Logger.Log(LogLevel.Verbose, "MotionSmoothingModule", $"Reason: Called BackdropRenderer.Render with Smooth Background on and a small target called {_currentRenderTarget.Name}.");
+                        Logger.Log(LogLevel.Verbose, "MotionSmoothingModule", $"Total existing hot-created buffers: {_largeExternalTextureMap.Count}\n");
+                    #endif
+                }
 			}
 
             // The background very much does *not* get an offset, unlike the foreground.
@@ -1341,8 +1349,50 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
         return texture;
     }
 
+    private static string GetLargeTextureDebugName(Texture texture)
+    {
+        #if DEBUG
+            if (HiresRenderer.Instance is not { } renderer || texture == null)
+            {
+                return "unknown";
+            }
+
+            if (_largeExternalTextureMap.TryGetValue(texture, out var largeRenderTarget))
+            {
+                if (largeRenderTarget?.Target != null)
+                {
+                    return largeRenderTarget.Target.Name;
+                }
+            }
+
+            else if (texture == renderer.LargeGameplayBuffer.Target)
+            {
+                return "Large Gameplay";
+            }
+
+            else if (texture == renderer.LargeLevelBuffer.Target)
+            {
+                return "Large Level";
+            }
+
+            else if (texture == renderer.LargeTempABuffer.Target)
+            {
+                return "Large TempA";
+            }
+
+            else if (texture == renderer.LargeTempBBuffer.Target)
+            {
+                return "Large TempB";
+            }
+
+            return "unknown";
+        #else
+            return "";
+        #endif
+    }
 
     
+
     private delegate void orig_SetRenderTargets(GraphicsDevice self, RenderTargetBinding[] renderTargets);
 
     private static void GraphicsDevice_SetRenderTargets(orig_SetRenderTargets orig, GraphicsDevice self, RenderTargetBinding[] renderTargetBindings)
@@ -1656,6 +1706,16 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
             // small. Danger! We need to replace that small buffer with a larger one.
             var createdSuccessfully = HotCreateLargeBuffer(targetTexture2D2);
 
+            if (createdSuccessfully)
+            {
+                #if DEBUG
+                    Logger.Log(LogLevel.Verbose, "MotionSmoothingModule", new StackTrace(true).ToString());
+                    Logger.Log(LogLevel.Verbose, "MotionSmoothingModule", $"Hot created a {targetTexture2D2.Width * Scale}x{targetTexture2D2.Height * Scale} buffer!");
+                    Logger.Log(LogLevel.Verbose, "MotionSmoothingModule", $"Reason: Drew {GetLargeTextureDebugName(texture)} into a small target called {_currentRenderTarget.Name}.");
+                    Logger.Log(LogLevel.Verbose, "MotionSmoothingModule", $"Total existing hot-created buffers: {_largeExternalTextureMap.Count}\n");
+                #endif
+            }
+
 			// If we failed to create a large buffer, but we're drawing something into a buffer
 			// that's very nearly the same size as the source, then we can just assume something
 			// else resized the target to match the source (e.g. DBBHelper), and we can skip the
@@ -1800,9 +1860,6 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
             _largeExternalTextureMap[smallTexture] = largeTarget;
             _largeTextures.Add(largeTarget.Target);
         }
-
-        Logger.Log(LogLevel.Verbose, "MotionSmoothingModule", new StackTrace(true).ToString());
-        Logger.Log(LogLevel.Verbose, "MotionSmoothingModule", $"Hot created a {largeTarget.Target.Width}x{largeTarget.Target.Height} buffer! Total existing: {_largeExternalTextureMap.Count}");
 
         return true;
     }
