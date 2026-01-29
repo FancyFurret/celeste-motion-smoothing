@@ -739,9 +739,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
         // Similarly, when rendering the background Hires, we don't need to composite anything ourselves.
         if (MotionSmoothingModule.Settings.RenderBackgroundHires || !_currentlyRenderingBackground)
         {
-            _disableFloorFunctions = true;
             orig(self, scene);
-			_disableFloorFunctions = false;
             return;
         }
 
@@ -763,8 +761,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
         // Now draw the parallax-one backgrounds
         _allowParallaxOneBackgrounds = true;
-        _disableFloorFunctions = true;
-        
+
 		_offsetWhenDrawnTo.Clear();
         _offsetWhenDrawnTo.Add(renderer.LargeLevelBuffer);
 
@@ -774,8 +771,6 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
         _enableLargeLevelBuffer = true;
         Engine.Instance.GraphicsDevice.SetRenderTarget(GameplayBuffers.Level);
-
-		_disableFloorFunctions = false;
     }
 
 	private static void BackdropRendererRenderHook(ILContext il)
