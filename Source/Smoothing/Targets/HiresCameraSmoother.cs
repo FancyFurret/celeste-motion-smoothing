@@ -734,36 +734,12 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
             return;
         }
 
-		_disableFloorFunctions = MotionSmoothingModule.Settings.RenderBackgroundHires;
-
         // The foreground gets rendered like normal, and the smoothed camera position automatically lines it
 		// up with the gameplay. We don't menually offset this because then parallax foregrounds don't work.
-        if (!_currentlyRenderingBackground)
+        // Similarly, when rendering the background Hires, we don't need to composite anything ourselves.
+        if (MotionSmoothingModule.Settings.RenderBackgroundHires || !_currentlyRenderingBackground)
         {
-            orig(self, scene);
-			_disableFloorFunctions = false;
-            return;
-        }
-
-        // When rendering the background Hires, we don't need to composite anything ourselves.
-        if (MotionSmoothingModule.Settings.RenderBackgroundHires)
-        {
-			// Some things like SJ's styleground masks can call BackdropRenderer.Render outside of
-			// Level.Render, so this is a possible place to check for the destination buffer.
-			if (!_largeTextures.Contains(_currentRenderTarget) && _currentRenderTarget is Texture2D texture2D)
-			{
-				if (HotCreateLargeBuffer(texture2D))
-                {
-                    #if DEBUG
-                        Logger.Log(LogLevel.Verbose, "MotionSmoothingModule", new StackTrace(true).ToString());
-                        Logger.Log(LogLevel.Verbose, "MotionSmoothingModule", $"Hot created a {texture2D.Width * Scale}x{texture2D.Height * Scale} buffer!");
-                        Logger.Log(LogLevel.Verbose, "MotionSmoothingModule", $"Reason: Called BackdropRenderer.Render with Smooth Background on and a small target called {_currentRenderTarget.Name}.");
-                        Logger.Log(LogLevel.Verbose, "MotionSmoothingModule", $"Total existing hot-created buffers: {_largeExternalTextureMap.Count}\n");
-                    #endif
-                }
-			}
-
-            // The background very much does *not* get an offset, unlike the foreground.
+            _disableFloorFunctions = true;
             orig(self, scene);
 			_disableFloorFunctions = false;
             return;
@@ -787,6 +763,8 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
         // Now draw the parallax-one backgrounds
         _allowParallaxOneBackgrounds = true;
+        _disableFloorFunctions = true;
+        
 		_offsetWhenDrawnTo.Clear();
         _offsetWhenDrawnTo.Add(renderer.LargeLevelBuffer);
 
