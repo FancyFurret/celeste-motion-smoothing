@@ -708,30 +708,6 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
             return;
         }
 
-        // When rendering the background Hires, we don't need to composite anything ourselves.
-        if (MotionSmoothingModule.Settings.RenderBackgroundHires)
-        {
-			// Some things like SJ's styleground masks can call BackdropRenderer.Render outside of
-			// Level.Render, so this is a possible place to check for the destination buffer.
-			if (!_largeTextures.Contains(_currentRenderTarget) && _currentRenderTarget is Texture2D texture2D)
-			{
-				if (HotCreateLargeBuffer(texture2D))
-                {
-                    #if DEBUG
-                        Logger.Log(LogLevel.Verbose, "MotionSmoothingModule", new StackTrace(true).ToString());
-                        Logger.Log(LogLevel.Verbose, "MotionSmoothingModule", $"Hot created a {texture2D.Width * Scale}x{texture2D.Height * Scale} buffer!");
-                        Logger.Log(LogLevel.Verbose, "MotionSmoothingModule", $"Reason: Called BackdropRenderer.Render with Smooth Background on and a small target.");
-                        Logger.Log(LogLevel.Verbose, "MotionSmoothingModule", $"Total existing hot-created buffers: {_largeExternalTextureMap.Count}\n");
-                    #endif
-                }
-			}
-
-            // The background very much does *not* get an offset, unlike the foreground.
-            orig(self, scene);
-			_disableFloorFunctions = false;
-            return;
-        }
-
 
         _allowParallaxOneBackgrounds = false;
         orig(self, scene);
