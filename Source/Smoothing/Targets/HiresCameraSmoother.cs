@@ -127,8 +127,6 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 	{
         DestroyExternalLargeTextures();
 
-        Logger.Log(LogLevel.Verbose, "MotionSmoothingModule", "Disposed all large external buffers");
-
         _internalLargeTextures.Clear();
         _largeTextures.Clear();
 	}
@@ -140,6 +138,8 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
             largeTarget.Dispose();
             _largeExternalTextureMap.Remove(smallTexture);
         }
+
+        Logger.Log(LogLevel.Verbose, "MotionSmoothingModule", "Disposed all large external buffers.");
 	}
 
     public static void InitializeLargeTextures()
@@ -1354,18 +1354,10 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
         #if DEBUG
             if (HiresRenderer.Instance is not { } renderer || texture == null)
             {
-                return "unknown";
+                return "an unknown buffer";
             }
 
-            if (_largeExternalTextureMap.TryGetValue(texture, out var largeRenderTarget))
-            {
-                if (largeRenderTarget?.Target != null)
-                {
-                    return largeRenderTarget.Target.Name;
-                }
-            }
-
-            else if (texture == renderer.LargeGameplayBuffer.Target)
+            if (texture == renderer.LargeGameplayBuffer.Target)
             {
                 return "Large Gameplay";
             }
@@ -1385,7 +1377,15 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
                 return "Large TempB";
             }
 
-            return "unknown";
+            foreach (var (smallTexture, largeTarget) in _largeExternalTextureMap)
+            {
+               if (largeTarget.Target == texture)
+               {
+                   return $"a hot-created buffer named {largeTarget.Name}";
+               }
+            }
+
+            return "an unknown buffer";
         #else
             return "";
         #endif
