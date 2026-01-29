@@ -731,7 +731,9 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
             // The foreground gets rendered like normal, and the smoothed camera position automatically lines it
             // up with the gameplay. We don't menually offset this because then parallax foregrounds don't work.
             // Similarly, when rendering the background Hires, we don't need to composite anything ourselves.
+            _disableFloorFunctions = true;
             orig(self, scene);
+            _disableFloorFunctions = false;
             return;
         }
 
@@ -753,6 +755,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
         // Now draw the parallax-one backgrounds
         _allowParallaxOneBackgrounds = true;
+        _disableFloorFunctions = true;
 
 		_offsetWhenDrawnTo.Clear();
         _offsetWhenDrawnTo.Add(renderer.LargeLevelBuffer);
@@ -763,6 +766,8 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
         _enableLargeLevelBuffer = true;
         Engine.Instance.GraphicsDevice.SetRenderTarget(GameplayBuffers.Level);
+
+        _disableFloorFunctions = false;
     }
 
 	private static void BackdropRendererRenderHook(ILContext il)
