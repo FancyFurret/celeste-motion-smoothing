@@ -508,16 +508,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
         ComputeSmoothedCameraData(level);
 
-        if (MotionSmoothingModule.Settings.RenderBackgroundHires)
-        {
-            _enableLargeLevelBuffer = true;
-        }
-
-        else
-        {
-            _enableLargeLevelBuffer = false;
-        }
-
+        _enableLargeLevelBuffer = MotionSmoothingModule.Settings.RenderBackgroundHires;
 		_enableLargeGameplayBuffer = false;
     }
 
@@ -733,8 +724,8 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
             || MotionSmoothingModule.Settings.RenderBackgroundHires
             || !_currentlyRenderingBackground
             || (
-                _currentRenderTarget != renderer.LargeLevelBuffer.Target
-                && _currentRenderTarget != GameplayBuffers.Level.Target
+                _currentRenderTarget != GameplayBuffers.Level.Target
+                && _currentRenderTarget != renderer.LargeLevelBuffer.Target
             )
         ) {
             // The foreground gets rendered like normal, and the smoothed camera position automatically lines it
@@ -744,7 +735,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
             return;
         }
 
-
+        _enableLargeLevelBuffer = false;
         _allowParallaxOneBackgrounds = false;
         orig(self, scene);
 
