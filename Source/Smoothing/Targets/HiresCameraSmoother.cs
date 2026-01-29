@@ -732,6 +732,10 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
             HiresRenderer.Instance is not { } renderer
             || MotionSmoothingModule.Settings.RenderBackgroundHires
             || !_currentlyRenderingBackground
+            || (
+                _currentRenderTarget != renderer.LargeLevelBuffer.Target
+                && _currentRenderTarget != GameplayBuffers.Level.Target
+            )
         ) {
             // The foreground gets rendered like normal, and the smoothed camera position automatically lines it
             // up with the gameplay. We don't menually offset this because then parallax foregrounds don't work.
