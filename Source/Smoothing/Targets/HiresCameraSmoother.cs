@@ -695,18 +695,14 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
     private static void BackdropRenderer_Render(On.Celeste.BackdropRenderer.orig_Render orig, BackdropRenderer self, Scene scene)
     {
-        if (HiresRenderer.Instance is not { } renderer)
-        {
-            orig(self, scene);
-            return;
-        }
-
-		_disableFloorFunctions = MotionSmoothingModule.Settings.RenderBackgroundHires;
-
-        // The foreground gets rendered like normal, and the smoothed camera position automatically lines it
-		// up with the gameplay. We don't menually offset this because then parallax foregrounds don't work.
-        if (!_currentlyRenderingBackground)
-        {
+        if (
+            HiresRenderer.Instance is not { } renderer
+            || MotionSmoothingModule.Settings.RenderBackgroundHires
+            || !_currentlyRenderingBackground
+        ) {
+            // The foreground gets rendered like normal, and the smoothed camera position automatically lines it
+            // up with the gameplay. We don't menually offset this because then parallax foregrounds don't work.
+            // Similarly, when rendering the background Hires, we don't need to composite anything ourselves.
             orig(self, scene);
 			_disableFloorFunctions = false;
             return;
@@ -754,6 +750,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
         // Now draw the parallax-one backgrounds
         _allowParallaxOneBackgrounds = true;
+
 		_offsetWhenDrawnTo.Clear();
         _offsetWhenDrawnTo.Add(renderer.LargeLevelBuffer);
 
@@ -763,8 +760,6 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
         HiresRenderer.EnableLargeLevelBuffer();
         Engine.Instance.GraphicsDevice.SetRenderTarget(GameplayBuffers.Level);
-
-		_disableFloorFunctions = false;
     }
 
 	private static void BackdropRendererRenderHook(ILContext il)
