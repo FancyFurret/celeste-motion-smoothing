@@ -728,17 +728,14 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
     private static void BackdropRenderer_Render(On.Celeste.BackdropRenderer.orig_Render orig, BackdropRenderer self, Scene scene)
     {
-        if (HiresRenderer.Instance is not { } renderer)
-        {
-            orig(self, scene);
-            return;
-        }
-
-        // The foreground gets rendered like normal, and the smoothed camera position automatically lines it
-		// up with the gameplay. We don't menually offset this because then parallax foregrounds don't work.
-        // Similarly, when rendering the background Hires, we don't need to composite anything ourselves.
-        if (MotionSmoothingModule.Settings.RenderBackgroundHires || !_currentlyRenderingBackground)
-        {
+        if (
+            HiresRenderer.Instance is not { } renderer
+            || MotionSmoothingModule.Settings.RenderBackgroundHires
+            || !_currentlyRenderingBackground
+        ) {
+            // The foreground gets rendered like normal, and the smoothed camera position automatically lines it
+            // up with the gameplay. We don't menually offset this because then parallax foregrounds don't work.
+            // Similarly, when rendering the background Hires, we don't need to composite anything ourselves.
             orig(self, scene);
             return;
         }
