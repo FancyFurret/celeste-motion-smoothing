@@ -196,7 +196,6 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
         On.Celeste.HudRenderer.RenderContent += HudRenderer_RenderContent;
 
         IL.Celeste.HiresRenderer.BeginRender += HiresRendererBeginRenderHook;
-        IL.Celeste.TalkComponent.TalkComponentUI.Render += TalkComponentUiRenderHook;
         IL.Celeste.Lookout.Hud.Render += LookoutHudRenderHook;
 
 		On.Celeste.GameplayBuffers.Create += GameplayBuffers_Create;
@@ -279,7 +278,6 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
         On.Celeste.HudRenderer.RenderContent -= HudRenderer_RenderContent;
 
         IL.Celeste.HiresRenderer.BeginRender -= HiresRendererBeginRenderHook;
-        IL.Celeste.TalkComponent.TalkComponentUI.Render -= TalkComponentUiRenderHook;
         IL.Celeste.Lookout.Hud.Render -= LookoutHudRenderHook;
 
 		On.Celeste.GameplayBuffers.Create -= GameplayBuffers_Create;
@@ -456,6 +454,15 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
                    cursor.EmitDelegate(GetHiresDisplayMatrix);
                }
            }
+        }
+
+        if (cursor.TryGotoNext(MoveType.After,
+            instr => instr.MatchCallvirt<SpriteBatch>("End")))
+        {
+            // We smooth the camera position here in order to affect the SubHudRenderer,
+            // which we aren't supposed to hook.
+            cursor.EmitLdarg0();
+            cursor.EmitDelegate(SmoothCameraPosition);
         }
 
         // if (cursor.TryGotoNext(MoveType.Before,
@@ -1180,13 +1187,13 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
             return;
         }
 
-        Vector2 oldCameraPosition = level.Camera.Position;
-        level.Camera.Position = GetSmoothedCameraPosition();
+        // SmoothCameraPosition(level);
+        // The camera position is already smoothed by the IL hook time we get here.
         _disableFloorFunctions = true;
 
         orig(self, scene);
 
-        level.Camera.Position = oldCameraPosition;
+        UnsmoothCameraPosition(level);
         _disableFloorFunctions = false;
     }
 
@@ -1202,25 +1209,6 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
             cursor.EmitDelegate(GetCameraScale);
             cursor.EmitCall(typeof(Matrix).GetMethod(nameof(Matrix.CreateScale), [typeof(float)])!);
             cursor.EmitCall(typeof(Matrix).GetMethod("op_Multiply", [typeof(Matrix), typeof(Matrix)])!);
-        }
-    }
-
-    // Despite having a fix for this more broadly by disaling Floor()s, some very
-    // obscure places like the gate to Raspberry Roots in SJ still benefit from this more targeted fix
-    private static void TalkComponentUiRenderHook(ILContext il)
-    {
-        var cursor = new ILCursor(il);
-
-        // Use the smoothed camera position
-        if (cursor.TryGotoNext(MoveType.After,
-                instr => instr.MatchCallvirt<Camera>("get_Position"),
-                instr => instr.MatchCall(typeof(Calc).GetMethod(nameof(Calc.Floor))!)))
-        {
-            // Ignore this value
-            cursor.EmitPop();
-
-            // Get just the smoothed position
-            cursor.EmitCall(typeof(UnlockedCameraSmoother).GetMethod(nameof(GetSmoothedCameraPosition))!);
         }
     }
 
@@ -2017,18 +2005,56 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 		}
 
 
+        
+        Version extendedCameraDynamicsVersion = new Version(1, 1, 2);
 
 		EverestModuleMetadata extendedCameraDynamics = new() {
 			Name = "ExtendedCameraDynamics",
-			Version = new Version(1, 1, 2)
+			Version = extendedCameraDynamicsVersion
 		};
 
-		// Check for exactly v1.1.2
+		// Check for exact version so we don't hook anything if the mod updates
 		if (Everest.Loader.TryGetDependency(extendedCameraDynamics, out var extendedCameraDynamicsModule))
 		{
-			if (extendedCameraDynamicsModule.Metadata.Version.Equals(new Version(1, 1, 2)))
+			if (extendedCameraDynamicsModule.Metadata.Version.Equals(extendedCameraDynamicsVersion))
 			{
 				AddExtendedCameraDynamicsHook();
+			}
+		}
+
+        
+
+        Version flagLinesAndSuchVersion = new Version(1, 6, 60);
+
+        EverestModuleMetadata flagLinesAndSuch = new() {
+			Name = "FlaglinesAndSuch",
+			Version = flagLinesAndSuchVersion
+		};
+
+		// Check for exact version so we don't hook anything if the mod updates
+		if (Everest.Loader.TryGetDependency(flagLinesAndSuch, out var flagLinesAndSuchModule))
+		{
+			if (flagLinesAndSuchModule.Metadata.Version.Equals(flagLinesAndSuchVersion))
+			{
+				AddFlaglinesAndSuchHook();
+			}
+		}
+
+        
+
+        Version strawberryJamVersion = new Version(1, 0, 12);
+
+        EverestModuleMetadata strawberryJam = new() {
+			Name = "StrawberryJam2021",
+			Version = strawberryJamVersion
+		};
+
+		// Check for exact version so we don't hook anything if the mod updates
+		if (Everest.Loader.TryGetDependency(strawberryJam, out var strawberryJamModule))
+		{
+			if (strawberryJamModule.Metadata.Version.Equals(strawberryJamVersion))
+			{
+				AddStrawberryJamHook();
 			}
 		}
 	}
@@ -2116,5 +2142,71 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 	{
 		target = MotionSmoothingModule.GetResizableBuffer(target);
 		orig(target);
+	}
+
+
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+	private void AddFlaglinesAndSuchHook()
+	{
+		Type t_CustomGodrays = Type.GetType("FlaglinesAndSuch.CustomGodrays, FlaglinesAndSuch");
+		MethodInfo m_Update = t_CustomGodrays?.GetMethod(
+			"Update",
+			BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic
+		);
+
+		if (m_Update != null)
+		{
+			AddHook(new ILHook(m_Update, CustomGodraysUpdateHook));
+		}
+	}
+
+    private static void CustomGodraysUpdateHook(ILContext il)
+    {
+        ILCursor cursor = new ILCursor(il);
+
+        int vec2Local = -1;
+        int num2Local = -1;
+        int num3Local = -1;
+
+        #pragma warning disable CL0006 // Multiple predicates to ILCursor.(Try)Goto*
+        if (cursor.TryGotoNext(MoveType.Before,
+            i => i.MatchLdloca(out vec2Local),
+            i => i.MatchLdloc(out num2Local),
+            i => i.Match(OpCodes.Conv_I4),
+            i => i.Match(OpCodes.Conv_R4),
+            i => i.MatchLdloc(out num3Local),
+            i => i.Match(OpCodes.Conv_I4),
+            i => i.Match(OpCodes.Conv_R4),
+            i => i.MatchCall<Vector2>(".ctor"))
+        ) {
+            #pragma warning disable CL0005 // ILCursor.Remove or RemoveRange used
+            cursor.RemoveRange(8);
+            #pragma warning restore CL0005 // ILCursor.Remove or RemoveRange used
+
+            cursor.Emit(OpCodes.Ldloc, il.Body.Variables[num2Local]);
+            cursor.Emit(OpCodes.Ldloc, il.Body.Variables[num3Local]);
+            cursor.Emit(OpCodes.Newobj, typeof(Vector2).GetConstructor(new[] { typeof(float), typeof(float) }));
+            cursor.Emit(OpCodes.Call, typeof(Calc).GetMethod("Floor", new[] { typeof(Vector2) }));
+            cursor.Emit(OpCodes.Stloc, il.Body.Variables[vec2Local]);
+        }
+        #pragma warning restore CL0006 // Multiple predicates to ILCursor.(Try)Goto*
+    }
+
+
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+	private void AddStrawberryJamHook()
+	{
+		Type t_HexagonalGodray = Type.GetType("Celeste.Mod.StrawberryJam2021.Effects.HexagonalGodray, StrawberryJam2021");
+		MethodInfo m_Update = t_HexagonalGodray?.GetMethod(
+			"Update",
+			BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic
+		);
+
+		if (m_Update != null)
+		{
+			AddHook(new ILHook(m_Update, CustomGodraysUpdateHook));
+		}
 	}
 }
