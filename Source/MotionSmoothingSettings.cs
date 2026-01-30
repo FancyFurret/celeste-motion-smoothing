@@ -157,14 +157,13 @@ public class MotionSmoothingSettings : EverestModuleSettings
             menu,
             "This lets the camera move continuously: that is, half of a pixel\n" +
             "could be shown on the side of the screen while the camera \n" +
-            "is moving. This is especially noticeable when the camera.\n" +
+            "is moving. This is especially noticeable when the camera\n" +
 			"is slowly catching up to the player.\n\n" +
             "Highest Quality: Produces the smoothest visuals, but is\n" +
             "incompatible with a small number of other mods and may\n" +
             "impact performance on low-end systems.\n\n" +
             "Most Compatible: Has the highest compatibility, but makes\n" +
-            "the entire background jitter uncontrollably when moving.\n\n" +
-			"Off: Disables all camera smoothing."
+            "the entire background jitter uncontrollably when moving."
         );
     }
 

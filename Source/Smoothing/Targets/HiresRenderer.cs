@@ -37,6 +37,11 @@ public class HiresRenderer : Renderer
         LargeTempABuffer = largeTempABuffer;
         LargeTempBBuffer = largeTempBBuffer;
 
+        OriginalGameplayBuffer = GameplayBuffers.Gameplay;
+        OriginalLevelBuffer = GameplayBuffers.Level;
+        OriginalTempABuffer = GameplayBuffers.TempA;
+        OriginalTempBBuffer = GameplayBuffers.TempB;
+
         SmallBuffer = smallBuffer;
 
 		GaussianBlurTempBuffer = gaussianBlurTempBuffer;
@@ -49,82 +54,6 @@ public class HiresRenderer : Renderer
 
     }
 
-	public static void EnableLargeGameplayBuffer()
-    {
-        if (Instance == null || GameplayBuffers.Gameplay == Instance.LargeGameplayBuffer)
-        {
-            return;
-        }
-
-        OriginalGameplayBuffer = GameplayBuffers.Gameplay;
-        GameplayBuffers.Gameplay = Instance.LargeGameplayBuffer;
-    }
-
-    public static void DisableLargeGameplayBuffer()
-    {
-        if (OriginalGameplayBuffer == null) { return; }
-
-        GameplayBuffers.Gameplay = OriginalGameplayBuffer;
-        OriginalGameplayBuffer = null;
-    }
-
-    public static void EnableLargeLevelBuffer()
-    {
-        if (Instance == null || GameplayBuffers.Level == Instance.LargeLevelBuffer)
-        {
-            return;
-        }
-
-        OriginalLevelBuffer = GameplayBuffers.Level;
-        GameplayBuffers.Level = Instance.LargeLevelBuffer;
-    }
-
-    public static void DisableLargeLevelBuffer()
-    {
-        if (OriginalLevelBuffer == null) { return; }
-
-        GameplayBuffers.Level = OriginalLevelBuffer;
-        OriginalLevelBuffer = null;
-    }
-
-    public static void EnableLargeTempABuffer()
-    {
-        if (Instance == null || GameplayBuffers.TempA == Instance.LargeTempABuffer)
-        {
-            return;
-        }
-
-        OriginalTempABuffer = GameplayBuffers.TempA;
-        GameplayBuffers.TempA = Instance.LargeTempABuffer;
-    }
-
-    public static void DisableLargeTempABuffer()
-    {
-        if (OriginalTempABuffer == null) { return; }
-
-        GameplayBuffers.TempA = OriginalTempABuffer;
-        OriginalTempABuffer = null;
-    }
-
-    public static void EnableLargeTempBBuffer()
-    {
-        if (Instance == null || GameplayBuffers.TempB == Instance.LargeTempBBuffer)
-        {
-            return;
-        }
-
-        OriginalTempBBuffer = GameplayBuffers.TempB;
-        GameplayBuffers.TempB = Instance.LargeTempBBuffer;
-    }
-
-    public static void DisableLargeTempBBuffer()
-    {
-        if (OriginalTempBBuffer == null) { return; }
-
-        GameplayBuffers.TempB = OriginalTempBBuffer;
-        OriginalTempBBuffer = null;
-    }
-
     public static HiresRenderer Create()
     {
         Destroy();
@@ -132,10 +61,12 @@ public class HiresRenderer : Renderer
 		int vanillaWidth = GameplayBuffers.Gameplay.Width;
 		int vanillaHeight = GameplayBuffers.Gameplay.Height;
 
-		int largeWidth = 1920;
-		int largeHeight = 1080;
+        int scale = (int) Math.Ceiling(1920f / vanillaWidth);
 
-		HiresCameraSmoother.Scale = 1920f / vanillaWidth;
+		int largeWidth = vanillaWidth * scale;
+		int largeHeight = vanillaHeight * scale;
+
+		HiresCameraSmoother.Scale = scale;
 
 		Instance = new HiresRenderer(
 			GameplayBuffers.Create(largeWidth, largeHeight),
@@ -151,11 +82,6 @@ public class HiresRenderer : Renderer
 
     public static void Destroy()
     {
-        DisableLargeLevelBuffer();
-		DisableLargeGameplayBuffer();
-		DisableLargeTempABuffer();
-        DisableLargeTempBBuffer();
-
         if (Instance != null)
         {
             Instance.LargeLevelBuffer?.Dispose();
