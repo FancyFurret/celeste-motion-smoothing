@@ -1459,7 +1459,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
 		else if (_forceZoomDrawingToScreen && _currentRenderTarget == null)
 		{
-			transformMatrix = ZoomMatrix * transformMatrix;
+			transformMatrix = transformMatrix * ZoomMatrix;
 		}
 
         orig(self, sortMode, blendState, samplerState, depthStencilState, rasterizerState, effect, transformMatrix);
