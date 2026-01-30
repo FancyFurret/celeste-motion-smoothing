@@ -18,7 +18,7 @@ Maps and mods to check when messing with details.
 	- Save state, teleport, load state
 	- Save state, change unlock strategy, load state
     - Geodesic: black rectangles in manifolds
-!!! - Extended Camera Dynamics: test map.
+    - Extended Camera Dynamics: test map.
 - SSC2024 lobby
 	- Bloom masks around globes
     - Drawing hires gameplay

@@ -1917,7 +1917,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
         // Move to the beginning
         cursor.Index = 0;
 
-        //Emit the matrix parameter
+        // Emit the matrix parameter
         cursor.Emit(OpCodes.Ldarg_0);
 
         // Create and multiply by scale matrix
@@ -1935,7 +1935,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
         // Move to the beginning
         cursor.Index = 0;
 
-        //Emit the matrix parameter
+        // Emit the matrix parameter
         cursor.Emit(OpCodes.Ldarg_0);
 
         // Create and multiply by scale matrix
@@ -1963,7 +1963,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
             return orig(self);
         }
 
-        return new Vector2((float) Math.Floor(self.X * 6), (float) Math.Floor(self.Y * 6)) / 6;
+        return self;
     }
 
     private delegate Vector2 orig_Ceiling(Vector2 self);
@@ -1975,7 +1975,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
             return orig(self);
         }
 
-        return new Vector2((float) Math.Ceiling(self.X * 6), (float) Math.Ceiling(self.Y * 6)) / 6;
+        return self;
     }
 
     private delegate Vector2 orig_Round(Vector2 self);
@@ -1987,7 +1987,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
             return orig(self);
         }
 
-        return new Vector2((float) Math.Round(self.X * 6), (float) Math.Round(self.Y * 6)) / 6;
+        return self;
     }
 
 
