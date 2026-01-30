@@ -17,7 +17,7 @@ When this mode is enabled, `GameplayBuffers.Gameplay` and `GameplayBuffers.Level
 
 There are a few small fixes that help here: first, if the background is rendered at low resolution, anything with parallax one (e.g. the black hole background in Farewell) won't be able to move in lockstep with the camera since it can only move in whole-pixel increments, and so it has a jitter. To fix this, we delay drawing the parallax-one backgrounds until after everything else in the background has rendered, then draw them after the upscaling with a fractional-pixel offset. This works well enough, but there is the occasional color inaccuracy due to the layers being out of order. The Smooth Background option obviates this issue.
 
-The second quirk is that many vanilla and modded entities that render at high-resolution (talk indicators, titles in SJ gyms, etc), deliberately floor the camera position before they render, and similarly for parallax background objects. To fix this, we use the somewhat blunt approach of making calls to `Calc.Floor`, `Calc.Ceiling`, and `Calc.Round` actually do their operation to a step size of $\frac{1}{6}$ rather than $1$ when applied to XNA `Vector2`s during these two parts of rendering.
+The second quirk is that many vanilla and modded entities that render at high-resolution (talk indicators, titles in SJ gyms, etc), deliberately floor the camera position before they render, and similarly for parallax background objects. To fix this, we use the somewhat blunt approach of disabling calls to `Calc.Floor`, `Calc.Ceiling`, and `Calc.Round` when applied to XNA `Vector2`s during these two parts of rendering.
 
 ### Interactions with Other Mods
 
