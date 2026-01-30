@@ -456,11 +456,22 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
            }
         }
 
+        if (cursor.TryGotoNext(MoveType.After,
+            instr => instr.MatchCallvirt<SpriteBatch>("End")))
+        {
+            // We smooth the camera position here in order to affect the SubHudRenderer,
+            // which we aren't supposed to hook.
+            cursor.EmitLdarg0();
+            cursor.EmitDelegate(SmoothCameraPosition);
+        }
+
         // if (cursor.TryGotoNext(MoveType.Before,
         //     instr => instr.MatchLdfld(typeof(Level), "HudRenderer")))
         // {
         //     cursor.EmitDelegate(DrawDebugBuffers);
         // }
+
+        Console.WriteLine(il.ToString());
     }
 
     private static void DrawDebugBuffers()
@@ -1178,13 +1189,13 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
             return;
         }
 
-        Vector2 oldCameraPosition = level.Camera.Position;
-        level.Camera.Position = GetSmoothedCameraPosition();
+        // SmoothCameraPosition(level);
+        // The camera position is already smoothed by the IL hook time we get here.
         _disableFloorFunctions = true;
 
         orig(self, scene);
 
-        level.Camera.Position = oldCameraPosition;
+        UnsmoothCameraPosition(level);
         _disableFloorFunctions = false;
     }
 
