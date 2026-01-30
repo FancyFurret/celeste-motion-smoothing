@@ -683,6 +683,16 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 		{
 			return orig(texture, temp, output, fade, clear, samples, sampleScale, direction, alpha);
 		}
+        
+        if (GetPotentiallyLargeTexture(texture) is Texture2D largeTexture2D)
+        {
+            texture = largeTexture2D;
+        }
+
+        if (GetLargeTargetOrNull(output) is VirtualRenderTarget largeTarget)
+        {
+            output = largeTarget;
+        }
 
 		// This is a really blunt fix, but for things like Extended Variants that blur at small scales,
 		// they tend to look gross since they blur the sharp pixel boundaries. This just disables them
