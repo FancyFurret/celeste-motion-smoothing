@@ -456,13 +456,21 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
            }
         }
 
+        // We can't On hook the SubHudRenderer, so we do it like this.
         if (cursor.TryGotoNext(MoveType.After,
-            instr => instr.MatchCallvirt<SpriteBatch>("End")))
+            instr => instr.MatchLdfld<Level>("SubHudRenderer")))
         {
-            // We smooth the camera position here in order to affect the SubHudRenderer,
-            // which we aren't supposed to hook.
-            cursor.EmitLdarg0();
-            cursor.EmitDelegate(SmoothCameraPosition);
+            if (cursor.TryGotoNext(MoveType.Before,
+                instr => instr.MatchCallvirt<Renderer>("Render")))
+            {
+                cursor.EmitLdarg0();
+                cursor.EmitDelegate(SmoothCameraPosition);
+
+                cursor.Index++;
+
+                cursor.EmitLdarg0();
+                cursor.EmitDelegate(UnsmoothCameraPosition);
+            }
         }
 
         // if (cursor.TryGotoNext(MoveType.Before,
@@ -1187,8 +1195,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
             return;
         }
 
-        // SmoothCameraPosition(level);
-        // The camera position is already smoothed by the IL hook time we get here.
+        SmoothCameraPosition(level);
         _disableFloorFunctions = true;
 
         orig(self, scene);
