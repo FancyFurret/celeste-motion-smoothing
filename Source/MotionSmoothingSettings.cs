@@ -121,12 +121,12 @@ public class MotionSmoothingSettings : EverestModuleSettings
             index => {
 				if ((UnlockCameraStrategy)index == UnlockCameraStrategy.Hires)
 				{
-					return "Highest Quality";
+					return "Fancy";
 				}
 
 				if ((UnlockCameraStrategy)index == UnlockCameraStrategy.Unlock)
 				{
-					return "Most Compatible";
+					return "Fast";
 				}
 
 				return "Off";
@@ -155,14 +155,14 @@ public class MotionSmoothingSettings : EverestModuleSettings
 
         strategySlider.AddDescription(
             menu,
-            "This lets the camera move continuously: that is, half of a pixel\n" +
+            "Lets the camera move continuously: that is, half of a pixel\n" +
             "could be shown on the side of the screen while the camera \n" +
             "is moving. This is especially noticeable when the camera\n" +
 			"is slowly catching up to the player.\n\n" +
-            "Highest Quality: Produces the smoothest visuals, but is\n" +
+            "Fancy: Produces the highest quality visuals, but is\n" +
             "incompatible with a small number of other mods and may\n" +
             "impact performance on low-end systems.\n\n" +
-            "Most Compatible: Has the highest compatibility, but makes\n" +
+            "Fast: Has negligible performance impact, but makes\n" +
             "the entire background jitter uncontrollably when moving."
         );
     }
@@ -198,7 +198,7 @@ public class MotionSmoothingSettings : EverestModuleSettings
 
         _renderBackgroundHiresItem.AddDescription(
             menu,
-            "Only applies if Smooth Camera is set to Highest Quality.\n" +
+            "Only applies if Smooth Camera is set to Fancy.\n" +
             "Determines whether the background is drawn at a 6x scale.\n" +
             "This makes for a much smoother result, particularly with\n" +
             "parallax, and fixes occasional slightly incorrect colors\n" +
@@ -239,7 +239,7 @@ public class MotionSmoothingSettings : EverestModuleSettings
 
         _renderMadelineWithSubpixelsItem.AddDescription(
             menu,
-            "Only applies if Smooth Camera is set to Highest Quality.\n" +
+            "Only applies if Smooth Camera is set to Fancy.\n" +
             "Determines whether Madeline is drawn at her exact subpixel\n" +
             "position (i.e. offset from the pixel grid). This makes\n" +
 			"Madeline's sprite appear much more smooth and clear when\n" +

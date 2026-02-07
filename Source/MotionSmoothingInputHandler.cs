@@ -109,9 +109,9 @@ public class MotionSmoothingInputHandler : ToggleableFeature<MotionSmoothingInpu
                 }
 
 				var strategyString = MotionSmoothingModule.Settings.UnlockCameraStrategy == UnlockCameraStrategy.Hires
-					? "Highest Quality"
+					? "Fancy"
 					: MotionSmoothingModule.Settings.UnlockCameraStrategy == UnlockCameraStrategy.Unlock
-						? "Most Compatible"
+						? "Fast"
 						: "Off";
 
                 Engine.Commands.ExecuteCommand("display_message", new string[] {
