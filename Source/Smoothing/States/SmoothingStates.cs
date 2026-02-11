@@ -139,7 +139,7 @@ public class LevelZoomSmoothingState : FloatSmoothingState<Level>
 {
     protected override SmoothingMode? OverrideSmoothingMode => SmoothingMode.Extrapolate;
     protected override bool CancelSmoothing => CelesteTasInterop.CenterCamera;
-    protected override float GetValue(Level obj) => Math.Max(obj.Zoom, 0.01f);
+    protected override float GetValue(Level obj) => Math.Max(obj.Zoom, 1f / 6f);
     protected override void SetValue(Level obj, float value)
 	{
 		// Extrapolating the zoom means that it can overshoot which looks
@@ -150,6 +150,6 @@ public class LevelZoomSmoothingState : FloatSmoothingState<Level>
 			return;
 		}
 		
-		obj.Zoom = Math.Max(value, 0.01f);
+		obj.Zoom = Math.Max(value, 1f / 6f);
 	}
 }

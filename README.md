@@ -6,7 +6,7 @@ A mod for Celeste that greatly improves the smoothness of the camera and Madelin
 
 ## Implementation Details for Mod Authors
 
-The primary feature that can affect compatibility with other mods is camera smoothing: rendering the gameplay offset by a fraction of a pixel to greatly improve smoothness. The "Most Compatible" mode works by drawing the entire level buffer at a fractional offset when upscaling to the screen. While this correctly offsets the gameplay layer, it has the unfortunate drawback of making the background jitter, since unless a background object has parallax one (moving in lockstep with the camera), every time the camera moves a whole pixel, the background will effectively snap a whole pixel back. The solution is to do the offsetting in the compositing step, which is the "Highest Quality" mode; the remainder of this guide explains how this works.
+The primary feature that can affect compatibility with other mods is camera smoothing: rendering the gameplay offset by a fraction of a pixel to greatly improve smoothness. The Fast mode works by drawing the entire level buffer at a fractional offset when upscaling to the screen. While this correctly offsets the gameplay layer, it has the unfortunate drawback of making the background jitter, since unless a background object has parallax one (moving in lockstep with the camera), every time the camera moves a whole pixel, the background will effectively snap a whole pixel back. The solution is to do the offsetting in the compositing step, which is the Fancy mode; the remainder of this guide explains how this works.
 
 ### Hires Rendering in Vanilla
 
