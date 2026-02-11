@@ -1,3 +1,4 @@
+using AsmResolver;
 using Celeste.Mod.MotionSmoothing.Interop;
 using Celeste.Mod.MotionSmoothing.Smoothing.States;
 using Celeste.Mod.MotionSmoothing.Utilities;
@@ -2029,6 +2030,24 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 			}
 		}
 
+
+
+        Version zoomOutHelperPrototypeVersion = new Version(0, 2, 0);
+
+		EverestModuleMetadata zoomOutHelperPrototype = new() {
+			Name = "ZoomOutHelperPrototype",
+			Version = zoomOutHelperPrototypeVersion
+		};
+
+		// Check for exact version so we don't hook anything if the mod updates
+		if (Everest.Loader.TryGetDependency(zoomOutHelperPrototype, out var zoomOutHelperPrototypeModule))
+		{
+			if (zoomOutHelperPrototypeModule.Metadata.Version.Equals(zoomOutHelperPrototypeVersion))
+			{
+				AddZoomOutHelperPrototypeHook();
+			}
+		}
+
         
 
         Version flagLinesAndSuchVersion = new Version(1, 6, 60);
@@ -2150,6 +2169,66 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 		target = MotionSmoothingModule.GetResizableBuffer(target);
 		orig(target);
 	}
+
+
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+	private void AddZoomOutHelperPrototypeHook()
+	{
+		Type t_FunctionalZoomOutModule = Type.GetType("Celeste.Mod.FunctionalZoomOut.FunctionalZoomOutModule, FunctionalZoomOut");
+		
+		MethodInfo m_EnsureVanillaBuffers = t_FunctionalZoomOutModule?.GetMethod(
+			"EnsureVanillaBuffers",
+			BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic
+		);
+
+		if (m_EnsureVanillaBuffers != null)
+		{
+			AddHook(new Hook(m_EnsureVanillaBuffers, EnsureVanillaBuffersHook));
+		}
+
+		MethodInfo m_EnsureBufferDimensions = t_FunctionalZoomOutModule?.GetMethod(
+			"EnsureBufferDimensions",
+			BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic
+		);
+
+		if (m_EnsureBufferDimensions != null)
+		{
+			AddHook(new Hook(m_EnsureBufferDimensions, EnsureBufferDimensionsHook));
+		}
+	}
+
+    private static bool _zoomOutHelperPrototypeNeedBufferInitialization = false;
+
+    private delegate void orig_EnsureVanillaBuffers();
+	private static void EnsureVanillaBuffersHook(orig_EnsureVanillaBuffers orig)
+	{
+        _zoomOutHelperPrototypeNeedBufferInitialization = false;
+
+		orig();
+
+        if (_zoomOutHelperPrototypeNeedBufferInitialization)
+        {
+            InitializeLargeTextures();
+        }
+	}
+
+	private delegate void orig_EnsureBufferDimensionsHook(VirtualRenderTarget target, int padding);
+	private static void EnsureBufferDimensionsHook(orig_EnsureBufferDimensionsHook orig, VirtualRenderTarget target, int padding)
+	{
+		target = MotionSmoothingModule.GetResizableBuffer(target);
+        
+        
+        var oldWidth = target?.Target?.Width;
+        var oldHeight = target?.Target?.Height;
+        
+        orig(target, padding);
+
+        if (target?.Target?.Width != oldWidth || target?.Target?.Height != oldHeight)
+        {
+            _zoomOutHelperPrototypeNeedBufferInitialization = true;
+        }
+    }
 
 
 
