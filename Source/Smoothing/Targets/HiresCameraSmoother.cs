@@ -173,7 +173,6 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
         IL.Celeste.Level.Render += LevelRenderHook;
 
         On.Celeste.BloomRenderer.Apply += BloomRenderer_Apply;
-        IL.Celeste.BloomRenderer.Apply += BloomRendererApplyHook;
 
 		On.Celeste.GaussianBlur.Blur += GaussianBlur_Blur;
 
@@ -255,7 +254,6 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
         IL.Celeste.Level.Render -= LevelRenderHook;
 
         On.Celeste.BloomRenderer.Apply -= BloomRenderer_Apply;
-        IL.Celeste.BloomRenderer.Apply -= BloomRendererApplyHook;
 
         On.Celeste.GaussianBlur.Blur -= GaussianBlur_Blur;
 
@@ -670,25 +668,6 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
         _enableLargeTempBBuffer = false;
 
 		SmoothCameraPosition(level);
-    }
-
-    private static void BloomRendererApplyHook(ILContext il)
-    {
-        var cursor = new ILCursor(il);
-
-        // if (cursor.TryGotoNext(MoveType.After,
-        //     instr => instr.MatchCall(typeof(GaussianBlur), "Blur")))
-        // {
-        //     // Stack currently has the Texture2D return value
-        //     // Dup it so we can pass to delegate while preserving for stloc
-        //     cursor.Emit(OpCodes.Dup);
-        //     cursor.EmitDelegate(enableInverseOffsetDrawing);
-        // }
-
-        // static void enableInverseOffsetDrawing(Texture2D texture)
-        // {
-        //     _inverseOffsetWhenDrawnFrom.Add(texture);
-        // }
     }
 
 
