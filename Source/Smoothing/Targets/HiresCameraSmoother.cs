@@ -1745,28 +1745,6 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 			return;
 		}
 
-        // We've comprehensively handled the case where the source is in _largeTextures,
-        // but there can be cases where it's not but should still be conidered large (when
-        // it happens to be the exact same size as the target).
-        else if (
-            _currentlyScaling
-            && sourceAndTargetAreSimilarSize
-            && (bool)_beginCalledField.GetValue(Draw.SpriteBatch)
-            && _lastSpriteBatchBeginParams is var (sortMode, blendState, samplerState, depthStencilState, rasterizerState, effect, matrix)
-        ) {
-            Draw.SpriteBatch.End();
-            Draw.SpriteBatch.Begin(sortMode, blendState, samplerState, depthStencilState, rasterizerState, effect, Matrix.CreateScale(1f / Scale) * matrix);
-
-            offsetDestination = GetCurrentDrawingOffset(texture, destinationX, destinationY, Scale);
-
-            orig(self, texture, sourceX, sourceY, sourceW, sourceH, offsetDestination.X, offsetDestination.Y, destinationW, destinationH, color, originX, originY, rotationSin, rotationCos, depth, effects);
-
-            Draw.SpriteBatch.End();
-            Draw.SpriteBatch.Begin(sortMode, blendState, samplerState, depthStencilState, rasterizerState, effect, matrix);
-
-            return;
-        }
-
 
 
         orig(self, texture, sourceX, sourceY, sourceW, sourceH, offsetDestination.X, offsetDestination.Y, destinationW, destinationH, color, originX, originY, rotationSin, rotationCos, depth, effects);
