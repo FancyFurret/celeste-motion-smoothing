@@ -1,4 +1,5 @@
-﻿using Celeste.Mod.MotionSmoothing.Interop;
+﻿using System;
+using Celeste.Mod.MotionSmoothing.Interop;
 using Celeste.Mod.MotionSmoothing.Smoothing.States;
 using Celeste.Mod.MotionSmoothing.Utilities;
 using Microsoft.Xna.Framework;
@@ -74,13 +75,6 @@ public static class PlayerSmoother
             return pushed + relativeVelocity * timeScale * (float)elapsed;
         }
 
-        // For non-pusher case, check if player is actually moving based on position history.
-        // This is more reliable than using player.Speed, which can have residual values
-        // even when the player is stationary (e.g., after game freeze/unfreeze).
-        var positionDelta = state.RealPositionHistory[0] - state.RealPositionHistory[1];
-        if (positionDelta.LengthSquared() < JitterThreshold * JitterThreshold)
-            return state.OriginalDrawPosition;
-
         // Use position history to derive velocity, but blend with player.Speed for responsiveness.
         // player.Speed gives us the intended direction immediately, while position history
         // confirms actual movement. We use player.Speed but only if position history shows movement.
@@ -88,6 +82,27 @@ public static class PlayerSmoother
         if (GravityHelperImports.IsPlayerInverted?.Invoke() == true)
             speed.Y *= -1;
 
-        return SmoothingMath.Extrapolate(state.RealPositionHistory, speed, elapsed);
+        Vector2 smoothedPosition = SmoothingMath.Extrapolate(state.RealPositionHistory, speed, elapsed);
+
+        // For non-pusher case, check if player is actually moving based on position history.
+        // This is more reliable than using player.Speed, which can have residual values
+        // even when the player is stationary (e.g., after game freeze/unfreeze).
+        bool movingX = Math.Abs(player.Speed.X) > float.Epsilon
+            && state.DrawPositionHistory[0].X != state.DrawPositionHistory[1].X;
+
+        bool movingY = Math.Abs(player.Speed.Y) > float.Epsilon
+            && state.DrawPositionHistory[0].Y != state.DrawPositionHistory[1].Y;
+
+        if (!movingX)
+        {
+            smoothedPosition.X = state.OriginalDrawPosition.X;
+        }
+
+        if (!movingY)
+        {
+            smoothedPosition.Y = state.OriginalDrawPosition.Y;
+        }
+
+        return smoothedPosition;
     }
 }
