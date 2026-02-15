@@ -42,7 +42,14 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 	private static bool _currentlyRenderingGameplay = false;
     private static bool _currentlyRenderingPlayerOnTopOfFlash = false;
     private static bool _allowParallaxOneBackgrounds = false;
-    private static bool _disableFloorFunctions = false;
+
+    private enum DisableFloorFunctionsMode
+    {
+        Continuous,
+        Rational,
+        Integer
+    }
+    private static DisableFloorFunctionsMode _disableFloorFunctions = DisableFloorFunctionsMode.Integer;
 
     private static readonly FieldInfo _beginCalledField = typeof(SpriteBatch)
 	.GetField("beginCalled", BindingFlags.NonPublic | BindingFlags.Instance);
@@ -517,7 +524,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
         _allowParallaxOneBackgrounds = false;
         _currentlyRenderingBackground = true;
         _currentlyRenderingPlayerOnTopOfFlash = false;
-        _disableFloorFunctions = false;
+        _disableFloorFunctions = DisableFloorFunctionsMode.Integer;
 
         ComputeSmoothedCameraData(level);
 
@@ -527,7 +534,15 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
     private static void AfterLevelClear(Level level)
     {
-		_disableFloorFunctions = MotionSmoothingModule.Settings.RenderBackgroundHires;
+        if (MotionSmoothingModule.Settings.RenderBackgroundHires)
+        {
+            _disableFloorFunctions = DisableFloorFunctionsMode.Rational;
+        }
+
+        else
+        {
+            _disableFloorFunctions = DisableFloorFunctionsMode.Integer;
+        }
 
 		SmoothCameraPosition(level);
     }
@@ -716,9 +731,14 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
 	private static void BackdropRenderer_Update(On.Celeste.BackdropRenderer.orig_Update orig, BackdropRenderer self, Scene scene)
 	{
-		_disableFloorFunctions = MotionSmoothingModule.Settings.RenderBackgroundHires;
+        if (MotionSmoothingModule.Settings.RenderBackgroundHires)
+        {
+            _disableFloorFunctions = DisableFloorFunctionsMode.Rational;
+        }
+
 		orig(self, scene);
-		_disableFloorFunctions = false;
+
+		_disableFloorFunctions = DisableFloorFunctionsMode.Integer;
 	}
 
     private static void BackdropRenderer_Render(On.Celeste.BackdropRenderer.orig_Render orig, BackdropRenderer self, Scene scene)
@@ -735,9 +755,12 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
             // The foreground gets rendered like normal, and the smoothed camera position automatically lines it
             // up with the gameplay. We don't menually offset this because then parallax foregrounds don't work.
             // Similarly, when rendering the background Hires, we don't need to composite anything ourselves.
-            _disableFloorFunctions = true;
+            _disableFloorFunctions = DisableFloorFunctionsMode.Rational;
+
             orig(self, scene);
-            _disableFloorFunctions = false;
+
+            _disableFloorFunctions = DisableFloorFunctionsMode.Integer;
+
             return;
         }
 
@@ -759,7 +782,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
         // Now draw the parallax-one backgrounds
         _allowParallaxOneBackgrounds = true;
-        _disableFloorFunctions = true;
+        _disableFloorFunctions = DisableFloorFunctionsMode.Rational;
 
 		_offsetWhenDrawnTo.Clear();
         _offsetWhenDrawnTo.Add(renderer.LargeLevelBuffer);
@@ -771,7 +794,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
         _enableLargeLevelBuffer = true;
         Engine.Instance.GraphicsDevice.SetRenderTarget(GameplayBuffers.Level);
 
-        _disableFloorFunctions = false;
+        _disableFloorFunctions = DisableFloorFunctionsMode.Integer;
     }
 
 	private static void BackdropRendererRenderHook(ILContext il)
@@ -1134,7 +1157,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 			return;
 		}
 
-		_disableFloorFunctions = false;
+		_disableFloorFunctions = DisableFloorFunctionsMode.Integer;
 		UnsmoothCameraPosition(level);
 
 		_enableLargeTempABuffer = true;
@@ -1175,12 +1198,12 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
         }
 
         SmoothCameraPosition(level);
-        _disableFloorFunctions = true;
+        _disableFloorFunctions = DisableFloorFunctionsMode.Continuous;
 
         orig(self, scene);
 
         UnsmoothCameraPosition(level);
-        _disableFloorFunctions = false;
+        _disableFloorFunctions = DisableFloorFunctionsMode.Integer;
     }
 
 
@@ -1946,46 +1969,61 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
 
     
-    // These all use the hardcoded value of 6 and not Scale: when using ExCameraDynamics,
-    // scale can be any integer <= 6, but these functions also impact e.g. the background
-    // parallax, so it would be very jittery when using a large gameplay buffer. We don't
-    // want to disable rounding entirely, though, since there can rarely be gaps in the
-    // background if we do that.
-
     private delegate Vector2 orig_Floor(Vector2 self);
 
     private static Vector2 FloorHook(orig_Floor orig, Vector2 self)
     {
-        if (!_disableFloorFunctions)
+        switch (_disableFloorFunctions)
         {
-            return orig(self);
+            case DisableFloorFunctionsMode.Continuous:
+                return self;
+
+            case DisableFloorFunctionsMode.Rational:
+                return new Vector2((float) Math.Floor(self.X * Scale), (float) Math.Floor(self.Y * Scale)) / Scale;
+
+            case DisableFloorFunctionsMode.Integer:
+                return orig(self);
         }
 
-        return self;
+        return orig(self);
     }
 
     private delegate Vector2 orig_Ceiling(Vector2 self);
 
     private static Vector2 CeilingHook(orig_Ceiling orig, Vector2 self)
     {
-        if (!_disableFloorFunctions)
+        switch (_disableFloorFunctions)
         {
-            return orig(self);
+            case DisableFloorFunctionsMode.Continuous:
+                return self;
+
+            case DisableFloorFunctionsMode.Rational:
+                return new Vector2((float) Math.Ceiling(self.X * Scale), (float) Math.Ceiling(self.Y * Scale)) / Scale;
+
+            case DisableFloorFunctionsMode.Integer:
+                return orig(self);
         }
 
-        return self;
+        return orig(self);
     }
 
     private delegate Vector2 orig_Round(Vector2 self);
 
     private static Vector2 RoundHook(orig_Round orig, Vector2 self)
     {
-        if (!_disableFloorFunctions)
+        switch (_disableFloorFunctions)
         {
-            return orig(self);
+            case DisableFloorFunctionsMode.Continuous:
+                return self;
+
+            case DisableFloorFunctionsMode.Rational:
+                return new Vector2((float) Math.Round(self.X * Scale), (float) Math.Round(self.Y * Scale)) / Scale;
+
+            case DisableFloorFunctionsMode.Integer:
+                return orig(self);
         }
 
-        return self;
+        return orig(self);
     }
 
 
