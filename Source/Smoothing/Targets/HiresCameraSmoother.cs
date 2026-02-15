@@ -1640,6 +1640,8 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
                         orig(self, texture, sourceX, sourceY, sourceW, sourceH, offsetDestination.X, offsetDestination.Y, destinationW, destinationH, color, originX, originY, rotationSin, rotationCos, depth, effects);
 
+                        FillInverseOffsetEdgeGaps(orig, self, texture, sourceX, sourceY, sourceW, sourceH, destinationX, destinationY, destinationW, destinationH, offsetDestination, color, depth, effects);
+
                         Draw.SpriteBatch.End();
                         Draw.SpriteBatch.Begin(sortMode, blendState, samplerState, depthStencilState, rasterizerState, effect, matrix);
                     }
@@ -1715,6 +1717,8 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
                     orig(self, texture, sourceX, sourceY, sourceW, sourceH, offsetDestination.X, offsetDestination.Y, destinationW, destinationH, color, originX, originY, rotationSin, rotationCos, depth, effects);
 
+                    FillInverseOffsetEdgeGaps(orig, self, texture, sourceX, sourceY, sourceW, sourceH, destinationX, destinationY, destinationW, destinationH, offsetDestination, color, depth, effects);
+
                     Draw.SpriteBatch.End();
                     Draw.SpriteBatch.Begin(sortMode, blendState, samplerState, depthStencilState, rasterizerState, effect, matrix);
                 }
@@ -1726,6 +1730,48 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
 
         orig(self, texture, sourceX, sourceY, sourceW, sourceH, offsetDestination.X, offsetDestination.Y, destinationW, destinationH, color, originX, originY, rotationSin, rotationCos, depth, effects);
+    }
+
+    /// <summary>
+    /// When drawing from an _inverseOffsetWhenDrawnFrom texture, the content is shifted right/down,
+    /// leaving a gap at the left/top edges. This fills those gaps by stretching the first whole
+    /// game-pixel column/row from the source, analogous to how HideStretchedLevelEdges fills the
+    /// right/bottom gaps.
+    /// </summary>
+    private static void FillInverseOffsetEdgeGaps(orig_PushSprite orig, SpriteBatch self, Texture2D texture, float sourceX, float sourceY, float sourceW, float sourceH, float destinationX, float destinationY, float destinationW, float destinationH, Vector2 offsetDestination, Color color, float depth, byte effects)
+    {
+        if (!_inverseOffsetWhenDrawnFrom.Contains(texture))
+            return;
+
+        float gapW = offsetDestination.X - destinationX;
+        float gapH = offsetDestination.Y - destinationY;
+
+        // Left edge: stretch the first Scale-wide source column to fill the left gap
+        if (gapW > 0)
+        {
+            orig(self, texture,
+                sourceX, sourceY, Scale / destinationW, sourceH,
+                destinationX, offsetDestination.Y, gapW, destinationH,
+                color, 0, 0, 0, 1, depth, effects);
+        }
+
+        // Top edge: stretch the first Scale-tall source row to fill the top gap
+        if (gapH > 0)
+        {
+            orig(self, texture,
+                sourceX, sourceY, sourceW, Scale / destinationH,
+                offsetDestination.X, destinationY, destinationW, gapH,
+                color, 0, 0, 0, 1, depth, effects);
+        }
+
+        // Corner: stretch the first Scale x Scale source pixel to fill the corner gap
+        if (gapW > 0 && gapH > 0)
+        {
+            orig(self, texture,
+                sourceX, sourceY, Scale / destinationW, Scale / destinationH,
+                destinationX, destinationY, gapW, gapH,
+                color, 0, 0, 0, 1, depth, effects);
+        }
     }
 
 
