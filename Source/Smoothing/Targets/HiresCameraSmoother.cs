@@ -1197,12 +1197,15 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
             return;
         }
 
+        Vector2 oldCameraPosition = level.Camera.Position;
         SmoothCameraPosition(level);
         _disableFloorFunctions = DisableFloorFunctionsMode.Continuous;
 
         orig(self, scene);
-
-        UnsmoothCameraPosition(level);
+        
+        // This needs to not be a call to UnsmoothCameraPosition: for whatever reason,
+        // that causes bizarre camera locking after resizing the window.
+        level.Camera.Position = oldCameraPosition;
         _disableFloorFunctions = DisableFloorFunctionsMode.Integer;
     }
 
