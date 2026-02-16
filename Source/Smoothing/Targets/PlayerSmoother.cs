@@ -78,7 +78,8 @@ public static class PlayerSmoother
         // Use position history to derive velocity, but blend with player.Speed for responsiveness.
         // player.Speed gives us the intended direction immediately, while position history
         // confirms actual movement. We use player.Speed but only if position history shows movement.
-        var speed = player.Speed;
+        var speed = (state.RealPositionHistory[0] - state.RealPositionHistory[1]) * 60;
+
         if (GravityHelperImports.IsPlayerInverted?.Invoke() == true)
             speed.Y *= -1;
 
