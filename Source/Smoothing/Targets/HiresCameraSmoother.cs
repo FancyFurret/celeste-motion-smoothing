@@ -951,6 +951,11 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 		Vector2 offset = state.SmoothedRealPosition - state.SmoothedRealPosition.Round();
 		Vector2 spriteOffset = Vector2.Zero;
 
+		if (Engine.Scene is Level { Transitioning: true } or { Paused: true })
+		{
+			offset = Vector2.Zero;
+		}
+
 		if (self is Strawberry strawberry)
 		{
 			// The visual-only bobbing animation of strawberry interacts really badly

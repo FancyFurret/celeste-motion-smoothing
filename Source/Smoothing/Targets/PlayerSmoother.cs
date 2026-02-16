@@ -15,9 +15,6 @@ public static class PlayerSmoother
     /// </summary>
     private const float JitterThreshold = 0.01f;
 
-    private static bool _shouldSmoothX = false;
-    private static bool _shouldSmoothY = false;
-
     public static Vector2 Smooth(Player player, IPositionSmoothingState state, double elapsed, SmoothingMode mode)
     {
         return mode switch
@@ -87,41 +84,15 @@ public static class PlayerSmoother
 
         Vector2 smoothedPosition = SmoothingMath.Extrapolate(state.RealPositionHistory, speed, elapsed);
 
-        // For non-pusher case, check if player is actually moving based on position history.
-        // This is more reliable than using player.Speed, which can have residual values
-        // even when the player is stationary (e.g., after game freeze/unfreeze).
-        bool hasNonZeroSpeedX = Math.Abs(player.Speed.X) > float.Epsilon;
-        bool movedDrawPositionX = state.DrawPositionHistory[0].X != state.DrawPositionHistory[1].X;
-
-        if (!_shouldSmoothX && hasNonZeroSpeedX && movedDrawPositionX)
-        {
-            _shouldSmoothX = true;
-        }
-
-        else if (_shouldSmoothX && !hasNonZeroSpeedX && !movedDrawPositionX)
-        {
-            _shouldSmoothX = false;
-        }
-
-        bool hasNonZeroSpeedY = Math.Abs(player.Speed.Y) > float.Epsilon;
-        bool movedDrawPositionY = state.DrawPositionHistory[0].Y != state.DrawPositionHistory[1].Y;
-
-        if (!_shouldSmoothY && hasNonZeroSpeedY && movedDrawPositionY)
-        {
-            _shouldSmoothY = true;
-        }
-
-        else if (_shouldSmoothY && !hasNonZeroSpeedY && !movedDrawPositionY)
-        {
-            _shouldSmoothY = false;
-        }
-
-        if (!_shouldSmoothX)
+        bool isMovingInBothDirections = Math.Abs(player.Speed.X) > float.Epsilon
+            && Math.Abs(player.Speed.Y) > float.Epsilon;
+        
+        if (state.DrawPositionHistory[0].X == state.DrawPositionHistory[1].X && !isMovingInBothDirections)
         {
             smoothedPosition.X = state.OriginalDrawPosition.X;
         }
 
-        if (!_shouldSmoothY)
+        if (state.DrawPositionHistory[0].Y == state.DrawPositionHistory[1].Y && !isMovingInBothDirections)
         {
             smoothedPosition.Y = state.OriginalDrawPosition.Y;
         }
