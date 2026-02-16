@@ -87,12 +87,14 @@ public static class PlayerSmoother
         bool isMovingInBothDirections = Math.Abs(player.Speed.X) > float.Epsilon
             && Math.Abs(player.Speed.Y) > float.Epsilon;
         
+        bool canClimb = player.StateMachine.State == Player.StClimb && player.Stamina > 0f;
+        
         if (state.DrawPositionHistory[0].X == state.DrawPositionHistory[1].X && !isMovingInBothDirections)
         {
             smoothedPosition.X = state.OriginalDrawPosition.X;
         }
 
-        if (state.DrawPositionHistory[0].Y == state.DrawPositionHistory[1].Y && !isMovingInBothDirections)
+        if (state.DrawPositionHistory[0].Y == state.DrawPositionHistory[1].Y && !isMovingInBothDirections && canClimb)
         {
             smoothedPosition.Y = state.OriginalDrawPosition.Y;
         }
