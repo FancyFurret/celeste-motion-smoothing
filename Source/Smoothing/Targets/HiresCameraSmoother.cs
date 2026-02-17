@@ -1,4 +1,3 @@
-using AsmResolver;
 using Celeste.Mod.MotionSmoothing.Interop;
 using Celeste.Mod.MotionSmoothing.Smoothing.States;
 using Celeste.Mod.MotionSmoothing.Utilities;
@@ -43,7 +42,14 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 	private static bool _currentlyRenderingGameplay = false;
     private static bool _currentlyRenderingPlayerOnTopOfFlash = false;
     private static bool _allowParallaxOneBackgrounds = false;
-    private static bool _disableFloorFunctions = false;
+
+    private enum DisableFloorFunctionsMode
+    {
+        Continuous,
+        Rational,
+        Integer
+    }
+    private static DisableFloorFunctionsMode _disableFloorFunctions = DisableFloorFunctionsMode.Integer;
 
     private static readonly FieldInfo _beginCalledField = typeof(SpriteBatch)
 	.GetField("beginCalled", BindingFlags.NonPublic | BindingFlags.Instance);
@@ -173,7 +179,6 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
         IL.Celeste.Level.Render += LevelRenderHook;
 
         On.Celeste.BloomRenderer.Apply += BloomRenderer_Apply;
-        IL.Celeste.BloomRenderer.Apply += BloomRendererApplyHook;
 
 		On.Celeste.GaussianBlur.Blur += GaussianBlur_Blur;
 
@@ -255,7 +260,6 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
         IL.Celeste.Level.Render -= LevelRenderHook;
 
         On.Celeste.BloomRenderer.Apply -= BloomRenderer_Apply;
-        IL.Celeste.BloomRenderer.Apply -= BloomRendererApplyHook;
 
         On.Celeste.GaussianBlur.Blur -= GaussianBlur_Blur;
 
@@ -520,7 +524,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
         _allowParallaxOneBackgrounds = false;
         _currentlyRenderingBackground = true;
         _currentlyRenderingPlayerOnTopOfFlash = false;
-        _disableFloorFunctions = false;
+        _disableFloorFunctions = DisableFloorFunctionsMode.Integer;
 
         ComputeSmoothedCameraData(level);
 
@@ -530,7 +534,15 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
     private static void AfterLevelClear(Level level)
     {
-		_disableFloorFunctions = MotionSmoothingModule.Settings.RenderBackgroundHires;
+        if (MotionSmoothingModule.Settings.RenderBackgroundHires)
+        {
+            _disableFloorFunctions = DisableFloorFunctionsMode.Rational;
+        }
+
+        else
+        {
+            _disableFloorFunctions = DisableFloorFunctionsMode.Integer;
+        }
 
 		SmoothCameraPosition(level);
     }
@@ -672,25 +684,6 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 		SmoothCameraPosition(level);
     }
 
-    private static void BloomRendererApplyHook(ILContext il)
-    {
-        var cursor = new ILCursor(il);
-
-        // if (cursor.TryGotoNext(MoveType.After,
-        //     instr => instr.MatchCall(typeof(GaussianBlur), "Blur")))
-        // {
-        //     // Stack currently has the Texture2D return value
-        //     // Dup it so we can pass to delegate while preserving for stloc
-        //     cursor.Emit(OpCodes.Dup);
-        //     cursor.EmitDelegate(enableInverseOffsetDrawing);
-        // }
-
-        // static void enableInverseOffsetDrawing(Texture2D texture)
-        // {
-        //     _inverseOffsetWhenDrawnFrom.Add(texture);
-        // }
-    }
-
 
 
     private static Texture2D GaussianBlur_Blur(On.Celeste.GaussianBlur.orig_Blur orig, Texture2D texture, VirtualRenderTarget temp, VirtualRenderTarget output, float fade, bool clear, GaussianBlur.Samples samples, float sampleScale, GaussianBlur.Direction direction, float alpha)
@@ -738,9 +731,14 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
 	private static void BackdropRenderer_Update(On.Celeste.BackdropRenderer.orig_Update orig, BackdropRenderer self, Scene scene)
 	{
-		_disableFloorFunctions = MotionSmoothingModule.Settings.RenderBackgroundHires;
+        if (MotionSmoothingModule.Settings.RenderBackgroundHires)
+        {
+            _disableFloorFunctions = DisableFloorFunctionsMode.Rational;
+        }
+
 		orig(self, scene);
-		_disableFloorFunctions = false;
+
+		_disableFloorFunctions = DisableFloorFunctionsMode.Integer;
 	}
 
     private static void BackdropRenderer_Render(On.Celeste.BackdropRenderer.orig_Render orig, BackdropRenderer self, Scene scene)
@@ -757,9 +755,12 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
             // The foreground gets rendered like normal, and the smoothed camera position automatically lines it
             // up with the gameplay. We don't menually offset this because then parallax foregrounds don't work.
             // Similarly, when rendering the background Hires, we don't need to composite anything ourselves.
-            _disableFloorFunctions = true;
+            _disableFloorFunctions = DisableFloorFunctionsMode.Rational;
+
             orig(self, scene);
-            _disableFloorFunctions = false;
+
+            _disableFloorFunctions = DisableFloorFunctionsMode.Integer;
+
             return;
         }
 
@@ -781,7 +782,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
         // Now draw the parallax-one backgrounds
         _allowParallaxOneBackgrounds = true;
-        _disableFloorFunctions = true;
+        _disableFloorFunctions = DisableFloorFunctionsMode.Rational;
 
 		_offsetWhenDrawnTo.Clear();
         _offsetWhenDrawnTo.Add(renderer.LargeLevelBuffer);
@@ -793,7 +794,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
         _enableLargeLevelBuffer = true;
         Engine.Instance.GraphicsDevice.SetRenderTarget(GameplayBuffers.Level);
 
-        _disableFloorFunctions = false;
+        _disableFloorFunctions = DisableFloorFunctionsMode.Integer;
     }
 
 	private static void BackdropRendererRenderHook(ILContext il)
@@ -945,13 +946,17 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 			return;
 		}
 
-		var state = MotionSmoothingHandler.Instance.GetState(self) as IPositionSmoothingState;
+		IPositionSmoothingState state;
+        Vector2 offset;
+        Vector2 spriteOffset = Vector2.Zero;
 
-		Vector2 offset = state.SmoothedRealPosition - state.SmoothedRealPosition.Round();
-		Vector2 spriteOffset = Vector2.Zero;
+		
 
 		if (self is Strawberry strawberry)
 		{
+            state = MotionSmoothingHandler.Instance.GetState(self) as IPositionSmoothingState;
+            offset = state.SmoothedRealPosition - state.SmoothedRealPosition.Round();
+
 			// The visual-only bobbing animation of strawberry interacts really badly
 			// with position smoothing, so we just disable it, add the offset into ours,
 			// and then put it back later (necessary since it only gets set at 60fps).
@@ -966,16 +971,23 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 		else
 		{
 			var player = MotionSmoothingHandler.Instance.Player;
+            state = MotionSmoothingHandler.Instance.GetState(player) as IPositionSmoothingState;
+            offset = state.SmoothedRealPosition - state.SmoothedRealPosition.Round();
 
-			if (Math.Abs(player.Speed.X) < float.Epsilon)
+			if (!PlayerSmoother.IsSmoothingX)
 			{
 				offset.X = 0;
 			}
 
-			if (Math.Abs(player.Speed.Y) < float.Epsilon)
+			if (!PlayerSmoother.IsSmoothingY)
 			{
 				offset.Y = 0;
 			}
+		}
+
+        if (Engine.Scene is Level { Transitioning: true } or { Paused: true })
+		{
+			offset = Vector2.Zero;
 		}
 
 		// Render the things below this entity.
@@ -1043,12 +1055,12 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
 		Vector2 offset = state.SmoothedRealPosition - state.SmoothedRealPosition.Round();
 
-        if (Math.Abs(self.Speed.X) < float.Epsilon)
+        if (!PlayerSmoother.IsSmoothingX)
         {
             offset.X = 0;
         }
 
-        if (Math.Abs(self.Speed.Y) < float.Epsilon)
+        if (!PlayerSmoother.IsSmoothingY)
         {
             offset.Y = 0;
         }
@@ -1156,7 +1168,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 			return;
 		}
 
-		_disableFloorFunctions = false;
+		_disableFloorFunctions = DisableFloorFunctionsMode.Integer;
 		UnsmoothCameraPosition(level);
 
 		_enableLargeTempABuffer = true;
@@ -1196,13 +1208,16 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
             return;
         }
 
+        Vector2 oldCameraPosition = level.Camera.Position;
         SmoothCameraPosition(level);
-        _disableFloorFunctions = true;
+        _disableFloorFunctions = DisableFloorFunctionsMode.Continuous;
 
         orig(self, scene);
-
-        UnsmoothCameraPosition(level);
-        _disableFloorFunctions = false;
+        
+        // This needs to not be a call to UnsmoothCameraPosition: for whatever reason,
+        // that causes bizarre camera locking after resizing the window.
+        level.Camera.Position = oldCameraPosition;
+        _disableFloorFunctions = DisableFloorFunctionsMode.Integer;
     }
 
 
@@ -1662,6 +1677,8 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
                         orig(self, texture, sourceX, sourceY, sourceW, sourceH, offsetDestination.X, offsetDestination.Y, destinationW, destinationH, color, originX, originY, rotationSin, rotationCos, depth, effects);
 
+                        FillInverseOffsetEdgeGaps(orig, self, texture, sourceX, sourceY, sourceW, sourceH, destinationX, destinationY, destinationW, destinationH, offsetDestination, color, depth, effects);
+
                         Draw.SpriteBatch.End();
                         Draw.SpriteBatch.Begin(sortMode, blendState, samplerState, depthStencilState, rasterizerState, effect, matrix);
                     }
@@ -1737,6 +1754,8 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
                     orig(self, texture, sourceX, sourceY, sourceW, sourceH, offsetDestination.X, offsetDestination.Y, destinationW, destinationH, color, originX, originY, rotationSin, rotationCos, depth, effects);
 
+                    FillInverseOffsetEdgeGaps(orig, self, texture, sourceX, sourceY, sourceW, sourceH, destinationX, destinationY, destinationW, destinationH, offsetDestination, color, depth, effects);
+
                     Draw.SpriteBatch.End();
                     Draw.SpriteBatch.Begin(sortMode, blendState, samplerState, depthStencilState, rasterizerState, effect, matrix);
                 }
@@ -1745,31 +1764,51 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 			return;
 		}
 
-        // We've comprehensively handled the case where the source is in _largeTextures,
-        // but there can be cases where it's not but should still be conidered large (when
-        // it happens to be the exact same size as the target).
-        else if (
-            _currentlyScaling
-            && sourceAndTargetAreSimilarSize
-            && (bool)_beginCalledField.GetValue(Draw.SpriteBatch)
-            && _lastSpriteBatchBeginParams is var (sortMode, blendState, samplerState, depthStencilState, rasterizerState, effect, matrix)
-        ) {
-            Draw.SpriteBatch.End();
-            Draw.SpriteBatch.Begin(sortMode, blendState, samplerState, depthStencilState, rasterizerState, effect, Matrix.CreateScale(1f / Scale) * matrix);
-
-            offsetDestination = GetCurrentDrawingOffset(texture, destinationX, destinationY, Scale);
-
-            orig(self, texture, sourceX, sourceY, sourceW, sourceH, offsetDestination.X, offsetDestination.Y, destinationW, destinationH, color, originX, originY, rotationSin, rotationCos, depth, effects);
-
-            Draw.SpriteBatch.End();
-            Draw.SpriteBatch.Begin(sortMode, blendState, samplerState, depthStencilState, rasterizerState, effect, matrix);
-
-            return;
-        }
-
 
 
         orig(self, texture, sourceX, sourceY, sourceW, sourceH, offsetDestination.X, offsetDestination.Y, destinationW, destinationH, color, originX, originY, rotationSin, rotationCos, depth, effects);
+    }
+
+    /// <summary>
+    /// When drawing from an _inverseOffsetWhenDrawnFrom texture, the content is shifted right/down,
+    /// leaving a gap at the left/top edges. This fills those gaps by stretching the first whole
+    /// game-pixel column/row from the source, analogous to how HideStretchedLevelEdges fills the
+    /// right/bottom gaps.
+    /// </summary>
+    private static void FillInverseOffsetEdgeGaps(orig_PushSprite orig, SpriteBatch self, Texture2D texture, float sourceX, float sourceY, float sourceW, float sourceH, float destinationX, float destinationY, float destinationW, float destinationH, Vector2 offsetDestination, Color color, float depth, byte effects)
+    {
+        if (!_inverseOffsetWhenDrawnFrom.Contains(texture))
+            return;
+
+        float gapW = offsetDestination.X - destinationX;
+        float gapH = offsetDestination.Y - destinationY;
+
+        // Left edge: stretch the first Scale-wide source column to fill the left gap
+        if (gapW > 0)
+        {
+            orig(self, texture,
+                sourceX, sourceY, Scale / destinationW, sourceH,
+                destinationX, offsetDestination.Y, gapW, destinationH,
+                color, 0, 0, 0, 1, depth, effects);
+        }
+
+        // Top edge: stretch the first Scale-tall source row to fill the top gap
+        if (gapH > 0)
+        {
+            orig(self, texture,
+                sourceX, sourceY, sourceW, Scale / destinationH,
+                offsetDestination.X, destinationY, destinationW, gapH,
+                color, 0, 0, 0, 1, depth, effects);
+        }
+
+        // Corner: stretch the first Scale x Scale source pixel to fill the corner gap
+        if (gapW > 0 && gapH > 0)
+        {
+            orig(self, texture,
+                sourceX, sourceY, Scale / destinationW, Scale / destinationH,
+                destinationX, destinationY, gapW, gapH,
+                color, 0, 0, 0, 1, depth, effects);
+        }
     }
 
 
@@ -1944,46 +1983,61 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
 
     
-    // These all use the hardcoded value of 6 and not Scale: when using ExCameraDynamics,
-    // scale can be any integer <= 6, but these functions also impact e.g. the background
-    // parallax, so it would be very jittery when using a large gameplay buffer. We don't
-    // want to disable rounding entirely, though, since there can rarely be gaps in the
-    // background if we do that.
-
     private delegate Vector2 orig_Floor(Vector2 self);
 
     private static Vector2 FloorHook(orig_Floor orig, Vector2 self)
     {
-        if (!_disableFloorFunctions)
+        switch (_disableFloorFunctions)
         {
-            return orig(self);
+            case DisableFloorFunctionsMode.Continuous:
+                return self;
+
+            case DisableFloorFunctionsMode.Rational:
+                return new Vector2((float) Math.Floor(self.X * Scale), (float) Math.Floor(self.Y * Scale)) / Scale;
+
+            case DisableFloorFunctionsMode.Integer:
+                return orig(self);
         }
 
-        return self;
+        return orig(self);
     }
 
     private delegate Vector2 orig_Ceiling(Vector2 self);
 
     private static Vector2 CeilingHook(orig_Ceiling orig, Vector2 self)
     {
-        if (!_disableFloorFunctions)
+        switch (_disableFloorFunctions)
         {
-            return orig(self);
+            case DisableFloorFunctionsMode.Continuous:
+                return self;
+
+            case DisableFloorFunctionsMode.Rational:
+                return new Vector2((float) Math.Ceiling(self.X * Scale), (float) Math.Ceiling(self.Y * Scale)) / Scale;
+
+            case DisableFloorFunctionsMode.Integer:
+                return orig(self);
         }
 
-        return self;
+        return orig(self);
     }
 
     private delegate Vector2 orig_Round(Vector2 self);
 
     private static Vector2 RoundHook(orig_Round orig, Vector2 self)
     {
-        if (!_disableFloorFunctions)
+        switch (_disableFloorFunctions)
         {
-            return orig(self);
+            case DisableFloorFunctionsMode.Continuous:
+                return self;
+
+            case DisableFloorFunctionsMode.Rational:
+                return new Vector2((float) Math.Round(self.X * Scale), (float) Math.Round(self.Y * Scale)) / Scale;
+
+            case DisableFloorFunctionsMode.Integer:
+                return orig(self);
         }
 
-        return self;
+        return orig(self);
     }
 
 

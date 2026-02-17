@@ -1,4 +1,5 @@
-﻿using Celeste.Mod.MotionSmoothing.Interop;
+﻿using System;
+using Celeste.Mod.MotionSmoothing.Interop;
 using Celeste.Mod.MotionSmoothing.Smoothing.States;
 using Celeste.Mod.MotionSmoothing.Utilities;
 using Microsoft.Xna.Framework;
@@ -12,7 +13,8 @@ public static class PlayerSmoother
     /// Threshold for position delta below which we consider the player stationary.
     /// This prevents jitter from floating-point noise or stale Speed values.
     /// </summary>
-    private const float JitterThreshold = 0.01f;
+    public static bool IsSmoothingX = true;
+    public static bool IsSmoothingY = true;
 
     public static Vector2 Smooth(Player player, IPositionSmoothingState state, double elapsed, SmoothingMode mode)
     {
@@ -26,6 +28,8 @@ public static class PlayerSmoother
 
     private static Vector2 Interpolate(Player player, IPositionSmoothingState state, double elapsed)
     {
+        GetExtrapolatedPositionAndUpdateIsSmoothing(player, state, elapsed);
+
         if (ActorPushTracker.Instance.ApplyPusherOffset(player, elapsed, SmoothingMode.Interpolate, out var pushed))
             return pushed;
 
@@ -43,51 +47,55 @@ public static class PlayerSmoother
             MotionSmoothingHandler.Instance.AtDrawInputHandler.PressedThisUpdate(Input.CrouchDash))
             return state.OriginalDrawPosition;
 
-        if (ActorPushTracker.Instance.ApplyPusherOffset(player, elapsed, SmoothingMode.Extrapolate, out var pushed,
-                out var pusherPositionHistory))
+
+
+        var smoothedPosition = GetExtrapolatedPositionAndUpdateIsSmoothing(player, state, elapsed);
+        
+        if (!IsSmoothingX)
         {
-            // If we don't have pusher position history, just return the pushed position
-            if (pusherPositionHistory == null)
-                return pushed;
-
-            // Compute player's velocity relative to the pusher by looking at the change in
-            // relative position between frames. This is more numerically stable than computing
-            // velocities separately and subtracting, because if the player moved with the pusher,
-            // the relative position change will be exactly zero.
-            var relativePosCurrent = state.RealPositionHistory[0] - pusherPositionHistory[0];
-            var relativePosPrev = state.RealPositionHistory[1] - pusherPositionHistory[1];
-            var relativePositionDelta = relativePosCurrent - relativePosPrev;
-
-            // If the relative position delta is very small, treat as stationary relative to pusher
-            if (relativePositionDelta.LengthSquared() < JitterThreshold * JitterThreshold)
-                return pushed;
-
-            var relativeVelocity = relativePositionDelta / SmoothingMath.SecondsPerUpdate;
-
-            // Check if the player is inverted and flip the Y velocity accordingly
-            if (GravityHelperImports.IsPlayerInverted?.Invoke() == true)
-                relativeVelocity.Y *= -1;
-
-            #pragma warning disable CS0618
-            var timeScale = Engine.TimeRate * Engine.TimeRateB;
-            #pragma warning restore CS0618
-            return pushed + relativeVelocity * timeScale * (float)elapsed;
+            smoothedPosition.X = state.OriginalDrawPosition.X;
         }
 
-        // For non-pusher case, check if player is actually moving based on position history.
-        // This is more reliable than using player.Speed, which can have residual values
-        // even when the player is stationary (e.g., after game freeze/unfreeze).
-        var positionDelta = state.RealPositionHistory[0] - state.RealPositionHistory[1];
-        if (positionDelta.LengthSquared() < JitterThreshold * JitterThreshold)
-            return state.OriginalDrawPosition;
+        if (!IsSmoothingY)
+        {
+            smoothedPosition.Y = state.OriginalDrawPosition.Y;
+        }
 
-        // Use position history to derive velocity, but blend with player.Speed for responsiveness.
-        // player.Speed gives us the intended direction immediately, while position history
-        // confirms actual movement. We use player.Speed but only if position history shows movement.
-        var speed = player.Speed;
+        return smoothedPosition;
+    }
+
+    private static Vector2 GetExtrapolatedPositionAndUpdateIsSmoothing(Player player, IPositionSmoothingState state, double elapsed)
+    {
+        var playerSpeed = player.Speed;
+        
+        var computedSpeed = (state.RealPositionHistory[0] - state.RealPositionHistory[1]) * 60;
+
         if (GravityHelperImports.IsPlayerInverted?.Invoke() == true)
-            speed.Y *= -1;
+            computedSpeed.Y *= -1;
 
-        return SmoothingMath.Extrapolate(state.RealPositionHistory, speed, elapsed);
+        
+
+        Vector2 smoothedPosition = SmoothingMath.Extrapolate(state.RealPositionHistory, computedSpeed, elapsed);
+
+        if (ActorPushTracker.Instance.ApplyPusherOffset(player, elapsed, SmoothingMode.Extrapolate, out var pushed, out var pusherVelocity))
+        {
+            playerSpeed = pusherVelocity;
+
+            smoothedPosition = pushed;
+        }
+
+
+        
+        // We don't use float.Epsilon because there are edge cases where Madeline
+        // can have nonzero but extremely small downward speed.
+        bool isMovingInBothDirections = Math.Abs(playerSpeed.X) > 0.001
+            && Math.Abs(playerSpeed.Y) > 0.001;
+        
+        bool canClimb = player.StateMachine.State == Player.StClimb;
+
+        IsSmoothingX = state.DrawPositionHistory[0].X != state.DrawPositionHistory[1].X || isMovingInBothDirections;
+        IsSmoothingY = state.DrawPositionHistory[0].Y != state.DrawPositionHistory[1].Y || isMovingInBothDirections || !canClimb;
+
+        return smoothedPosition;
     }
 }
