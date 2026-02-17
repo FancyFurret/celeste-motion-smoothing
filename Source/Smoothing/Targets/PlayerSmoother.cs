@@ -85,9 +85,11 @@ public static class PlayerSmoother
         }
 
 
-
-        bool isMovingInBothDirections = Math.Abs(playerSpeed.X) > float.Epsilon
-            && Math.Abs(playerSpeed.Y) > float.Epsilon;
+        
+        // We don't use float.Epsilon because there are edge cases where Madeline
+        // can have nonzero but extremely small downward speed.
+        bool isMovingInBothDirections = Math.Abs(playerSpeed.X) > 0.001
+            && Math.Abs(playerSpeed.Y) > 0.001;
         
         bool canClimb = player.StateMachine.State == Player.StClimb;
 
