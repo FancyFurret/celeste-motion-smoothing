@@ -1055,12 +1055,12 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
 		Vector2 offset = state.SmoothedRealPosition - state.SmoothedRealPosition.Round();
 
-        if (Math.Abs(self.Speed.X) < float.Epsilon)
+        if (!PlayerSmoother.IsSmoothingX)
         {
             offset.X = 0;
         }
 
-        if (Math.Abs(self.Speed.Y) < float.Epsilon)
+        if (!PlayerSmoother.IsSmoothingY)
         {
             offset.Y = 0;
         }

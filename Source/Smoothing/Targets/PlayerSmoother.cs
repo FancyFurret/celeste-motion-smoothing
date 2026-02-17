@@ -28,7 +28,7 @@ public static class PlayerSmoother
 
     private static Vector2 Interpolate(Player player, IPositionSmoothingState state, double elapsed)
     {
-        GetSmoothedPositionAndUpdateIsSmoothing(player, state, elapsed);
+        GetExtrapolatedPositionAndUpdateIsSmoothing(player, state, elapsed);
 
         if (ActorPushTracker.Instance.ApplyPusherOffset(player, elapsed, SmoothingMode.Interpolate, out var pushed))
             return pushed;
@@ -49,7 +49,7 @@ public static class PlayerSmoother
 
 
 
-        var smoothedPosition = GetSmoothedPositionAndUpdateIsSmoothing(player, state, elapsed);
+        var smoothedPosition = GetExtrapolatedPositionAndUpdateIsSmoothing(player, state, elapsed);
         
         if (!IsSmoothingX)
         {
@@ -64,7 +64,7 @@ public static class PlayerSmoother
         return smoothedPosition;
     }
 
-    private static Vector2 GetSmoothedPositionAndUpdateIsSmoothing(Player player, IPositionSmoothingState state, double elapsed)
+    private static Vector2 GetExtrapolatedPositionAndUpdateIsSmoothing(Player player, IPositionSmoothingState state, double elapsed)
     {
         var playerSpeed = player.Speed;
         
@@ -92,7 +92,7 @@ public static class PlayerSmoother
         bool canClimb = player.StateMachine.State == Player.StClimb;
 
         IsSmoothingX = state.DrawPositionHistory[0].X != state.DrawPositionHistory[1].X || isMovingInBothDirections;
-        IsSmoothingY = state.DrawPositionHistory[0].Y != state.DrawPositionHistory[1].Y || isMovingInBothDirections || canClimb;
+        IsSmoothingY = state.DrawPositionHistory[0].Y != state.DrawPositionHistory[1].Y || isMovingInBothDirections || !canClimb;
 
         return smoothedPosition;
     }
