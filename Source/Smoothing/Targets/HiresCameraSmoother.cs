@@ -946,18 +946,17 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 			return;
 		}
 
-		var state = MotionSmoothingHandler.Instance.GetState(self) as IPositionSmoothingState;
+		IPositionSmoothingState state;
+        Vector2 offset;
+        Vector2 spriteOffset = Vector2.Zero;
 
-		Vector2 offset = state.SmoothedRealPosition - state.SmoothedRealPosition.Round();
-		Vector2 spriteOffset = Vector2.Zero;
-
-		if (Engine.Scene is Level { Transitioning: true } or { Paused: true })
-		{
-			offset = Vector2.Zero;
-		}
+		
 
 		if (self is Strawberry strawberry)
 		{
+            state = MotionSmoothingHandler.Instance.GetState(self) as IPositionSmoothingState;
+            offset = state.SmoothedRealPosition - state.SmoothedRealPosition.Round();
+
 			// The visual-only bobbing animation of strawberry interacts really badly
 			// with position smoothing, so we just disable it, add the offset into ours,
 			// and then put it back later (necessary since it only gets set at 60fps).
@@ -972,16 +971,23 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 		else
 		{
 			var player = MotionSmoothingHandler.Instance.Player;
+            state = MotionSmoothingHandler.Instance.GetState(player) as IPositionSmoothingState;
+            offset = state.SmoothedRealPosition - state.SmoothedRealPosition.Round();
 
-			if (Math.Abs(player.Speed.X) < float.Epsilon)
+			if (!PlayerSmoother.IsSmoothingX)
 			{
 				offset.X = 0;
 			}
 
-			if (Math.Abs(player.Speed.Y) < float.Epsilon)
+			if (!PlayerSmoother.IsSmoothingY)
 			{
 				offset.Y = 0;
 			}
+		}
+
+        if (Engine.Scene is Level { Transitioning: true } or { Paused: true })
+		{
+			offset = Vector2.Zero;
 		}
 
 		// Render the things below this entity.

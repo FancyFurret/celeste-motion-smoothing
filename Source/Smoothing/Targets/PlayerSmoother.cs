@@ -13,7 +13,8 @@ public static class PlayerSmoother
     /// Threshold for position delta below which we consider the player stationary.
     /// This prevents jitter from floating-point noise or stale Speed values.
     /// </summary>
-    private const float JitterThreshold = 0.01f;
+    public static bool IsSmoothingX = true;
+    public static bool IsSmoothingY = true;
 
     public static Vector2 Smooth(Player player, IPositionSmoothingState state, double elapsed, SmoothingMode mode)
     {
@@ -27,6 +28,8 @@ public static class PlayerSmoother
 
     private static Vector2 Interpolate(Player player, IPositionSmoothingState state, double elapsed)
     {
+        GetSmoothedPositionAndUpdateIsSmoothing(player, state, elapsed);
+
         if (ActorPushTracker.Instance.ApplyPusherOffset(player, elapsed, SmoothingMode.Interpolate, out var pushed))
             return pushed;
 
@@ -46,6 +49,23 @@ public static class PlayerSmoother
 
 
 
+        var smoothedPosition = GetSmoothedPositionAndUpdateIsSmoothing(player, state, elapsed);
+        
+        if (!IsSmoothingX)
+        {
+            smoothedPosition.X = state.OriginalDrawPosition.X;
+        }
+
+        if (!IsSmoothingY)
+        {
+            smoothedPosition.Y = state.OriginalDrawPosition.Y;
+        }
+
+        return smoothedPosition;
+    }
+
+    private static Vector2 GetSmoothedPositionAndUpdateIsSmoothing(Player player, IPositionSmoothingState state, double elapsed)
+    {
         var playerSpeed = player.Speed;
         
         var computedSpeed = (state.RealPositionHistory[0] - state.RealPositionHistory[1]) * 60;
@@ -70,16 +90,9 @@ public static class PlayerSmoother
             && Math.Abs(playerSpeed.Y) > float.Epsilon;
         
         bool canClimb = player.StateMachine.State == Player.StClimb;
-        
-        if (state.DrawPositionHistory[0].X == state.DrawPositionHistory[1].X && !isMovingInBothDirections)
-        {
-            smoothedPosition.X = state.OriginalDrawPosition.X;
-        }
 
-        if (state.DrawPositionHistory[0].Y == state.DrawPositionHistory[1].Y && !isMovingInBothDirections && canClimb)
-        {
-            smoothedPosition.Y = state.OriginalDrawPosition.Y;
-        }
+        IsSmoothingX = state.DrawPositionHistory[0].X != state.DrawPositionHistory[1].X || isMovingInBothDirections;
+        IsSmoothingY = state.DrawPositionHistory[0].Y != state.DrawPositionHistory[1].Y || isMovingInBothDirections || canClimb;
 
         return smoothedPosition;
     }
