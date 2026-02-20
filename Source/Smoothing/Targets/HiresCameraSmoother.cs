@@ -936,9 +936,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
 		return self == player
 			|| player?.Holding?.Entity == self // A currently-held holdable
-			|| self is Strawberry { Golden: true } strawberry && strawberry.Follower.Leader != null // A golden attacked to the player
-            || self is MoveBlock { canSteer: true } moveBlock && moveBlock.HasPlayerRider()
-            || self is MoveBlock.Border border && border.Parent.canSteer && border.Parent.HasPlayerRider();
+			|| self is Strawberry { Golden: true } strawberry && strawberry.Follower.Leader != null; // A golden attacked to the player
 
 	}
 
@@ -949,7 +947,6 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 			return;
 		}
 
-		IPositionSmoothingState state;
         Vector2 offset;
         Vector2 spriteOffset = Vector2.Zero;
 
@@ -957,7 +954,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
 		if (self is Strawberry strawberry)
 		{
-            state = MotionSmoothingHandler.Instance.GetState(self) as IPositionSmoothingState;
+            IPositionSmoothingState state = MotionSmoothingHandler.Instance.GetState(self) as IPositionSmoothingState;
             offset = state.SmoothedRealPosition - state.SmoothedRealPosition.Round();
 
 			// The visual-only bobbing animation of strawberry interacts really badly
@@ -971,19 +968,15 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 			strawberry.sprite.Y = 0;
 		}
 
-        else if (self is MoveBlock || self is MoveBlock.Border)
+         // The player or a holdable
+        else
 		{
-            state = MotionSmoothingHandler.Instance.GetState(self) as IPositionSmoothingState;
-            offset = state.SmoothedRealPosition - state.SmoothedRealPosition.Round();
-		}
-
-		else
-		{
-			var player = MotionSmoothingHandler.Instance.Player;
-            state = MotionSmoothingHandler.Instance.GetState(player) as IPositionSmoothingState;
+            IPositionSmoothingState state = MotionSmoothingHandler.Instance.GetState(
+                MotionSmoothingHandler.Instance.Player
+            ) as IPositionSmoothingState;
             offset = state.SmoothedRealPosition - state.SmoothedRealPosition.Round();
 
-			if (!PlayerSmoother.IsSmoothingX)
+            if (!PlayerSmoother.IsSmoothingX)
 			{
 				offset.X = 0;
 			}
