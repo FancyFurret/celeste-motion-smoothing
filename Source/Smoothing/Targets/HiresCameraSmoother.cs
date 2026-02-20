@@ -198,6 +198,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 		On.Celeste.Glitch.Apply += Glitch_Apply;
 
 		IL.Celeste.SeekerBarrierRenderer.OnRenderBloom += SeekerBarrierRendererRenderHook;
+        IL.Celeste.Godrays.Update += GodraysUpdateHook;
 
         On.Celeste.HudRenderer.RenderContent += HudRenderer_RenderContent;
 
@@ -279,6 +280,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 		On.Celeste.Glitch.Apply -= Glitch_Apply;
 
 		IL.Celeste.SeekerBarrierRenderer.OnRenderBloom -= SeekerBarrierRendererRenderHook;
+        IL.Celeste.Godrays.Update -= GodraysUpdateHook;
 
         On.Celeste.HudRenderer.RenderContent -= HudRenderer_RenderContent;
 
@@ -1190,15 +1192,49 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 		if (cursor.TryGotoNext(MoveType.Before,
 			instr => instr.MatchCall(typeof(Draw).GetMethod("Line", [typeof(Vector2), typeof(Vector2), typeof(Color)]))))
 		{
-			// Backtrack to Color.get_White. The second Vector2 is on the stack right before this
-			if (cursor.TryGotoPrev(MoveType.Before,
-			instr => instr.MatchCall<Color>("get_White")))
-			{
-				// Round the Vector2 currently on top of the stack
-				cursor.Emit(OpCodes.Call, typeof(Calc).GetMethod("Round", [typeof(Vector2)]));
-			}
+			// Stack is [Vector2, Vector2, Color]. Store the Color, round the Vector2, restore the Color.
+			var colorLocal = new VariableDefinition(il.Import(typeof(Color)));
+			il.Body.Variables.Add(colorLocal);
+
+			cursor.Emit(OpCodes.Stloc, colorLocal);
+			cursor.Emit(OpCodes.Call, typeof(Calc).GetMethod("Round", [typeof(Vector2)]));
+			cursor.Emit(OpCodes.Ldloc, colorLocal);
 		}
 	}
+
+
+
+    private static void GodraysUpdateHook(ILContext il)
+    {
+        ILCursor cursor = new ILCursor(il);
+
+        int vec2Local = -1;
+        int num2Local = -1;
+        int num3Local = -1;
+
+        #pragma warning disable CL0006 // Multiple predicates to ILCursor.(Try)Goto*
+        if (cursor.TryGotoNext(MoveType.Before,
+            i => i.MatchLdloca(out vec2Local),
+            i => i.MatchLdloc(out num2Local),
+            i => i.Match(OpCodes.Conv_I4),
+            i => i.Match(OpCodes.Conv_R4),
+            i => i.MatchLdloc(out num3Local),
+            i => i.Match(OpCodes.Conv_I4),
+            i => i.Match(OpCodes.Conv_R4),
+            i => i.MatchCall<Vector2>(".ctor"))
+        ) {
+            #pragma warning disable CL0005 // ILCursor.Remove or RemoveRange used
+            cursor.RemoveRange(8);
+            #pragma warning restore CL0005 // ILCursor.Remove or RemoveRange used
+
+            cursor.Emit(OpCodes.Ldloc, il.Body.Variables[num2Local]);
+            cursor.Emit(OpCodes.Ldloc, il.Body.Variables[num3Local]);
+            cursor.Emit(OpCodes.Newobj, typeof(Vector2).GetConstructor(new[] { typeof(float), typeof(float) }));
+            cursor.Emit(OpCodes.Call, typeof(Calc).GetMethod("Floor", new[] { typeof(Vector2) }));
+            cursor.Emit(OpCodes.Stloc, il.Body.Variables[vec2Local]);
+        }
+        #pragma warning restore CL0006 // Multiple predicates to ILCursor.(Try)Goto*
+    }
 
 
 
@@ -2046,27 +2082,54 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
 	private void HookUnmaintainedMods()
 	{
+        Version spirialisHelperVersion = new Version(1, 0, 8);
+
 		EverestModuleMetadata spirialisHelper = new() {
 			Name = "SpirialisHelper",
-			Version = new Version(1, 0, 8)
+			Version = spirialisHelperVersion
 		};
 
-		if (Everest.Loader.DependencyLoaded(spirialisHelper))
+		if (Everest.Loader.TryGetDependency(spirialisHelper, out var spirialisHelperModule))
 		{
-			AddSpirialisHelperHook();
+            if (spirialisHelperModule.Metadata.Version.Equals(spirialisHelperVersion))
+			{
+                AddSpirialisHelperHook();
+			}
 		}
 
+        
 
+        Version vivHelperVersion = new Version(1, 14, 7);
 
 		EverestModuleMetadata vivHelper = new() {
 			Name = "VivHelper",
-			Version = new Version(1, 14, 7)
+			Version = vivHelperVersion
 		};
 
-		if (Everest.Loader.DependencyLoaded(vivHelper))
-		{
-			AddVivHelperHook();
-		}
+		if (Everest.Loader.TryGetDependency(vivHelper, out var vivHelperModule))
+        {
+            if (vivHelperModule.Metadata.Version.Equals(vivHelperVersion))
+            {
+                AddVivHelperHook();
+            }
+        }
+
+        
+
+        Version glyphVersion = new Version(2, 3, 3);
+
+        EverestModuleMetadata glyph = new() {
+			Name = "Glyph",
+            Version = glyphVersion
+		};
+
+		if (Everest.Loader.TryGetDependency(glyph, out var glyphModule))
+        {
+            if (glyphModule.Metadata.Version.Equals(glyphVersion))
+            {
+                AddGlyphHook();
+            }
+        }
 
 
         
@@ -2174,6 +2237,23 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 	{
 		Type t_HoldableBarrierRenderer = Type.GetType("VivHelper.Entities.HoldableBarrierRenderer, VivHelper");
 		MethodInfo m_OnRenderBloom = t_HoldableBarrierRenderer?.GetMethod(
+			"OnRenderBloom",
+			BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic
+		);
+
+		if (m_OnRenderBloom != null)
+		{
+			AddHook(new ILHook(m_OnRenderBloom, SeekerBarrierRendererRenderHook));
+		}
+	}
+
+
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+	private void AddGlyphHook()
+	{
+		Type t_InstantTeleporterRenderer = Type.GetType("Celeste.Mod.AcidHelper.Entities.InstantTeleporterRenderer, AcidHelper");
+		MethodInfo m_OnRenderBloom = t_InstantTeleporterRenderer?.GetMethod(
 			"OnRenderBloom",
 			BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic
 		);
@@ -2299,41 +2379,9 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
 		if (m_Update != null)
 		{
-			AddHook(new ILHook(m_Update, CustomGodraysUpdateHook));
+			AddHook(new ILHook(m_Update, GodraysUpdateHook));
 		}
 	}
-
-    private static void CustomGodraysUpdateHook(ILContext il)
-    {
-        ILCursor cursor = new ILCursor(il);
-
-        int vec2Local = -1;
-        int num2Local = -1;
-        int num3Local = -1;
-
-        #pragma warning disable CL0006 // Multiple predicates to ILCursor.(Try)Goto*
-        if (cursor.TryGotoNext(MoveType.Before,
-            i => i.MatchLdloca(out vec2Local),
-            i => i.MatchLdloc(out num2Local),
-            i => i.Match(OpCodes.Conv_I4),
-            i => i.Match(OpCodes.Conv_R4),
-            i => i.MatchLdloc(out num3Local),
-            i => i.Match(OpCodes.Conv_I4),
-            i => i.Match(OpCodes.Conv_R4),
-            i => i.MatchCall<Vector2>(".ctor"))
-        ) {
-            #pragma warning disable CL0005 // ILCursor.Remove or RemoveRange used
-            cursor.RemoveRange(8);
-            #pragma warning restore CL0005 // ILCursor.Remove or RemoveRange used
-
-            cursor.Emit(OpCodes.Ldloc, il.Body.Variables[num2Local]);
-            cursor.Emit(OpCodes.Ldloc, il.Body.Variables[num3Local]);
-            cursor.Emit(OpCodes.Newobj, typeof(Vector2).GetConstructor(new[] { typeof(float), typeof(float) }));
-            cursor.Emit(OpCodes.Call, typeof(Calc).GetMethod("Floor", new[] { typeof(Vector2) }));
-            cursor.Emit(OpCodes.Stloc, il.Body.Variables[vec2Local]);
-        }
-        #pragma warning restore CL0006 // Multiple predicates to ILCursor.(Try)Goto*
-    }
 
 
 
@@ -2348,7 +2396,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
 		if (m_Update != null)
 		{
-			AddHook(new ILHook(m_Update, CustomGodraysUpdateHook));
+			AddHook(new ILHook(m_Update, GodraysUpdateHook));
 		}
 	}
 }
