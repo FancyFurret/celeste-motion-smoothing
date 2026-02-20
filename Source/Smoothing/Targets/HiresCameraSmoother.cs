@@ -2091,10 +2091,8 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
 		if (Everest.Loader.TryGetDependency(spirialisHelper, out var spirialisHelperModule))
 		{
-            if (spirialisHelperModule.Metadata.Version.Equals(spirialisHelperVersion))
-			{
-                AddSpirialisHelperHook();
-			}
+            // No exact version check here because there was no public repo to take out a PR on
+            AddSpirialisHelperHook();
 		}
 
         
@@ -2108,10 +2106,8 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
 		if (Everest.Loader.TryGetDependency(vivHelper, out var vivHelperModule))
         {
-            if (vivHelperModule.Metadata.Version.Equals(vivHelperVersion))
-            {
-                AddVivHelperHook();
-            }
+            // No exact version check here because there was no public repo to take out a PR on
+            AddVivHelperHook();
         }
 
         
@@ -2125,10 +2121,8 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
 		if (Everest.Loader.TryGetDependency(glyph, out var glyphModule))
         {
-            if (glyphModule.Metadata.Version.Equals(glyphVersion))
-            {
-                AddGlyphHook();
-            }
+            // No exact version check here because there was no public repo to take out a PR on
+            AddGlyphHook();
         }
 
 
