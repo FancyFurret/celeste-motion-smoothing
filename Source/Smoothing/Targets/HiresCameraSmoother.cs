@@ -934,9 +934,12 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
 		var player = MotionSmoothingHandler.Instance.Player;
 
-		return player?.Holding?.Entity == self
-			|| self == player
-			|| self is Strawberry { Golden: true } strawberry && strawberry.Follower.Leader != null;
+		return self == player
+			|| player?.Holding?.Entity == self // A currently-held holdable
+			|| self is Strawberry { Golden: true } strawberry && strawberry.Follower.Leader != null // A golden attacked to the player
+            || self is MoveBlock { canSteer: true } moveBlock && moveBlock.HasPlayerRider()
+            || self is MoveBlock.Border border && border.Parent.canSteer && border.Parent.HasPlayerRider();
+
 	}
 
 	private static void RenderEntityAtSubpixelPosition(Entity self)
@@ -966,6 +969,12 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 			
 			strawberry.sprite.X = 0;
 			strawberry.sprite.Y = 0;
+		}
+
+        else if (self is MoveBlock || self is MoveBlock.Border)
+		{
+            state = MotionSmoothingHandler.Instance.GetState(self) as IPositionSmoothingState;
+            offset = state.SmoothedRealPosition - state.SmoothedRealPosition.Round();
 		}
 
 		else
