@@ -67,11 +67,12 @@ public static class PlayerSmoother
     private static Vector2 GetExtrapolatedPositionAndUpdateIsSmoothing(Player player, IPositionSmoothingState state, double elapsed)
     {
         var playerSpeed = player.Speed;
+
+        // Checking this prevents the player from being incorrectly 
+        // smoothed while standing still on moving platforms.
+        bool isNotStandingStill = playerSpeed.X != 0 || playerSpeed.Y != 0;
         
         var computedSpeed = (state.RealPositionHistory[0] - state.RealPositionHistory[1]) * 60;
-
-        if (GravityHelperImports.IsPlayerInverted?.Invoke() == true)
-            computedSpeed.Y *= -1;
 
         
 
@@ -88,13 +89,20 @@ public static class PlayerSmoother
         
         // We don't use float.Epsilon because there are edge cases where Madeline
         // can have nonzero but extremely small downward speed.
-        bool isMovingInBothDirections = Math.Abs(playerSpeed.X) > 0.001
-            && Math.Abs(playerSpeed.Y) > 0.001;
+        bool isMovingInBothDirections = Math.Abs(playerSpeed.X) > 0.001 && Math.Abs(playerSpeed.Y) > 0.001;
         
         bool canClimb = player.StateMachine.State == Player.StClimb;
 
-        IsSmoothingX = state.DrawPositionHistory[0].X != state.DrawPositionHistory[1].X || isMovingInBothDirections;
-        IsSmoothingY = state.DrawPositionHistory[0].Y != state.DrawPositionHistory[1].Y || isMovingInBothDirections || !canClimb;
+        IsSmoothingX = isNotStandingStill && (
+            state.DrawPositionHistory[0].X != state.DrawPositionHistory[1].X
+            || isMovingInBothDirections
+        );
+
+        IsSmoothingY = isNotStandingStill && (
+            state.DrawPositionHistory[0].Y != state.DrawPositionHistory[1].Y
+            || isMovingInBothDirections
+            || !canClimb
+        );
 
         return smoothedPosition;
     }

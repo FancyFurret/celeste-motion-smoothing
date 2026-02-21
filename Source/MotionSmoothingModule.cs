@@ -124,16 +124,6 @@ public class MotionSmoothingModule : EverestModule
 
 	public override void Initialize()
 	{
-		EverestModuleMetadata gravityHelper = new() {
-			Name = "GravityHelper",
-			Version = new Version(1, 2, 0)
-		};
-
-		if (Everest.Loader.DependencyLoaded(gravityHelper))
-		{
-			typeof(GravityHelperImports).ModInterop();
-		}
-        
         CelesteTasInterop.Load();
 
 		ApplySettings();
