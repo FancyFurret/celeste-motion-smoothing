@@ -68,9 +68,12 @@ public static class PlayerSmoother
     {
         var playerSpeed = player.Speed;
 
-        // Checking this prevents the player from being incorrectly 
+        // Checking this prevents the player from being incorrectly
         // smoothed while standing still on moving platforms.
-        bool isNotStandingStill = playerSpeed.X != 0 || playerSpeed.Y != 0;
+        // We initialize it in this bizarre way so MoveBlocks can
+        // override individual directions later.
+        bool isNotStandingStillX = playerSpeed.X != 0 || playerSpeed.Y != 0;
+        bool isNotStandingStillY = isNotStandingStillX;
         
         var computedSpeed = (state.RealPositionHistory[0] - state.RealPositionHistory[1]) * 60;
 
@@ -85,10 +88,14 @@ public static class PlayerSmoother
             smoothedPosition = pushed;
         }
 
-        // A player standing still on a moving Solid should still be smoothed.
+        // A player standing still on a moving Solid should still be smoothed,
+        // but only in the direction the Solid is actually moving.
         // JumpThrus are excluded because they shouldn't override the standing-still check.
-        if (pusherOffsetApplied && ActorPushTracker.Instance.IsPlayerRidingSolid)
-            isNotStandingStill = true;
+        bool ridingMovingSolid = pusherOffsetApplied && ActorPushTracker.Instance.IsPlayerRidingSolid;
+        if (ridingMovingSolid && pusherVelocity.X != 0)
+            isNotStandingStillX = true;
+        if (ridingMovingSolid && pusherVelocity.Y != 0)
+            isNotStandingStillY = true;
 
         // We don't use float.Epsilon because there are edge cases where Madeline
         // can have nonzero but extremely small downward speed.
@@ -96,12 +103,12 @@ public static class PlayerSmoother
         
         bool canClimb = player.StateMachine.State == Player.StClimb;
 
-        IsSmoothingX = isNotStandingStill && (
+        IsSmoothingX = isNotStandingStillX && (
             state.DrawPositionHistory[0].X != state.DrawPositionHistory[1].X
             || isMovingInBothDirections
         );
 
-        IsSmoothingY = isNotStandingStill && (
+        IsSmoothingY = isNotStandingStillY && (
             state.DrawPositionHistory[0].Y != state.DrawPositionHistory[1].Y
             || isMovingInBothDirections
             || !canClimb
