@@ -1,4 +1,3 @@
-using System.Linq;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using Celeste.Mod.MotionSmoothing.Smoothing;
@@ -11,6 +10,11 @@ namespace Celeste.Mod.MotionSmoothing.Utilities;
 public class ActorPushTracker : ToggleableFeature<ActorPushTracker>
 {
     private readonly ConditionalWeakTable<Actor, HashSet<Entity>> _pushers = new();
+    private bool _isPlayerRidingSolid;
+    private bool _isPlayerRidingJumpThru;
+
+    public bool IsPlayerRidingSolid => _isPlayerRidingSolid;
+    public bool IsPlayerRidingJumpThru => _isPlayerRidingJumpThru;
 
     protected override void Hook()
     {
@@ -118,20 +122,35 @@ public class ActorPushTracker : ToggleableFeature<ActorPushTracker>
         foreach (var kv in Instance._pushers)
             kv.Value.Clear();
 
+        Instance._isPlayerRidingSolid = false;
+        Instance._isPlayerRidingJumpThru = false;
+
         var actors = self.scene.Tracker.GetEntities<Actor>();
 
         if (self.scene is Level)
         {
-            foreach (var entity in self.scene.Tracker.GetEntities<Solid>()
-                .Concat(self.scene.Tracker.GetEntities<JumpThru>())
-            ) {
+            foreach (Solid solid in self.scene.Tracker.GetEntities<Solid>())
+            {
                 foreach (Actor actor in actors)
                 {
-                    if (
-                        entity is Solid solid && actor.IsRiding(solid)
-                        || entity is JumpThru jumpThru && actor.IsRiding(jumpThru)
-                    ) {
-                        Instance._pushers.GetOrCreateValue(actor)!.Add(entity);
+                    if (actor.IsRiding(solid))
+                    {
+                        Instance._pushers.GetOrCreateValue(actor)!.Add(solid);
+                        if (actor is Player)
+                            Instance._isPlayerRidingSolid = true;
+                    }
+                }
+            }
+
+            foreach (JumpThru jumpThru in self.scene.Tracker.GetEntities<JumpThru>())
+            {
+                foreach (Actor actor in actors)
+                {
+                    if (actor.IsRiding(jumpThru))
+                    {
+                        Instance._pushers.GetOrCreateValue(actor)!.Add(jumpThru);
+                        if (actor is Player)
+                            Instance._isPlayerRidingJumpThru = true;
                     }
                 }
             }

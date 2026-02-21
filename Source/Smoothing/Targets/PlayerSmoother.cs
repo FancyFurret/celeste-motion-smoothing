@@ -78,15 +78,18 @@ public static class PlayerSmoother
 
         Vector2 smoothedPosition = SmoothingMath.Extrapolate(state.RealPositionHistory, computedSpeed, elapsed);
 
-        if (ActorPushTracker.Instance.ApplyPusherOffset(player, elapsed, SmoothingMode.Extrapolate, out var pushed, out var pusherVelocity))
+        bool pusherOffsetApplied = ActorPushTracker.Instance.ApplyPusherOffset(player, elapsed, SmoothingMode.Extrapolate, out var pushed, out var pusherVelocity);
+        if (pusherOffsetApplied)
         {
             playerSpeed = pusherVelocity;
-
             smoothedPosition = pushed;
         }
 
+        // A player standing still on a moving Solid should still be smoothed.
+        // JumpThrus are excluded because they shouldn't override the standing-still check.
+        if (pusherOffsetApplied && ActorPushTracker.Instance.IsPlayerRidingSolid)
+            isNotStandingStill = true;
 
-        
         // We don't use float.Epsilon because there are edge cases where Madeline
         // can have nonzero but extremely small downward speed.
         bool isMovingInBothDirections = Math.Abs(playerSpeed.X) > 0.001 && Math.Abs(playerSpeed.Y) > 0.001;
