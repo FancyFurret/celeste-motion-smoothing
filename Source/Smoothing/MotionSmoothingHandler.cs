@@ -306,6 +306,10 @@ public class MotionSmoothingHandler : ToggleableFeature<MotionSmoothingHandler>
             global::Celeste.Player => null,
             TextMenu => null,
 
+            // Border renders using Parent's position via Draw.Rect, not PushSprite;
+            // smoothing is handled by a dedicated render hook in PushSpriteSmoother
+            MoveBlock.Border => null,
+
             // These should be last so that more specific types are handled first
             Platform => new PlatformSmoothingState(),
             Actor => new ActorSmoothingState(),

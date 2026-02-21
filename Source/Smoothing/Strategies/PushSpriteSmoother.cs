@@ -35,6 +35,10 @@ public class PushSpriteSmoother : SmoothingStrategy<PushSpriteSmoother>
         HookComponentRender<DustGraphic>(); // Components (that aren't GraphicsComponents) can be smoothed by looking at their Entity's position
         HookComponentRender<PlayerHair>();
 
+        // MoveBlock.Border uses Draw.Rect with Parent's position, which bypasses PushSprite;
+        // temporarily swap Parent.Position to its smoothed value during Border.Render
+        AddHook(new Hook(typeof(MoveBlock.Border).GetMethod("Render")!, BorderRenderHook));
+
         IL.Monocle.ComponentList.Render += ComponentListRenderHook;
         IL.Monocle.EntityList.Render += EntityListRenderHook;
         IL.Monocle.EntityList.RenderOnly += EntityListRenderHook;
@@ -146,6 +150,24 @@ public class PushSpriteSmoother : SmoothingStrategy<PushSpriteSmoother>
         PreObjectRender(self);
         orig(self);
         PostObjectRender();
+    }
+
+    private static void BorderRenderHook(On.Monocle.Entity.orig_Render orig, Entity self)
+    {
+        if (self is MoveBlock.Border border && Instance.Enabled)
+        {
+            var parentState = Instance.GetState(border.Parent) as IPositionSmoothingState;
+            if (parentState != null)
+            {
+                var originalPosition = border.Parent.Position;
+                border.Parent.Position = parentState.SmoothedRealPosition.Round();
+                orig(self);
+                border.Parent.Position = originalPosition;
+                return;
+            }
+        }
+
+        orig(self);
     }
 
     // ReSharper disable once InconsistentNaming

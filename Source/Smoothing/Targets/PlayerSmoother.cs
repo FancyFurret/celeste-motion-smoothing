@@ -67,34 +67,52 @@ public static class PlayerSmoother
     private static Vector2 GetExtrapolatedPositionAndUpdateIsSmoothing(Player player, IPositionSmoothingState state, double elapsed)
     {
         var playerSpeed = player.Speed;
+
+        // Checking this prevents the player from being incorrectly
+        // smoothed while standing still on moving platforms.
+        // We initialize it in this bizarre way so MoveBlocks can
+        // override individual directions later.
+        bool isNotStandingStillX = playerSpeed.X != 0 || playerSpeed.Y != 0;
+        bool isNotStandingStillY = isNotStandingStillX;
         
         var computedSpeed = (state.RealPositionHistory[0] - state.RealPositionHistory[1]) * 60;
-
-        if (GravityHelperImports.IsPlayerInverted?.Invoke() == true)
-            computedSpeed.Y *= -1;
 
         
 
         Vector2 smoothedPosition = SmoothingMath.Extrapolate(state.RealPositionHistory, computedSpeed, elapsed);
 
-        if (ActorPushTracker.Instance.ApplyPusherOffset(player, elapsed, SmoothingMode.Extrapolate, out var pushed, out var pusherVelocity))
+        bool pusherOffsetApplied = ActorPushTracker.Instance.ApplyPusherOffset(player, elapsed, SmoothingMode.Extrapolate, out var pushed, out var pusherVelocity);
+        if (pusherOffsetApplied)
         {
             playerSpeed = pusherVelocity;
-
             smoothedPosition = pushed;
         }
 
+        // A player standing still on a moving Solid should still be smoothed,
+        // but only in the direction the Solid is actually moving.
+        // JumpThrus are excluded because they shouldn't override the standing-still check.
+        bool ridingMovingSolid = pusherOffsetApplied && ActorPushTracker.Instance.IsPlayerRidingSolid;
+        if (ridingMovingSolid && pusherVelocity.X != 0)
+            isNotStandingStillX = true;
+        if (ridingMovingSolid && pusherVelocity.Y != 0)
+            isNotStandingStillY = true;
 
-        
         // We don't use float.Epsilon because there are edge cases where Madeline
         // can have nonzero but extremely small downward speed.
-        bool isMovingInBothDirections = Math.Abs(playerSpeed.X) > 0.001
-            && Math.Abs(playerSpeed.Y) > 0.001;
+        bool isMovingInBothDirections = Math.Abs(playerSpeed.X) > 0.001 && Math.Abs(playerSpeed.Y) > 0.001;
         
         bool canClimb = player.StateMachine.State == Player.StClimb;
 
-        IsSmoothingX = state.DrawPositionHistory[0].X != state.DrawPositionHistory[1].X || isMovingInBothDirections;
-        IsSmoothingY = state.DrawPositionHistory[0].Y != state.DrawPositionHistory[1].Y || isMovingInBothDirections || !canClimb;
+        IsSmoothingX = isNotStandingStillX && (
+            state.DrawPositionHistory[0].X != state.DrawPositionHistory[1].X
+            || isMovingInBothDirections
+        );
+
+        IsSmoothingY = isNotStandingStillY && (
+            state.DrawPositionHistory[0].Y != state.DrawPositionHistory[1].Y
+            || isMovingInBothDirections
+            || !canClimb
+        );
 
         return smoothedPosition;
     }
