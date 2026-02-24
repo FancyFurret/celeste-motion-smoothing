@@ -1003,12 +1003,12 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
             ) as IPositionSmoothingState;
             offset = state.SmoothedRealPosition - state.SmoothedRealPosition.Round();
 
-            if (!PlayerSmoother.IsSmoothingX)
+            if (!PlayerSmoother.AllowSubpixelRenderingX)
 			{
 				offset.X = 0;
 			}
 
-			if (!PlayerSmoother.IsSmoothingY)
+			if (!PlayerSmoother.AllowSubpixelRenderingY)
 			{
 				offset.Y = 0;
 			}
@@ -1084,12 +1084,12 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
 		Vector2 offset = state.SmoothedRealPosition - state.SmoothedRealPosition.Round();
 
-        if (!PlayerSmoother.IsSmoothingX)
+        if (!PlayerSmoother.AllowSubpixelRenderingX)
         {
             offset.X = 0;
         }
 
-        if (!PlayerSmoother.IsSmoothingY)
+        if (!PlayerSmoother.AllowSubpixelRenderingY)
         {
             offset.Y = 0;
         }

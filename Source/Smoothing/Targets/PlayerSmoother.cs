@@ -13,8 +13,11 @@ public static class PlayerSmoother
     /// Threshold for position delta below which we consider the player stationary.
     /// This prevents jitter from floating-point noise or stale Speed values.
     /// </summary>
-    public static bool IsSmoothingX = true;
-    public static bool IsSmoothingY = true;
+    public static bool IsSmoothingX = false;
+    public static bool IsSmoothingY = false;
+
+    public static bool AllowSubpixelRenderingX = false;
+    public static bool AllowSubpixelRenderingY = false;
 
     public static Vector2 Smooth(Player player, IPositionSmoothingState state, double elapsed, SmoothingMode mode)
     {
@@ -92,6 +95,15 @@ public static class PlayerSmoother
             smoothedPosition = pushed;
         }
 
+        UpdateIsSmoothing(pusherOffsetApplied, pusherVelocity, playerSpeed, isNotStandingStillX, isNotStandingStillY, state, player);
+
+        UpdateAllowSubpixelRendering(pusherOffsetApplied, pusherVelocity, playerSpeed, isNotStandingStillX, isNotStandingStillY, state, player);
+
+        return smoothedPosition;
+    }
+
+    private static void UpdateIsSmoothing(bool pusherOffsetApplied, Vector2 pusherVelocity, Vector2 playerSpeed, bool isNotStandingStillX, bool isNotStandingStillY, IPositionSmoothingState state, Player player)
+    {
         // A player standing still on a moving Solid should still be smoothed,
         // but only in the direction the Solid is actually moving.
         // JumpThrus are excluded because they shouldn't override the standing-still check.
@@ -117,7 +129,37 @@ public static class PlayerSmoother
             || isMovingInBothDirections
             || !canClimb
         );
+    }
+    
+    // The logic for when we should use subpixel rendering is identical to position extrapolation,
+    // except we don't just allow riding any moving solids (like moon blocks), but only specifically
+    // steerable move blocks.
+    private static void UpdateAllowSubpixelRendering(bool pusherOffsetApplied, Vector2 pusherVelocity, Vector2 playerSpeed, bool isNotStandingStillX, bool isNotStandingStillY, IPositionSmoothingState state, Player player)
+    {
+        // A player standing still on a moving Solid should still be smoothed,
+        // but only in the direction the Solid is actually moving.
+        // JumpThrus are excluded because they shouldn't override the standing-still check.
+        bool ridingSteerableMoveBlock = pusherOffsetApplied && ActorPushTracker.Instance.IsPlayerRidingSteerableMoveBlock;
+        if (ridingSteerableMoveBlock && pusherVelocity.X != 0)
+            isNotStandingStillX = true;
+        if (ridingSteerableMoveBlock && pusherVelocity.Y != 0)
+            isNotStandingStillY = true;
 
-        return smoothedPosition;
+        // We don't use float.Epsilon because there are edge cases where Madeline
+        // can have nonzero but extremely small downward speed.
+        bool isMovingInBothDirections = Math.Abs(playerSpeed.X) > 0.001 && Math.Abs(playerSpeed.Y) > 0.001;
+        
+        bool canClimb = player.StateMachine.State == Player.StClimb;
+
+        AllowSubpixelRenderingX = isNotStandingStillX && (
+            state.DrawPositionHistory[0].X != state.DrawPositionHistory[1].X
+            || isMovingInBothDirections
+        );
+
+        AllowSubpixelRenderingY = isNotStandingStillY && (
+            state.DrawPositionHistory[0].Y != state.DrawPositionHistory[1].Y
+            || isMovingInBothDirections
+            || !canClimb
+        );
     }
 }
