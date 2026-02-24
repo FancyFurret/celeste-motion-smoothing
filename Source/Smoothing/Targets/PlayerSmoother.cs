@@ -39,7 +39,7 @@ public static class PlayerSmoother
     private static Vector2 Extrapolate(Player player, IPositionSmoothingState state, double elapsed)
     {
         // Disable during screen transitions or pause
-        if (Engine.Scene is Level { Transitioning: true } or { Paused: true })
+        if (Engine.Scene is not Level || Engine.Scene is Level { Transitioning: true } or { Paused: true })
             return state.OriginalDrawPosition;
 
         var smoothedPosition = GetExtrapolatedPositionAndUpdateIsSmoothing(player, state, elapsed);

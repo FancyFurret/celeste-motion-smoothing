@@ -431,7 +431,6 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
         if (cursor.TryGotoNext(MoveType.Before,
             instr => instr.MatchCall(typeof(Distort), "Render")))
         {
-            Console.WriteLine("found");
             cursor.EmitDelegate(enableInterceptDistortRender);
             cursor.Index++;
             cursor.EmitDelegate(disableInterceptDistortRender);
