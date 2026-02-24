@@ -42,6 +42,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 	private static bool _currentlyRenderingGameplay = false;
     private static bool _currentlyRenderingPlayerOnTopOfFlash = false;
     private static bool _allowParallaxOneBackgrounds = false;
+    private static bool _interceptDistortRender = false;
 
     private enum DisableFloorFunctionsMode
     {
@@ -425,6 +426,30 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
             }
         }
 
+
+
+        if (cursor.TryGotoNext(MoveType.Before,
+            instr => instr.MatchCall(typeof(Distort), "Render")))
+        {
+            Console.WriteLine("found");
+            cursor.EmitDelegate(enableInterceptDistortRender);
+            cursor.Index++;
+            cursor.EmitDelegate(disableInterceptDistortRender);
+
+
+            static void enableInterceptDistortRender()
+            {
+                _interceptDistortRender = true;
+            }
+
+            static void disableInterceptDistortRender()
+            {
+                _interceptDistortRender = false;
+            }
+        }
+
+
+
         if (cursor.TryGotoNext(MoveType.After,
             instr => instr.MatchLdfld<Level>("flashDrawPlayer")))
         {
@@ -527,6 +552,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
         _currentlyRenderingBackground = true;
         _currentlyRenderingPlayerOnTopOfFlash = false;
         _disableFloorFunctions = DisableFloorFunctionsMode.Integer;
+        _interceptDistortRender = false;
 
         ComputeSmoothedCameraData(level);
 
@@ -1098,7 +1124,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
     private static void Distort_Render(On.Celeste.Distort.orig_Render orig, Texture2D source, Texture2D map, bool hasDistortion)
     {
-        if (HiresRenderer.Instance is not { } renderer)
+        if (HiresRenderer.Instance is not { } renderer || !_interceptDistortRender)
         {
 			orig(source, map, hasDistortion);
             return;
