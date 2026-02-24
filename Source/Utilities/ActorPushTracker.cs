@@ -131,13 +131,16 @@ public class ActorPushTracker : ToggleableFeature<ActorPushTracker>
         {
             foreach (Solid solid in self.scene.Tracker.GetEntities<Solid>())
             {
-                foreach (Actor actor in actors)
+                if (solid is MoveBlock { canSteer: true })
                 {
-                    if (actor.IsRiding(solid))
+                    foreach (Actor actor in actors)
                     {
-                        Instance._pushers.GetOrCreateValue(actor)!.Add(solid);
-                        if (actor is Player)
-                            Instance._isPlayerRidingSolid = true;
+                        if (actor.IsRiding(solid))
+                        {
+                            Instance._pushers.GetOrCreateValue(actor)!.Add(solid);
+                            if (actor is Player)
+                                Instance._isPlayerRidingSolid = true;
+                        }
                     }
                 }
             }
