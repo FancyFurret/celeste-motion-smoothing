@@ -42,14 +42,18 @@ public static class PlayerSmoother
         if (Engine.Scene is Level { Transitioning: true } or { Paused: true })
             return state.OriginalDrawPosition;
 
-        // If the player is about to dash, reset the states so the player position stops going in the wrong direction
-        if (MotionSmoothingHandler.Instance.AtDrawInputHandler.PressedThisUpdate(Input.Dash) ||
-            MotionSmoothingHandler.Instance.AtDrawInputHandler.PressedThisUpdate(Input.CrouchDash))
-            return state.OriginalDrawPosition;
-
-
-
         var smoothedPosition = GetExtrapolatedPositionAndUpdateIsSmoothing(player, state, elapsed);
+
+        // If the player is about to dash, reset the states so the player position stops going in the wrong direction
+        if (
+            player.CanDash &&
+            (
+                MotionSmoothingHandler.Instance.AtDrawInputHandler.PressedThisUpdate(Input.Dash)
+                || MotionSmoothingHandler.Instance.AtDrawInputHandler.PressedThisUpdate(Input.CrouchDash)
+            )
+        ) {
+            return state.OriginalDrawPosition;
+        }
         
         if (!IsSmoothingX)
         {
