@@ -199,6 +199,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 		On.Celeste.Glitch.Apply += Glitch_Apply;
 
 		IL.Celeste.SeekerBarrierRenderer.OnRenderBloom += SeekerBarrierRendererRenderHook;
+
         IL.Celeste.Godrays.Update += GodraysUpdateHook;
 
         On.Celeste.HudRenderer.RenderContent += HudRenderer_RenderContent;
@@ -281,6 +282,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 		On.Celeste.Glitch.Apply -= Glitch_Apply;
 
 		IL.Celeste.SeekerBarrierRenderer.OnRenderBloom -= SeekerBarrierRendererRenderHook;
+
         IL.Celeste.Godrays.Update -= GodraysUpdateHook;
 
         On.Celeste.HudRenderer.RenderContent -= HudRenderer_RenderContent;
@@ -1227,7 +1229,154 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 		}
 	}
 
+    
+    // This is a complicated solution to fix GFX.DrawVertices at high res.
+    // We have to manually compute the shape of the polygon to simulate
+    // a 320x180 buffer, but the actual logic is still pretty light on the CPU
+    // and the GPU call is functionally just as fast as the original.
+    private static class PixelatedRenderer
+    {
+        private static VertexPositionColor[] outputVertices = new VertexPositionColor[4096];
+        private static int outputCount;
 
+        public static void DrawPixelated(Matrix matrix, VertexPositionColor[] vertices, int vertexCount)
+        {
+            outputCount = 0;
+
+            // Compute a single fractional offset from the first vertex
+            // so all blocks move together as one unit
+            float offsetX = vertices[0].Position.X - (float)Math.Floor(vertices[0].Position.X);
+            float offsetY = vertices[0].Position.Y - (float)Math.Floor(vertices[0].Position.Y);
+
+            for (int i = 0; i + 2 < vertexCount; i += 3)
+            {
+                RasterizeTriangle(
+                    vertices[i].Position, vertices[i].Color,
+                    vertices[i + 1].Position, vertices[i + 1].Color,
+                    vertices[i + 2].Position, vertices[i + 2].Color,
+                    offsetX, offsetY
+                );
+            }
+
+            if (outputCount > 0)
+            {
+                GFX.DrawVertices(matrix * Matrix.CreateScale(1f / 6f), outputVertices, outputCount);
+            }
+        }
+
+        private static void RasterizeTriangle(
+            Vector3 p0, Color c0,
+            Vector3 p1, Color c1,
+            Vector3 p2, Color c2,
+            float offsetX, float offsetY)
+        {
+            // Snap to integer grid for stable rasterization
+            float x0 = (float)Math.Round(p0.X - offsetX);
+            float y0 = (float)Math.Round(p0.Y - offsetY);
+            float x1 = (float)Math.Round(p1.X - offsetX);
+            float y1 = (float)Math.Round(p1.Y - offsetY);
+            float x2 = (float)Math.Round(p2.X - offsetX);
+            float y2 = (float)Math.Round(p2.Y - offsetY);
+
+            if (y0 > y1) { Swap(ref x0, ref x1); Swap(ref y0, ref y1); Swap(ref c0, ref c1); }
+            if (y0 > y2) { Swap(ref x0, ref x2); Swap(ref y0, ref y2); Swap(ref c0, ref c2); }
+            if (y1 > y2) { Swap(ref x1, ref x2); Swap(ref y1, ref y2); Swap(ref c1, ref c2); }
+
+            float denom = (y1 - y2) * (x0 - x2) + (x2 - x1) * (y0 - y2);
+            if (Math.Abs(denom) < 1e-6f) return;
+            float invDenom = 1f / denom;
+
+            int lowResWidth = GameplayBuffers.Gameplay.Width;
+            int lowResHeight = GameplayBuffers.Gameplay.Height;
+
+            int minY = Math.Max((int)Math.Ceiling(y0 - 0.5f), 0);
+            int maxY = Math.Min((int)Math.Floor(y2 - 0.5f), lowResHeight - 1);
+
+            for (int py = minY; py <= maxY; py++)
+            {
+                float cy = py + 0.5f;
+
+                float leftX = float.MaxValue;
+                float rightX = float.MinValue;
+
+                IntersectEdge(x0, y0, x1, y1, cy, ref leftX, ref rightX);
+                IntersectEdge(x1, y1, x2, y2, cy, ref leftX, ref rightX);
+                IntersectEdge(x0, y0, x2, y2, cy, ref leftX, ref rightX);
+
+                if (leftX > rightX) continue;
+
+                int minX = Math.Max((int)Math.Ceiling(leftX - 0.5f), 0);
+                int maxX = Math.Min((int)Math.Floor(rightX - 0.5f), lowResWidth - 1);
+
+                for (int px = minX; px <= maxX; px++)
+                {
+                    float cx = px + 0.5f;
+
+                    float w0 = ((y1 - y2) * (cx - x2) + (x2 - x1) * (cy - y2)) * invDenom;
+                    float w1 = ((y2 - y0) * (cx - x2) + (x0 - x2) * (cy - y2)) * invDenom;
+                    float w2 = 1f - w0 - w1;
+
+                    Color color = new Color(
+                        (byte)MathHelper.Clamp(c0.R * w0 + c1.R * w1 + c2.R * w2, 0, 255),
+                        (byte)MathHelper.Clamp(c0.G * w0 + c1.G * w1 + c2.G * w2, 0, 255),
+                        (byte)MathHelper.Clamp(c0.B * w0 + c1.B * w1 + c2.B * w2, 0, 255),
+                        (byte)MathHelper.Clamp(c0.A * w0 + c1.A * w1 + c2.A * w2, 0, 255)
+                    );
+
+                    EmitQuad(px, py, color, offsetX, offsetY);
+                }
+            }
+        }
+
+        private static void IntersectEdge(
+            float x0, float y0, float x1, float y1,
+            float y, ref float leftX, ref float rightX)
+        {
+            if ((y0 <= y && y1 > y) || (y1 <= y && y0 > y))
+            {
+                float t = (y - y0) / (y1 - y0);
+                float x = x0 + t * (x1 - x0);
+
+                if (x < leftX) leftX = x;
+                if (x > rightX) rightX = x;
+            }
+        }
+
+        private static void EmitQuad(int px, int py, Color color, float offsetX, float offsetY)
+        {
+            if (outputCount + 6 > outputVertices.Length)
+            {
+                var expanded = new VertexPositionColor[outputVertices.Length * 2];
+                Array.Copy(outputVertices, expanded, outputCount);
+                outputVertices = expanded;
+            }
+
+            // Position on the grid, then shift back by the fractional offset
+            float sx = (px + offsetX) * Scale;
+            float sy = (py + offsetY) * Scale;
+            float ex = sx + Scale;
+            float ey = sy + Scale;
+
+            var tl = new VertexPositionColor(new Vector3(sx, sy, 0f), color);
+            var tr = new VertexPositionColor(new Vector3(ex, sy, 0f), color);
+            var bl = new VertexPositionColor(new Vector3(sx, ey, 0f), color);
+            var br = new VertexPositionColor(new Vector3(ex, ey, 0f), color);
+
+            outputVertices[outputCount++] = tl;
+            outputVertices[outputCount++] = bl;
+            outputVertices[outputCount++] = tr;
+            outputVertices[outputCount++] = bl;
+            outputVertices[outputCount++] = tr;
+            outputVertices[outputCount++] = br;
+        }
+
+        private static void Swap<T>(ref T a, ref T b)
+        {
+            T tmp = a;
+            a = b;
+            b = tmp;
+        }
+    }
 
     private static void GodraysUpdateHook(ILContext il)
     {
@@ -2008,39 +2157,70 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
 
 
+    private static bool _inPixelatedDraw = false;
+
+    private static bool TryDrawPixelated<T>(Matrix matrix, T[] vertices, int vertexCount) where T : struct, IVertexType
+    {
+        if (_inPixelatedDraw)
+        {
+            return false;
+        }
+
+        var renderTargets = Draw.SpriteBatch.GraphicsDevice.GetRenderTargets();
+
+        if (renderTargets == null || renderTargets.Length == 0)
+        {
+            return false;
+        }
+
+        if (!_largeTextures.Contains(renderTargets[0].RenderTarget))
+        {
+            return false;
+        }
+
+        if (vertices is VertexPositionColor[] vpcVertices)
+        {
+            _inPixelatedDraw = true;
+            PixelatedRenderer.DrawPixelated(matrix, vpcVertices, vertexCount);
+            _inPixelatedDraw = false;
+            return true;
+        }
+
+        return false;
+    }
+
     private void DrawVerticesILHook<T>(ILContext il) where T : struct, IVertexType
     {
         var cursor = new ILCursor(il);
-
-        // Move to the beginning
         cursor.Index = 0;
 
-        // Emit the matrix parameter
+        // Try the pixelated path first
         cursor.Emit(OpCodes.Ldarg_0);
+        cursor.Emit(OpCodes.Ldarg_1);
+        cursor.Emit(OpCodes.Ldarg_2);
+        cursor.EmitDelegate<Func<Matrix, T[], int, bool>>(TryDrawPixelated);
 
-        // Create and multiply by scale matrix
+        var continueLabel = cursor.DefineLabel();
+        cursor.Emit(OpCodes.Brfalse_S, continueLabel);
+        cursor.Emit(OpCodes.Ret);
+        cursor.MarkLabel(continueLabel);
+
+        // Fallback: scale matrix multiplication (non-VPC types, or non-large textures)
+        cursor.Emit(OpCodes.Ldarg_0);
         cursor.EmitDelegate(GetScaleMatrixForDrawVertices);
         cursor.EmitDelegate(MultiplyMatrices);
-
-        // Store back to arg 0
         cursor.Emit(OpCodes.Starg_S, (byte)0);
     }
 
     private void DrawIndexedVerticesILHook<T>(ILContext il) where T : struct, IVertexType
     {
         var cursor = new ILCursor(il);
-
-        // Move to the beginning
         cursor.Index = 0;
 
-        // Emit the matrix parameter
+        // Indexed vertices can't use the pixelated path, so just apply scale
         cursor.Emit(OpCodes.Ldarg_0);
-
-        // Create and multiply by scale matrix
         cursor.EmitDelegate(GetScaleMatrixForDrawVertices);
         cursor.EmitDelegate(MultiplyMatrices);
-
-        // Store back to arg 0
         cursor.Emit(OpCodes.Starg_S, (byte)0);
     }
 
