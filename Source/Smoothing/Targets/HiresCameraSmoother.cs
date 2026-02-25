@@ -1289,7 +1289,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
             int lowResWidth = GameplayBuffers.Gameplay.Width;
             int lowResHeight = GameplayBuffers.Gameplay.Height;
 
-            int minY = Math.Max((int)Math.Ceiling(y0 - 0.5f), 0);
+            int minY = Math.Max((int)Math.Ceiling(y0 - 0.5f), -1);
             int maxY = Math.Min((int)Math.Floor(y2 - 0.5f), lowResHeight - 1);
 
             for (int py = minY; py <= maxY; py++)
@@ -1305,7 +1305,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
                 if (leftX > rightX) continue;
 
-                int minX = Math.Max((int)Math.Ceiling(leftX - 0.5f), 0);
+                int minX = Math.Max((int)Math.Ceiling(leftX - 0.5f), -1);
                 int maxX = Math.Min((int)Math.Floor(rightX - 0.5f), lowResWidth - 1);
 
                 for (int px = minX; px <= maxX; px++)
