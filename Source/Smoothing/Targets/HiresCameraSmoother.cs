@@ -1243,12 +1243,35 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
         {
             outputCount = 0;
 
+            float offsetX = 0f, offsetY = 0f;
+
             for (int i = 0; i + 2 < vertexCount; i += 3)
             {
-                float anchorX = vertices[i].Position.X;
-                float anchorY = vertices[i].Position.Y;
-                float offsetX = anchorX - (float)Math.Floor(anchorX);
-                float offsetY = anchorY - (float)Math.Floor(anchorY);
+                bool newGroup = (i == 0);
+
+                if (!newGroup)
+                {
+                    newGroup = true;
+
+                    for (int a = 0; a < 3 && newGroup; a++)
+                    {
+                        for (int b = 0; b < 3 && newGroup; b++)
+                        {
+                            if (vertices[i + a].Position == vertices[i - 3 + b].Position)
+                            {
+                                newGroup = false;
+                            }
+                        }
+                    }
+                }
+
+                if (newGroup)
+                {
+                    float anchorX = vertices[i].Position.X;
+                    float anchorY = vertices[i].Position.Y;
+                    offsetX = anchorX - (float)Math.Floor(anchorX);
+                    offsetY = anchorY - (float)Math.Floor(anchorY);
+                }
 
                 Vector3 off = new Vector3(offsetX, offsetY, 0f);
 
