@@ -762,10 +762,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
 	private static void BackdropRenderer_Update(On.Celeste.BackdropRenderer.orig_Update orig, BackdropRenderer self, Scene scene)
 	{
-        if (MotionSmoothingModule.Settings.RenderBackgroundHires)
-        {
-            _disableFloorFunctions = DisableFloorFunctionsMode.Rational;
-        }
+        _disableFloorFunctions = DisableFloorFunctionsMode.Rational;
 
 		orig(self, scene);
 
@@ -1339,7 +1336,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
             for (int i = 0; i + 2 < vertexCount; i += 3)
             {
-                bool newGroup = (i == 0);
+                bool newGroup = i == 0;
 
                 if (!newGroup)
                 {
@@ -2289,6 +2286,52 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
     private static bool _inPixelatedDraw = false;
 
+    private static void FloorVerticesIfNeeded<T>(T[] vertices, int vertexCount) where T : struct, IVertexType
+    {
+        if (
+            _currentlyRenderingBackground && MotionSmoothingModule.Settings.RenderBackgroundHires
+            || !_currentlyRenderingBackground && MotionSmoothingModule.Settings.RenderForegroundHires
+        ) {
+            return;
+        }
+
+        if (vertexCount <= 0)
+            return;
+
+        // Use the first vertex's subpixel position as the offset for all vertices,
+        // so they all shift by the same amount and preserve relative geometry.
+        if (vertices is VertexPositionColor[] vpcVerts)
+        {
+            float offsetX = vpcVerts[0].Position.X - (float)Math.Floor(vpcVerts[0].Position.X);
+            float offsetY = vpcVerts[0].Position.Y - (float)Math.Floor(vpcVerts[0].Position.Y);
+            for (int i = 0; i < vertexCount; i++)
+            {
+                vpcVerts[i].Position.X -= offsetX;
+                vpcVerts[i].Position.Y -= offsetY;
+            }
+        }
+        else if (vertices is VertexPositionColorTexture[] vpctVerts)
+        {
+            float offsetX = vpctVerts[0].Position.X - (float)Math.Floor(vpctVerts[0].Position.X);
+            float offsetY = vpctVerts[0].Position.Y - (float)Math.Floor(vpctVerts[0].Position.Y);
+            for (int i = 0; i < vertexCount; i++)
+            {
+                vpctVerts[i].Position.X -= offsetX;
+                vpctVerts[i].Position.Y -= offsetY;
+            }
+        }
+        else if (vertices is LightingRenderer.VertexPositionColorMaskTexture[] vpcmtVerts)
+        {
+            float offsetX = vpcmtVerts[0].Position.X - (float)Math.Floor(vpcmtVerts[0].Position.X);
+            float offsetY = vpcmtVerts[0].Position.Y - (float)Math.Floor(vpcmtVerts[0].Position.Y);
+            for (int i = 0; i < vertexCount; i++)
+            {
+                vpcmtVerts[i].Position.X -= offsetX;
+                vpcmtVerts[i].Position.Y -= offsetY;
+            }
+        }
+    }
+
     private static bool TryDrawPixelated<T>(Matrix matrix, T[] vertices, int vertexCount) where T : struct, IVertexType
     {
         if (_inPixelatedDraw || vertexCount > 100)
@@ -2323,6 +2366,11 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
         var cursor = new ILCursor(il);
         cursor.Index = 0;
 
+        // Floor vertex positions when not rendering foreground
+        cursor.Emit(OpCodes.Ldarg_1);
+        cursor.Emit(OpCodes.Ldarg_2);
+        cursor.EmitDelegate<Action<T[], int>>(FloorVerticesIfNeeded);
+
         // Try the pixelated path first
         cursor.Emit(OpCodes.Ldarg_0);
         cursor.Emit(OpCodes.Ldarg_1);
@@ -2346,18 +2394,6 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
         var cursor = new ILCursor(il);
         cursor.Index = 0;
 
-        // Try the pixelated path first
-        cursor.Emit(OpCodes.Ldarg_0);
-        cursor.Emit(OpCodes.Ldarg_1);
-        cursor.Emit(OpCodes.Ldarg_2);
-        cursor.EmitDelegate<Func<Matrix, T[], int, bool>>(TryDrawPixelated);
-
-        var continueLabel = cursor.DefineLabel();
-        cursor.Emit(OpCodes.Brfalse_S, continueLabel);
-        cursor.Emit(OpCodes.Ret);
-        cursor.MarkLabel(continueLabel);
-
-        // Fallback: scale matrix multiplication (non-VPC types, or non-large textures)
         cursor.Emit(OpCodes.Ldarg_0);
         cursor.EmitDelegate(GetScaleMatrixForDrawVertices);
         cursor.EmitDelegate(MultiplyMatrices);
