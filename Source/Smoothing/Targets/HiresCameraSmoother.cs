@@ -1307,6 +1307,8 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
             if (Math.Abs(denom) < 1e-6f) return;
             float invDenom = 1f / denom;
 
+            bool uniformColor = (c0 == c1 && c1 == c2);
+
             int lowResWidth = GameplayBuffers.Gameplay.Width;
             int lowResHeight = GameplayBuffers.Gameplay.Height;
 
@@ -1329,22 +1331,40 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
                 int minX = Math.Max((int)Math.Ceiling(leftX - 0.5f), -1);
                 int maxX = Math.Min((int)Math.Ceiling(rightX - 0.5f) - 1, lowResWidth - 1);
 
-                for (int px = minX; px <= maxX; px++)
+                if (uniformColor)
                 {
-                    float cx = px + 0.5f;
+                    for (int px = minX; px <= maxX; px++)
+                    {
+                        EmitQuad(px, py, c0, offsetX, offsetY);
+                    }
+                }
 
-                    float w0 = ((y1 - y2) * (cx - x2) + (x2 - x1) * (cy - y2)) * invDenom;
-                    float w1 = ((y2 - y0) * (cx - x2) + (x0 - x2) * (cy - y2)) * invDenom;
-                    float w2 = 1f - w0 - w1;
+                else
+                {
+                    float cx0 = minX + 0.5f;
 
-                    Color color = new Color(
-                        (byte)MathHelper.Clamp(c0.R * w0 + c1.R * w1 + c2.R * w2, 0, 255),
-                        (byte)MathHelper.Clamp(c0.G * w0 + c1.G * w1 + c2.G * w2, 0, 255),
-                        (byte)MathHelper.Clamp(c0.B * w0 + c1.B * w1 + c2.B * w2, 0, 255),
-                        (byte)MathHelper.Clamp(c0.A * w0 + c1.A * w1 + c2.A * w2, 0, 255)
-                    );
+                    float w0 = ((y1 - y2) * (cx0 - x2) + (x2 - x1) * (cy - y2)) * invDenom;
+                    float w1 = ((y2 - y0) * (cx0 - x2) + (x0 - x2) * (cy - y2)) * invDenom;
 
-                    EmitQuad(px, py, color, offsetX, offsetY);
+                    float dw0 = (y1 - y2) * invDenom;
+                    float dw1 = (y2 - y0) * invDenom;
+
+                    for (int px = minX; px <= maxX; px++)
+                    {
+                        float w2 = 1f - w0 - w1;
+
+                        Color color = new Color(
+                            (byte)MathHelper.Clamp(c0.R * w0 + c1.R * w1 + c2.R * w2, 0, 255),
+                            (byte)MathHelper.Clamp(c0.G * w0 + c1.G * w1 + c2.G * w2, 0, 255),
+                            (byte)MathHelper.Clamp(c0.B * w0 + c1.B * w1 + c2.B * w2, 0, 255),
+                            (byte)MathHelper.Clamp(c0.A * w0 + c1.A * w1 + c2.A * w2, 0, 255)
+                        );
+
+                        EmitQuad(px, py, color, offsetX, offsetY);
+
+                        w0 += dw0;
+                        w1 += dw1;
+                    }
                 }
             }
         }
@@ -1363,25 +1383,13 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
             }
         }
 
-        private static Vector3 RoundVec(Vector3 v)
-        {
-            return new Vector3(
-                (float)Math.Round(v.X),
-                (float)Math.Round(v.Y),
-                v.Z
-            );
-        }
-
         private static void EmitQuad(int px, int py, Color color, float offsetX, float offsetY)
         {
             if (outputCount + 6 > outputVertices.Length)
             {
-                var expanded = new VertexPositionColor[outputVertices.Length * 2];
-                Array.Copy(outputVertices, expanded, outputCount);
-                outputVertices = expanded;
+                Array.Resize(ref outputVertices, outputVertices.Length * 2);
             }
 
-            // Position on the grid, then shift back by the fractional offset
             float sx = (px + offsetX) * Scale;
             float sy = (py + offsetY) * Scale;
             float ex = sx + Scale;
