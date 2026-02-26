@@ -19,6 +19,14 @@ public static class PlayerSmoother
     public static bool AllowSubpixelRenderingX = false;
     public static bool AllowSubpixelRenderingY = false;
 
+    private static bool _ignoreSubpixelMotionX = false;
+    private static int _xDeltaSignChanges = 0;
+    private static int _prevXDeltaSign = 0;
+
+    private static bool _ignoreSubpixelMotionY = false;
+    private static int _yDeltaSignChanges = 0;
+    private static int _prevYDeltaSign = 0;
+
     public static Vector2 Smooth(Player player, IPositionSmoothingState state, double elapsed, SmoothingMode mode)
     {
         return mode switch
@@ -95,15 +103,46 @@ public static class PlayerSmoother
             smoothedPosition = pushed;
         }
 
-        // This is a really particular check to prevent Madeline from jittering in water
-        // (which her subpixels actually genuinely do)
-        if (
-            state.DrawPositionHistory[0].Y == state.DrawPositionHistory[1].Y
-            && state.DrawPositionHistory[0].Y == state.DrawPositionHistory[2].Y
-            && state.DrawPositionHistory[0].Y == state.DrawPositionHistory[3].Y
-            && Math.Abs(state.RealPositionHistory[0].Y - state.RealPositionHistory[3].Y) < 0.01
-        ) {
-            isNotStandingStillY = false;
+
+
+        // Detect subpixel X oscillation
+        if (state.DrawPositionHistory[0].X != state.DrawPositionHistory[1].X)
+        {
+            _ignoreSubpixelMotionX = false;
+            _xDeltaSignChanges = 0;
+            _prevXDeltaSign = 0;
+        }
+        else if (!_ignoreSubpixelMotionX)
+        {
+            int sign = Math.Sign(state.RealPositionHistory[0].X - state.RealPositionHistory[1].X);
+            if (sign != 0)
+            {
+                if (_prevXDeltaSign != 0 && sign != _prevXDeltaSign)
+                    _xDeltaSignChanges++;
+                _prevXDeltaSign = sign;
+            }
+            if (_xDeltaSignChanges >= 2)
+                _ignoreSubpixelMotionX = true;
+        }
+
+        // Detect subpixel Y oscillation
+        if (state.DrawPositionHistory[0].Y != state.DrawPositionHistory[1].Y)
+        {
+            _ignoreSubpixelMotionY = false;
+            _yDeltaSignChanges = 0;
+            _prevYDeltaSign = 0;
+        }
+        else if (!_ignoreSubpixelMotionY)
+        {
+            int sign = Math.Sign(state.RealPositionHistory[0].Y - state.RealPositionHistory[1].Y);
+            if (sign != 0)
+            {
+                if (_prevYDeltaSign != 0 && sign != _prevYDeltaSign)
+                    _yDeltaSignChanges++;
+                _prevYDeltaSign = sign;
+            }
+            if (_yDeltaSignChanges >= 2)
+                _ignoreSubpixelMotionY = true;
         }
 
         UpdateIsSmoothing(pusherOffsetApplied, pusherVelocity, playerSpeed, isNotStandingStillX, isNotStandingStillY, state, player);
@@ -130,12 +169,12 @@ public static class PlayerSmoother
         
         bool canClimb = player.StateMachine.State == Player.StClimb;
 
-        IsSmoothingX = isNotStandingStillX && (
+        IsSmoothingX = isNotStandingStillX && !_ignoreSubpixelMotionX && (
             state.DrawPositionHistory[0].X != state.DrawPositionHistory[1].X
             || isMovingInBothDirections
         );
 
-        IsSmoothingY = isNotStandingStillY && (
+        IsSmoothingY = isNotStandingStillY && !_ignoreSubpixelMotionY && (
             state.DrawPositionHistory[0].Y != state.DrawPositionHistory[1].Y
             || isMovingInBothDirections
             || !canClimb
@@ -162,12 +201,12 @@ public static class PlayerSmoother
         
         bool canClimb = player.StateMachine.State == Player.StClimb;
 
-        AllowSubpixelRenderingX = isNotStandingStillX && (
+        AllowSubpixelRenderingX = isNotStandingStillX && !_ignoreSubpixelMotionX && (
             state.DrawPositionHistory[0].X != state.DrawPositionHistory[1].X
             || isMovingInBothDirections
         );
 
-        AllowSubpixelRenderingY = isNotStandingStillY && (
+        AllowSubpixelRenderingY = isNotStandingStillY && !_ignoreSubpixelMotionY && (
             state.DrawPositionHistory[0].Y != state.DrawPositionHistory[1].Y
             || isMovingInBothDirections
             || !canClimb
