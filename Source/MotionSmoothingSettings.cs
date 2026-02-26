@@ -34,8 +34,9 @@ public class MotionSmoothingSettings : EverestModuleSettings
     private bool _tasMode = false;
     private int _frameRate = 120;
     private UnlockCameraStrategy _unlockCameraStrategy = UnlockCameraStrategy.Hires;
-    private bool _renderBackgroundHires = true;
     private bool _renderMadelineWithSubpixels = true;
+    private bool _renderBackgroundHires = true;
+    private bool _renderForegroundHires = true;
 	private bool _hideStretchedEdges = true;
     private SmoothingMode _smoothingMode = SmoothingMode.Extrapolate;
     private UpdateMode _updateMode = UpdateMode.Interval;
@@ -45,9 +46,10 @@ public class MotionSmoothingSettings : EverestModuleSettings
     private bool _gameSpeedInLevelOnly = true;
 
     private FrameRateTextMenuItem _frameRateMenuItem;
-
-    private TextMenu.Item _renderBackgroundHiresItem;
+    
     private TextMenu.Item _renderMadelineWithSubpixelsItem;
+    private TextMenu.Item _renderBackgroundHiresItem;
+    private TextMenu.Item _renderForegroundHiresItem;
 	private TextMenu.Item _hideStretchedEdgesItem;
 
     public bool Enabled
@@ -141,10 +143,15 @@ public class MotionSmoothingSettings : EverestModuleSettings
             UnlockCameraStrategy = (UnlockCameraStrategy)index;
 
 			bool shouldDisableRenderBackgroundHires = UnlockCameraStrategy != UnlockCameraStrategy.Hires;
+
+            _renderMadelineWithSubpixelsItem.Disabled = shouldDisableRenderBackgroundHires;
+			_renderMadelineWithSubpixelsItem.Selectable = !shouldDisableRenderBackgroundHires;
+
             _renderBackgroundHiresItem.Disabled = shouldDisableRenderBackgroundHires;
             _renderBackgroundHiresItem.Selectable = !shouldDisableRenderBackgroundHires;
-			_renderMadelineWithSubpixelsItem.Disabled = shouldDisableRenderBackgroundHires;
-			_renderMadelineWithSubpixelsItem.Selectable = !shouldDisableRenderBackgroundHires;
+
+             _renderForegroundHiresItem.Disabled = shouldDisableRenderBackgroundHires;
+            _renderForegroundHiresItem.Selectable = !shouldDisableRenderBackgroundHires;
 
 			bool shouldDisableHideStretchedEdges = UnlockCameraStrategy == UnlockCameraStrategy.Off;
             _hideStretchedEdgesItem.Disabled = shouldDisableHideStretchedEdges;
@@ -164,45 +171,6 @@ public class MotionSmoothingSettings : EverestModuleSettings
             "impact performance on low-end systems.\n\n" +
             "Fast: Has negligible performance impact, but makes\n" +
             "the entire background jitter uncontrollably when moving."
-        );
-    }
-
-    public bool RenderBackgroundHires
-    {
-        get => _renderBackgroundHires;
-        set
-        {
-            _renderBackgroundHires = value;
-            MotionSmoothingModule.Instance.ApplySettings();
-        }
-    }
-
-    public void CreateRenderBackgroundHiresEntry(TextMenu menu, bool inGame)
-    {
-        _renderBackgroundHiresItem = new TextMenu.OnOff(
-            "Smooth Background",
-            _renderBackgroundHires
-        );
-
-        (_renderBackgroundHiresItem as TextMenu.OnOff).Change(value =>
-        {
-            RenderBackgroundHires = value;
-        });
-
-        // Set initial state based on UnlockCameraStrategy
-        bool shouldDisable = UnlockCameraStrategy != UnlockCameraStrategy.Hires;
-        _renderBackgroundHiresItem.Disabled = shouldDisable;
-        _renderBackgroundHiresItem.Selectable = !shouldDisable;
-
-        menu.Add(_renderBackgroundHiresItem);
-
-        _renderBackgroundHiresItem.AddDescription(
-            menu,
-            "Only applies if Smooth Camera is set to Fancy.\n" +
-            "Determines whether the background is drawn at a 6x scale.\n" +
-            "This makes for a much smoother result, particularly with\n" +
-            "parallax, and fixes occasional slightly incorrect colors\n" +
-            "(for example in the final checkpoints of Farewell)"
         );
     }
 
@@ -245,6 +213,88 @@ public class MotionSmoothingSettings : EverestModuleSettings
 			"Madeline's sprite appear much more smooth and clear when\n" +
             "moving. When not moving, Madeline will always be drawn aligned\n" +
             "to the grid, so that subpixel information cannot be gleaned.\n"
+        );
+    }
+
+
+
+    public bool RenderBackgroundHires
+    {
+        get => _renderBackgroundHires;
+        set
+        {
+            _renderBackgroundHires = value;
+            MotionSmoothingModule.Instance.ApplySettings();
+        }
+    }
+
+    public void CreateRenderBackgroundHiresEntry(TextMenu menu, bool inGame)
+    {
+        _renderBackgroundHiresItem = new TextMenu.OnOff(
+            "Smooth Background",
+            _renderBackgroundHires
+        );
+
+        (_renderBackgroundHiresItem as TextMenu.OnOff).Change(value =>
+        {
+            RenderBackgroundHires = value;
+        });
+
+        // Set initial state based on UnlockCameraStrategy
+        bool shouldDisable = UnlockCameraStrategy != UnlockCameraStrategy.Hires;
+        _renderBackgroundHiresItem.Disabled = shouldDisable;
+        _renderBackgroundHiresItem.Selectable = !shouldDisable;
+
+        menu.Add(_renderBackgroundHiresItem);
+
+        _renderBackgroundHiresItem.AddDescription(
+            menu,
+            "Only applies if Smooth Camera is set to Fancy.\n" +
+            "Determines whether the background is drawn at a 6x scale.\n" +
+            "This makes for a much smoother result, particularly with\n" +
+            "parallax, and fixes occasional slightly incorrect colors\n" +
+            "(for example in the final checkpoints of Farewell)"
+        );
+    }
+
+
+
+    public bool RenderForegroundHires
+    {
+        get => _renderForegroundHires;
+        set
+        {
+            _renderForegroundHires = value;
+            MotionSmoothingModule.Instance.ApplySettings();
+        }
+    }
+
+    public void CreateRenderForegroundHiresEntry(TextMenu menu, bool inGame)
+    {
+        _renderForegroundHiresItem = new TextMenu.OnOff(
+            "Smooth Foreground",
+            _renderForegroundHires
+        );
+
+        (_renderForegroundHiresItem as TextMenu.OnOff).Change(value =>
+        {
+            RenderForegroundHires = value;
+        });
+
+        // Set initial state based on UnlockCameraStrategy
+        bool shouldDisable = UnlockCameraStrategy != UnlockCameraStrategy.Hires;
+        _renderForegroundHiresItem.Disabled = shouldDisable;
+        _renderForegroundHiresItem.Selectable = !shouldDisable;
+
+        menu.Add(_renderForegroundHiresItem);
+
+        _renderForegroundHiresItem.AddDescription(
+            menu,
+            "Only applies if Smooth Camera is set to Fancy.\n" +
+            "Determines whether the foreground is drawn at a 6x scale.\n" +
+            "This makes for a much smoother result, particularly with\n" +
+            "parallax. Turning this off may slightly impact performance\n" +
+            "in levels with extremely complicated foregrounds (very rare)"
         );
     }
 

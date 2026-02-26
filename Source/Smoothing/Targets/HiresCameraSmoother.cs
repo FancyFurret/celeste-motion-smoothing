@@ -776,48 +776,52 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
     {
         if (
             HiresRenderer.Instance is not { } renderer
-            || MotionSmoothingModule.Settings.RenderBackgroundHires
-            || !_currentlyRenderingBackground
             || (
                 _currentRenderTarget != GameplayBuffers.Level.Target
                 && _currentRenderTarget != renderer.LargeLevelBuffer.Target
             )
         ) {
-            // When subpixel rendering is on, render foreground AlphaBlend/Opaque backdrops into a small buffer
+            orig(self, scene);
+            return;
+        }
+
+        if (
+            _currentlyRenderingBackground && MotionSmoothingModule.Settings.RenderBackgroundHires
+            || !_currentlyRenderingBackground && MotionSmoothingModule.Settings.RenderForegroundHires
+        ) {
+            _disableFloorFunctions = DisableFloorFunctionsMode.Rational;
+            orig(self, scene);
+            _disableFloorFunctions = DisableFloorFunctionsMode.Integer;
+
+            return;
+        }
+
+
+
+        // Now we're free to assume we're doing some weird render small and scale up stuff.
+        
+        if (!_currentlyRenderingBackground)
+        {
+            // When smooth foreground is on, render foreground AlphaBlend/Opaque backdrops into a small buffer
             // and flush (scale up) to the level buffer whenever a non-standard blend state is encountered.
-            if (
-                !_currentlyRenderingBackground
-                && MotionSmoothingModule.Settings.RenderMadelineWithSubpixels
-                && HiresRenderer.Instance is { } fgRenderer
-            ) {
-                Engine.Instance.GraphicsDevice.SetRenderTarget(fgRenderer.SmallBuffer);
-                Engine.Instance.GraphicsDevice.Clear(Color.Transparent);
+            Engine.Instance.GraphicsDevice.SetRenderTarget(renderer.SmallBuffer);
+            Engine.Instance.GraphicsDevice.Clear(Color.Transparent);
 
-                _currentlyRenderingForeground = true;
-                _foregroundBlendState = BlendState.AlphaBlend;
-                _disableFloorFunctions = DisableFloorFunctionsMode.Rational;
-
-                orig(self, scene);
-
-                _disableFloorFunctions = DisableFloorFunctionsMode.Integer;
-
-                FlushForegroundSmallBuffer(fgRenderer);
-
-                _currentlyRenderingForeground = false;
-                return;
-            }
-
-            // The foreground gets rendered like normal, and the smoothed camera position automatically lines it
-            // up with the gameplay. We don't menually offset this because then parallax foregrounds don't work.
-            // Similarly, when rendering the background Hires, we don't need to composite anything ourselves.
+            _currentlyRenderingForeground = true;
+            _foregroundBlendState = BlendState.AlphaBlend;
             _disableFloorFunctions = DisableFloorFunctionsMode.Rational;
 
             orig(self, scene);
 
             _disableFloorFunctions = DisableFloorFunctionsMode.Integer;
 
+            FlushForegroundSmallBuffer(renderer);
+
+            _currentlyRenderingForeground = false;
             return;
         }
+
+
 
         _enableLargeLevelBuffer = false;
         _allowParallaxOneBackgrounds = false;
@@ -925,13 +929,8 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 			bool spriteBatchActive = (bool)_beginCalledField.GetValue(Draw.SpriteBatch);
 			var savedParams = _lastSpriteBatchBeginParams;
 			if (spriteBatchActive) Draw.SpriteBatch.End();
-
-			Engine.Instance.GraphicsDevice.SetRenderTarget(GameplayBuffers.Level);
-			Draw.SpriteBatch.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend,
-				SamplerState.PointClamp, DepthStencilState.None, RasterizerState.CullNone,
-				null, Matrix.Identity);
-			Draw.SpriteBatch.Draw(renderer.SmallBuffer, Vector2.Zero, Color.White);
-			Draw.SpriteBatch.End();
+            
+            FlushForegroundSmallBuffer(renderer);
 
 			// Clear small buffer for next batch of simple-blend backdrops
 			Engine.Instance.GraphicsDevice.SetRenderTarget(renderer.SmallBuffer);
@@ -1329,8 +1328,11 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
         private static VertexPositionColor[] outputVertices = new VertexPositionColor[4096];
         private static int outputCount;
 
-        public static void DrawPixelated(Matrix matrix, VertexPositionColor[] vertices, int vertexCount)
-        {
+        public static void DrawPixelated(
+            Matrix matrix,
+            VertexPositionColor[] vertices,
+            int vertexCount
+        ) {
             outputCount = 0;
 
             float offsetX = 0f, offsetY = 0f;
@@ -2289,27 +2291,22 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
     private static bool TryDrawPixelated<T>(Matrix matrix, T[] vertices, int vertexCount) where T : struct, IVertexType
     {
-        if (_inPixelatedDraw)
+        if (_inPixelatedDraw || vertexCount > 100)
         {
             return false;
         }
 
-        var renderTargets = Draw.SpriteBatch.GraphicsDevice.GetRenderTargets();
-
-        if (renderTargets == null || renderTargets.Length == 0)
-        {
-            return false;
-        }
-
-        if (!_largeTextures.Contains(renderTargets[0].RenderTarget))
-        {
+        if (
+            _currentRenderTarget == null
+            || !_largeTextures.Contains(_currentRenderTarget)
+        ) {
             return false;
         }
 
         // Refuse to draw more than 100 vertices at a time for performance
         // (this prevents the background in the badeline fight from getting
         // this treatment, which is unfortunately too slow)
-        if (vertices is VertexPositionColor[] vpcVertices && vertexCount < 100)
+        if (vertices is VertexPositionColor[] vpcVertices)
         {
             _inPixelatedDraw = true;
             PixelatedRenderer.DrawPixelated(matrix, vpcVertices, vertexCount);
