@@ -2216,11 +2216,15 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
             return false;
         }
 
-        if (vertices is VertexPositionColor[] vpcVertices)
+        // Refuse to draw more than 100 vertices at a time for performance
+        // (this prevents the background in the badeline fight from getting
+        // this treatment, which is unfortunately too slow)
+        if (vertices is VertexPositionColor[] vpcVertices && vertexCount < 100)
         {
             _inPixelatedDraw = true;
             PixelatedRenderer.DrawPixelated(matrix, vpcVertices, vertexCount);
             _inPixelatedDraw = false;
+
             return true;
         }
 
