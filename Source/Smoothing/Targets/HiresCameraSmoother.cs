@@ -2259,7 +2259,18 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
         var cursor = new ILCursor(il);
         cursor.Index = 0;
 
-        // Indexed vertices can't use the pixelated path, so just apply scale
+        // Try the pixelated path first
+        cursor.Emit(OpCodes.Ldarg_0);
+        cursor.Emit(OpCodes.Ldarg_1);
+        cursor.Emit(OpCodes.Ldarg_2);
+        cursor.EmitDelegate<Func<Matrix, T[], int, bool>>(TryDrawPixelated);
+
+        var continueLabel = cursor.DefineLabel();
+        cursor.Emit(OpCodes.Brfalse_S, continueLabel);
+        cursor.Emit(OpCodes.Ret);
+        cursor.MarkLabel(continueLabel);
+
+        // Fallback: scale matrix multiplication (non-VPC types, or non-large textures)
         cursor.Emit(OpCodes.Ldarg_0);
         cursor.EmitDelegate(GetScaleMatrixForDrawVertices);
         cursor.EmitDelegate(MultiplyMatrices);
