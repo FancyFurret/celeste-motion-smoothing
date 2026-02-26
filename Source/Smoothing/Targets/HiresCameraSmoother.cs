@@ -1243,26 +1243,26 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
         {
             outputCount = 0;
 
-            float refX = vertices[0].Position.X;
-            float refY = vertices[0].Position.Y;
-            float baseX = (float)Math.Round(refX);
-            float baseY = (float)Math.Round(refY);
-            float offsetX = refX - baseX;
-            float offsetY = refY - baseY;
-
             for (int i = 0; i + 2 < vertexCount; i += 3)
             {
+                float anchorX = vertices[i].Position.X;
+                float anchorY = vertices[i].Position.Y;
+                float offsetX = anchorX - (float)Math.Floor(anchorX);
+                float offsetY = anchorY - (float)Math.Floor(anchorY);
+
+                Vector3 off = new Vector3(offsetX, offsetY, 0f);
+
                 RasterizeTriangle(
-                    vertices[i].Position, vertices[i].Color,
-                    vertices[i + 1].Position, vertices[i + 1].Color,
-                    vertices[i + 2].Position, vertices[i + 2].Color,
-                    refX, refY, baseX, baseY, offsetX, offsetY
+                    vertices[i].Position - off, vertices[i].Color,
+                    vertices[i + 1].Position - off, vertices[i + 1].Color,
+                    vertices[i + 2].Position - off, vertices[i + 2].Color,
+                    offsetX, offsetY
                 );
             }
 
             if (outputCount > 0)
             {
-                GFX.DrawVertices(matrix * Matrix.CreateScale(1f / 6f), outputVertices, outputCount);
+                GFX.DrawVertices(matrix * Matrix.CreateScale(1f / Scale), outputVertices, outputCount);
             }
         }
 
@@ -1270,16 +1270,11 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
             Vector3 p0, Color c0,
             Vector3 p1, Color c1,
             Vector3 p2, Color c2,
-            float refX, float refY,
-            float baseX, float baseY,
             float offsetX, float offsetY)
         {
-            float x0 = (float)Math.Round(p0.X - refX) + baseX;
-            float y0 = (float)Math.Round(p0.Y - refY) + baseY;
-            float x1 = (float)Math.Round(p1.X - refX) + baseX;
-            float y1 = (float)Math.Round(p1.Y - refY) + baseY;
-            float x2 = (float)Math.Round(p2.X - refX) + baseX;
-            float y2 = (float)Math.Round(p2.Y - refY) + baseY;
+            float x0 = p0.X, y0 = p0.Y;
+            float x1 = p1.X, y1 = p1.Y;
+            float x2 = p2.X, y2 = p2.Y;
 
             if (y0 > y1) { Swap(ref x0, ref x1); Swap(ref y0, ref y1); Swap(ref c0, ref c1); }
             if (y0 > y2) { Swap(ref x0, ref x2); Swap(ref y0, ref y2); Swap(ref c0, ref c2); }
@@ -1308,7 +1303,6 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
                 if (leftX > rightX) continue;
 
-                // Left-inclusive, right-exclusive to prevent double-draw on shared edges
                 int minX = Math.Max((int)Math.Ceiling(leftX - 0.5f), -1);
                 int maxX = Math.Min((int)Math.Ceiling(rightX - 0.5f) - 1, lowResWidth - 1);
 
@@ -1344,6 +1338,15 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
                 if (x < leftX) leftX = x;
                 if (x > rightX) rightX = x;
             }
+        }
+
+        private static Vector3 RoundVec(Vector3 v)
+        {
+            return new Vector3(
+                (float)Math.Round(v.X),
+                (float)Math.Round(v.Y),
+                v.Z
+            );
         }
 
         private static void EmitQuad(int px, int py, Color color, float offsetX, float offsetY)
