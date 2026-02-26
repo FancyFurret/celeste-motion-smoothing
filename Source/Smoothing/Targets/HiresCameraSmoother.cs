@@ -42,6 +42,8 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 	private static bool _currentlyRenderingGameplay = false;
     private static bool _currentlyRenderingPlayerOnTopOfFlash = false;
     private static bool _allowParallaxOneBackgrounds = false;
+    private static bool _currentlyRenderingForeground = false;
+    private static BlendState _foregroundBlendState = BlendState.AlphaBlend;
     private static bool _interceptDistortRender = false;
 
     private enum DisableFloorFunctionsMode
@@ -781,6 +783,30 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
                 && _currentRenderTarget != renderer.LargeLevelBuffer.Target
             )
         ) {
+            // When subpixel rendering is on, render foreground AlphaBlend/Opaque backdrops into a small buffer
+            // and flush (scale up) to the level buffer whenever a non-standard blend state is encountered.
+            if (
+                !_currentlyRenderingBackground
+                && MotionSmoothingModule.Settings.RenderMadelineWithSubpixels
+                && HiresRenderer.Instance is { } fgRenderer
+            ) {
+                Engine.Instance.GraphicsDevice.SetRenderTarget(fgRenderer.SmallBuffer);
+                Engine.Instance.GraphicsDevice.Clear(Color.Transparent);
+
+                _currentlyRenderingForeground = true;
+                _foregroundBlendState = BlendState.AlphaBlend;
+                _disableFloorFunctions = DisableFloorFunctionsMode.Rational;
+
+                orig(self, scene);
+
+                _disableFloorFunctions = DisableFloorFunctionsMode.Integer;
+
+                FlushForegroundSmallBuffer(fgRenderer);
+
+                _currentlyRenderingForeground = false;
+                return;
+            }
+
             // The foreground gets rendered like normal, and the smoothed camera position automatically lines it
             // up with the gameplay. We don't menually offset this because then parallax foregrounds don't work.
             // Similarly, when rendering the background Hires, we don't need to composite anything ourselves.
@@ -854,9 +880,11 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 			cursor.Emit(OpCodes.Pop);                  // Stack: []
 			cursor.Emit(OpCodes.Br, skip);
 			
-			// Render path: restore Scene and fall through to callvirt
+			// Render path: handle foreground buffer transitions, then restore Scene
 			cursor.MarkLabel(doRender);
-			cursor.Emit(OpCodes.Ldloc, sceneLocal);    // Stack: [Backdrop, Scene]
+			cursor.Emit(OpCodes.Dup);                              // Stack: [Backdrop, Backdrop]
+			cursor.EmitDelegate(BeforeForegroundBackdropRender);   // Stack: [Backdrop]
+			cursor.Emit(OpCodes.Ldloc, sceneLocal);                // Stack: [Backdrop, Scene]
 			
 			// Move past the callvirt to mark the skip label
 			cursor.GotoNext(MoveType.After, i => i.MatchCallvirt<Backdrop>("Render"));
@@ -878,7 +906,69 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 		return _allowParallaxOneBackgrounds == isParallaxOne;
 	}
 
+	private static void BeforeForegroundBackdropRender(Backdrop backdrop)
+	{
+		if (!_currentlyRenderingForeground || HiresRenderer.Instance is not { } renderer)
+			return;
 
+		// Track blend state, mirroring BackdropRenderer's own logic
+		if (backdrop is Parallax p)
+			_foregroundBlendState = p.BlendState;
+
+		bool isSimpleBlend = _foregroundBlendState == BlendState.AlphaBlend
+		                  || _foregroundBlendState == BlendState.Opaque;
+		bool onSmallBuffer = _currentRenderTarget == renderer.SmallBuffer.Target;
+
+		if (!isSimpleBlend && onSmallBuffer)
+		{
+			// Non-standard blend state: flush SmallBuffer → level buffer, then switch to level
+			bool spriteBatchActive = (bool)_beginCalledField.GetValue(Draw.SpriteBatch);
+			var savedParams = _lastSpriteBatchBeginParams;
+			if (spriteBatchActive) Draw.SpriteBatch.End();
+
+			Engine.Instance.GraphicsDevice.SetRenderTarget(GameplayBuffers.Level);
+			Draw.SpriteBatch.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend,
+				SamplerState.PointClamp, DepthStencilState.None, RasterizerState.CullNone,
+				null, Matrix.Identity);
+			Draw.SpriteBatch.Draw(renderer.SmallBuffer, Vector2.Zero, Color.White);
+			Draw.SpriteBatch.End();
+
+			// Clear small buffer for next batch of simple-blend backdrops
+			Engine.Instance.GraphicsDevice.SetRenderTarget(renderer.SmallBuffer);
+			Engine.Instance.GraphicsDevice.Clear(Color.Transparent);
+
+			// Switch to level buffer for this non-standard backdrop
+			Engine.Instance.GraphicsDevice.SetRenderTarget(GameplayBuffers.Level);
+
+			if (spriteBatchActive && savedParams is var (sm, bs, ss, ds, rs, eff, mx))
+				Draw.SpriteBatch.Begin(sm, bs, ss, ds, rs, eff, mx);
+		}
+		else if (isSimpleBlend && !onSmallBuffer)
+		{
+			// Switching back to small buffer after a non-standard backdrop
+			bool spriteBatchActive = (bool)_beginCalledField.GetValue(Draw.SpriteBatch);
+			var savedParams = _lastSpriteBatchBeginParams;
+			if (spriteBatchActive) Draw.SpriteBatch.End();
+
+			Engine.Instance.GraphicsDevice.SetRenderTarget(renderer.SmallBuffer);
+
+			if (spriteBatchActive && savedParams is var (sm, bs, ss, ds, rs, eff, mx))
+				Draw.SpriteBatch.Begin(sm, bs, ss, ds, rs, eff, mx);
+		}
+	}
+
+	private static void FlushForegroundSmallBuffer(HiresRenderer renderer)
+	{
+		bool spriteBatchActive = (bool)_beginCalledField.GetValue(Draw.SpriteBatch);
+		if (spriteBatchActive) Draw.SpriteBatch.End();
+
+		Engine.Instance.GraphicsDevice.SetRenderTarget(GameplayBuffers.Level);
+		Draw.SpriteBatch.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend,
+			SamplerState.PointClamp, DepthStencilState.None, RasterizerState.CullNone,
+			null, Matrix.Identity);
+		Draw.SpriteBatch.Draw(renderer.SmallBuffer, Vector2.Zero, Color.White);
+		Draw.SpriteBatch.End();
+	}
 
     private static void GameplayRenderer_Render(On.Celeste.GameplayRenderer.orig_Render orig, GameplayRenderer self, Scene scene)
     {
