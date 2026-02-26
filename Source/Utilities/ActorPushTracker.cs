@@ -11,9 +11,11 @@ public class ActorPushTracker : ToggleableFeature<ActorPushTracker>
 {
     private readonly ConditionalWeakTable<Actor, HashSet<Entity>> _pushers = new();
     private bool _isPlayerRidingSolid;
+    private bool _isPlayerRidingSteerableMoveBlock;
     private bool _isPlayerRidingJumpThru;
 
     public bool IsPlayerRidingSolid => _isPlayerRidingSolid;
+    public bool IsPlayerRidingSteerableMoveBlock => _isPlayerRidingSteerableMoveBlock;
     public bool IsPlayerRidingJumpThru => _isPlayerRidingJumpThru;
 
     protected override void Hook()
@@ -123,6 +125,7 @@ public class ActorPushTracker : ToggleableFeature<ActorPushTracker>
             kv.Value.Clear();
 
         Instance._isPlayerRidingSolid = false;
+        Instance._isPlayerRidingSteerableMoveBlock = false;
         Instance._isPlayerRidingJumpThru = false;
 
         var actors = self.scene.Tracker.GetEntities<Actor>();
@@ -131,15 +134,19 @@ public class ActorPushTracker : ToggleableFeature<ActorPushTracker>
         {
             foreach (Solid solid in self.scene.Tracker.GetEntities<Solid>())
             {
-                if (solid is MoveBlock { canSteer: true })
+                foreach (Actor actor in actors)
                 {
-                    foreach (Actor actor in actors)
+                    if (actor.IsRiding(solid))
                     {
-                        if (actor.IsRiding(solid))
+                        Instance._pushers.GetOrCreateValue(actor)!.Add(solid);
+                        if (actor is Player)
                         {
-                            Instance._pushers.GetOrCreateValue(actor)!.Add(solid);
-                            if (actor is Player)
-                                Instance._isPlayerRidingSolid = true;
+                            Instance._isPlayerRidingSolid = true;
+
+                            if (solid is MoveBlock { canSteer: true })
+                            {
+                                Instance._isPlayerRidingSteerableMoveBlock = true;
+                            }
                         }
                     }
                 }
