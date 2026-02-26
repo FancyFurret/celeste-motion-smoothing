@@ -95,6 +95,17 @@ public static class PlayerSmoother
             smoothedPosition = pushed;
         }
 
+        // This is a really particular check to prevent Madeline from jittering in water
+        // (which her subpixels actually genuinely do)
+        if (
+            state.DrawPositionHistory[0].Y == state.DrawPositionHistory[1].Y
+            && state.DrawPositionHistory[0].Y == state.DrawPositionHistory[2].Y
+            && state.DrawPositionHistory[0].Y == state.DrawPositionHistory[3].Y
+            && Math.Abs(state.RealPositionHistory[0].Y - state.RealPositionHistory[3].Y) < 0.01
+        ) {
+            isNotStandingStillY = false;
+        }
+
         UpdateIsSmoothing(pusherOffsetApplied, pusherVelocity, playerSpeed, isNotStandingStillX, isNotStandingStillY, state, player);
 
         UpdateAllowSubpixelRendering(pusherOffsetApplied, pusherVelocity, playerSpeed, isNotStandingStillX, isNotStandingStillY, state, player);

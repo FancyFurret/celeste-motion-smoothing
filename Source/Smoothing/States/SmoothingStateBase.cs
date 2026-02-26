@@ -100,8 +100,8 @@ public abstract class PositionSmoothingState<T> : IPositionSmoothingState
 {
     public bool Changed => !RealPositionHistory[0].Equals(RealPositionHistory[1]);
 
-    public Vector2[] RealPositionHistory { get; } = new Vector2[3];
-    public Vector2[] DrawPositionHistory { get; } = new Vector2[3];
+    public Vector2[] RealPositionHistory { get; } = new Vector2[4];
+    public Vector2[] DrawPositionHistory { get; } = new Vector2[4];
     public Vector2 SmoothedRealPosition { get; private set; }
     public Vector2 OriginalRealPosition { get; private set; }
     public Vector2 OriginalDrawPosition { get; private set; }
@@ -147,11 +147,13 @@ public abstract class PositionSmoothingState<T> : IPositionSmoothingState
 
     public void UpdateHistory(object obj)
     {
+        RealPositionHistory[3] = RealPositionHistory[2];
         RealPositionHistory[2] = RealPositionHistory[1];
         RealPositionHistory[1] = RealPositionHistory[0];
         RealPositionHistory[0] = GetRealPosition((T)obj);
         OriginalRealPosition = RealPositionHistory[0];
 
+        DrawPositionHistory[3] = DrawPositionHistory[2];
         DrawPositionHistory[2] = DrawPositionHistory[1];
         DrawPositionHistory[1] = DrawPositionHistory[0];
         DrawPositionHistory[0] = GetDrawPosition((T)obj).Round();
