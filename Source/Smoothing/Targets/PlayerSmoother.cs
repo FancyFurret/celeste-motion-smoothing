@@ -87,7 +87,7 @@ public static class PlayerSmoother
         // smoothed while standing still on moving platforms.
         // We initialize it in this bizarre way so MoveBlocks can
         // override individual directions later.
-        bool isNotStandingStillX = playerSpeed.X != 0 || playerSpeed.Y != 0;
+        bool isNotStandingStillX = Math.Abs(playerSpeed.X) > 0.001 || Math.Abs(playerSpeed.Y) > 0.001;
         bool isNotStandingStillY = isNotStandingStillX;
         
         var computedSpeed = (state.RealPositionHistory[0] - state.RealPositionHistory[1]) * 60;
