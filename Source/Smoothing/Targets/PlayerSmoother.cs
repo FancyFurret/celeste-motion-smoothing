@@ -152,27 +152,36 @@ public static class PlayerSmoother
         return smoothedPosition;
     }
 
-    private static void UpdateIsSmoothing(bool pusherOffsetApplied, Vector2 pusherVelocity, Vector2 playerSpeed, bool isNotStandingStillX, bool isNotStandingStillY, IPositionSmoothingState state, Player player)
-    {
-        // A player standing still on a moving Solid should still be smoothed,
-        // but only in the direction the Solid is actually moving.
+    private static void UpdateIsSmoothing(
+        bool pusherOffsetApplied,
+        Vector2 pusherVelocity,
+        Vector2 playerSpeed,
+        bool isNotStandingStillX,
+        bool isNotStandingStillY,
+        IPositionSmoothingState state,
+        Player player
+    ) {
+        // A player standing still on a moving platform should still be smoothed,
+        // but only in the direction the platform is actually moving.
         bool ridingMovingSolid = pusherOffsetApplied && ActorPushTracker.Instance.IsPlayerRidingSolid;
         bool ridingMovingJumpThru = pusherOffsetApplied && ActorPushTracker.Instance.IsPlayerRidingJumpThru;
+        bool ridingMovingEntity = ridingMovingSolid || ridingMovingJumpThru;
 
-        if (ridingMovingSolid && Math.Abs(pusherVelocity.X) > 0.001)
+        if (ridingMovingEntity && Math.Abs(pusherVelocity.X) > 0.001)
             isNotStandingStillX = true;
-        if ((ridingMovingSolid || ridingMovingJumpThru) && Math.Abs(pusherVelocity.Y) > 0.001)
+        if (ridingMovingEntity && Math.Abs(pusherVelocity.Y) > 0.001)
             isNotStandingStillY = true;
 
         // We don't use float.Epsilon because there are edge cases where Madeline
         // can have nonzero but extremely small downward speed.
         bool isMovingInBothDirections = Math.Abs(playerSpeed.X) > 0.001 && Math.Abs(playerSpeed.Y) > 0.001;
-        
+
         bool canClimb = player.StateMachine.State == Player.StClimb;
 
         IsSmoothingX = isNotStandingStillX && !_ignoreSubpixelMotionX && (
             state.DrawPositionHistory[0].X != state.DrawPositionHistory[1].X
             || isMovingInBothDirections
+            || (ridingMovingEntity && Math.Abs(pusherVelocity.X) > 0.001)
         );
 
         IsSmoothingY = isNotStandingStillY && !_ignoreSubpixelMotionY && (
