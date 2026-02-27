@@ -181,6 +181,7 @@ public static class PlayerSmoother
         IsSmoothingX = isNotStandingStillX && !_ignoreSubpixelMotionX && (
             state.DrawPositionHistory[0].X != state.DrawPositionHistory[1].X
             || isMovingInBothDirections
+            // This extra check supports riding slow jumpthrus
             || (ridingMovingEntity && Math.Abs(pusherVelocity.X) > 0.001)
         );
 
