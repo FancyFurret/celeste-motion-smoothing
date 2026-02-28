@@ -291,7 +291,7 @@ public class MotionSmoothingSettings : EverestModuleSettings
             menu,
             "Only applies if Smooth Camera is set to Fancy. Turning this on lets the\n" +
             "foreground draw unlocked from the pixel grid; for example, the snow in\n" +
-            "chapters 4 and 7 will drift smoothly. Turning this off may moderately *reduce*\n" +
+            "chapter 7 will drift smoothly. Turning this off may moderately *reduce*\n" +
             "performance, especially in levels with complicated foregrounds. Note that some\n" +
             "foregrounds can *only* be drawn smoothed in Fancy mode, so turning this off may\n" +
             "not affect all foreground objects."
