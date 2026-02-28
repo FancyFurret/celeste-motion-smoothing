@@ -251,8 +251,7 @@ public class MotionSmoothingSettings : EverestModuleSettings
             "Only applies if Smooth Camera is set to Fancy. Turning this on lets the\n" +
             "background draw unlocked from the pixel grid, which makes parallax\n" +
             "backgrounds substantially smoother. Turning this off may mildly *reduce*\n" +
-            "performance and make some background colors slightly incorrect (for example\n" +
-            "in the final checkpoints of Farewell)."
+            "performance, especially in levels with unusually complicated backgrounds."
         );
     }
 
@@ -292,9 +291,7 @@ public class MotionSmoothingSettings : EverestModuleSettings
             "Only applies if Smooth Camera is set to Fancy. Turning this on lets the\n" +
             "foreground draw unlocked from the pixel grid; for example, the snow in\n" +
             "chapter 7 will drift smoothly. Turning this off may moderately *reduce*\n" +
-            "performance, especially in levels with complicated foregrounds. Note that some\n" +
-            "foregrounds can *only* be drawn smoothed in Fancy mode, so turning this off may\n" +
-            "not affect all foreground objects."
+            "performance, especially in levels with unusually complicated foregrounds."
         );
     }
 
