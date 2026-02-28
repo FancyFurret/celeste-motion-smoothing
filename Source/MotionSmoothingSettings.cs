@@ -71,10 +71,10 @@ public class MotionSmoothingSettings : EverestModuleSettings
     }
 
     [DefaultButtonBinding(new Buttons(), Keys.F8)]
-    public ButtonBinding ButtonToggleSmoothing { get; set; }
+    public ButtonBinding ButtonToggleMotionSmoothingEnabled { get; set; }
 
     [DefaultButtonBinding(new Buttons(), Keys.F9)]
-    public ButtonBinding ButtonToggleUnlockStrategy { get; set; }
+    public ButtonBinding ButtonChangeCameraSmoothingMode { get; set; }
 
     public int FrameRate
     {
@@ -207,12 +207,11 @@ public class MotionSmoothingSettings : EverestModuleSettings
 
         _renderMadelineWithSubpixelsItem.AddDescription(
             menu,
-            "Only applies if Smooth Camera is set to Fancy.\n" +
-            "Determines whether Madeline is drawn at her exact subpixel\n" +
-            "position (i.e. offset from the pixel grid). This makes\n" +
-			"Madeline's sprite appear much more smooth and clear when\n" +
-            "moving. When not moving, Madeline will always be drawn aligned\n" +
-            "to the grid, so that subpixel information cannot be gleaned.\n"
+            "Only applies if Smooth Camera is set to Fancy. Turning this on lets Madeline\n" +
+            "be drawn at her exact subpixel position (i.e. offset from the pixel grid),\n" +
+			"which dramatically improves the clarity of her sprite while moving. There are\n" +
+            "many safeguards in place to prevent subpixel information from being gleanable.\n" +
+            "Turning this off may mildly improve performance.\n"
         );
     }
 
@@ -249,11 +248,11 @@ public class MotionSmoothingSettings : EverestModuleSettings
 
         _renderBackgroundHiresItem.AddDescription(
             menu,
-            "Only applies if Smooth Camera is set to Fancy.\n" +
-            "Determines whether the background is drawn at a 6x scale.\n" +
-            "This makes for a much smoother result, particularly with\n" +
-            "parallax, and fixes occasional slightly incorrect colors\n" +
-            "(for example in the final checkpoints of Farewell)"
+            "Only applies if Smooth Camera is set to Fancy. Turning this on lets the\n" +
+            "background draw unlocked from the pixel grid, which makes parallax\n" +
+            "backgrounds substantially smoother. Turning this off may mildly *reduce*\n" +
+            "performance and make some background colors slightly incorrect (for example\n" +
+            "in the final checkpoints of Farewell)."
         );
     }
 
@@ -290,11 +289,12 @@ public class MotionSmoothingSettings : EverestModuleSettings
 
         _renderForegroundHiresItem.AddDescription(
             menu,
-            "Only applies if Smooth Camera is set to Fancy.\n" +
-            "Determines whether the foreground is drawn at a 6x scale.\n" +
-            "This makes for a much smoother result, particularly with\n" +
-            "parallax. Turning this off may slightly impact performance\n" +
-            "in levels with extremely complicated foregrounds (very rare)"
+            "Only applies if Smooth Camera is set to Fancy. Turning this on lets the\n" +
+            "foreground draw unlocked from the pixel grid; for example, the snow in\n" +
+            "chapters 4 and 7 will drift smoothly. Turning this off may moderately *reduce*\n" +
+            "performance, especially in levels with complicated foregrounds. Note that some\n" +
+            "foregrounds can *only* be drawn smoothed in Fancy mode, so turning this off may\n" +
+            "not affect all foreground objects."
         );
     }
 
