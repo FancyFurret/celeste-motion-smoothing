@@ -26,7 +26,7 @@ public class FrameRateTextMenuItem : TextMenuExt.IntSlider
     {
         _min = min;
         _max = max;
-        UpdateMode = MotionSmoothingModule.Settings.UpdateMode;
+        UpdateMode = MotionSmoothingModule.Settings.FramerateIncreaseMethod;
     }
 
     private void SetFrameUncapMode(UpdateMode mode)

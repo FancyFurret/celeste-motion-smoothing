@@ -162,15 +162,12 @@ public class MotionSmoothingSettings : EverestModuleSettings
 
         strategySlider.AddDescription(
             menu,
-            "Lets the camera move continuously: that is, half of a pixel\n" +
-            "could be shown on the side of the screen while the camera \n" +
-            "is moving. This is especially noticeable when the camera\n" +
-			"is slowly catching up to the player.\n\n" +
-            "Fancy: Produces the highest quality visuals, but is\n" +
-            "incompatible with a small number of other mods and may\n" +
-            "impact performance on low-end systems.\n\n" +
-            "Fast: Has negligible performance impact, but makes\n" +
-            "the entire background jitter uncontrollably when moving."
+            "Lets the camera move continuously: that is, half of a pixel could be shown on\n" +
+            "the side of the screen while the camera is moving. This is especially noticeable\n" +
+            "when the camera is moving slowly.\n\n" +
+            "Fancy: The highest quality result, but may impact performance on low-end systems.\n\n" +
+            "Fast: Has negligible performance impact, but makes the entire background jitter\n" +
+            "uncontrollably when moving." 
         );
     }
 
@@ -340,24 +337,21 @@ public class MotionSmoothingSettings : EverestModuleSettings
 
 
     [SettingSubText(
-        "Extrapolate: [Recommended] Predicts object positions\n" +
-        "        * Should feel very similar to vanilla\n" +
-        "Interpolate: Smooths object position\n" +
-        "        * The smoothest option, at the cost of 1-2 frames of delay")]
-    public SmoothingMode SmoothingMode
+        "Extrapolate: [Recommended] Predicts object positions in between physics frames\n" +
+        "based on their velocities.\n\n" +
+        "Interpolate: Uses the last two physics frames to compute the exact positions\n" +
+        "in between. This is more technically correct, but it adds 1-2 frames of input delay.")]
+    public SmoothingMode ObjectSmoothing
     {
         get => _smoothingMode;
         set => _smoothingMode = value;
     }
 
     [SettingSubText(
-        "Interval: Update the game every N draws\n" +
-        "        * FPS must be a multiple of 60\n" +
-        "Dynamic: Update and draw at different rates\n" +
-        "        * FPS can be any value\n" +
-        "        * More likely to break other mods"
+        "Interval: Has the best compatibility, but restricts the FPS to multiples of 60.\n\n" +
+        "Dynamic: Allows any FPS, but may rarely break other mods (e.g. TAS Recorder).\n"
     )]
-    public UpdateMode UpdateMode
+    public UpdateMode FramerateIncreaseMethod
     {
         get => _updateMode;
         set
@@ -370,11 +364,11 @@ public class MotionSmoothingSettings : EverestModuleSettings
     }
 
     [SettingSubText(
-        "*** This mode does not affect gameplay in levels! ***\n" +
-        "By default, the Overworld will be updated at the full\n" +
+        "*** This does not affect gameplay in levels! ***\n" +
+        "By default, the overworld is updated at the full\n" +
         "framerate since accuracy there is not as important.\n" +
-        "This mode will keep the Overworld update at 60fps as\n" +
-        "well, so that TASes will function properly.")]
+        "Turning this on locks the overworld update at 60FPS\n" +
+        "so that TASes function properly.")]
     public bool TasMode
     {
         get => _tasMode;

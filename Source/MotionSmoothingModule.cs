@@ -44,7 +44,7 @@ public class MotionSmoothingModule : EverestModule
 
     public List<Action<bool>> EnabledActions { get; } = new();
 
-    public IFrameUncapStrategy FrameUncapStrategy => Settings.UpdateMode switch
+    public IFrameUncapStrategy FrameUncapStrategy => Settings.FramerateIncreaseMethod switch
     {
         UpdateMode.Interval => UpdateEveryNTicks,
         UpdateMode.Dynamic => DecoupledGameTick,
@@ -163,7 +163,7 @@ public class MotionSmoothingModule : EverestModule
 
 
         // If the game speed is modified, then we have to use dynamic mode
-        if (Settings.UpdateMode == UpdateMode.Dynamic || Settings.GameSpeedModified)
+        if (Settings.FramerateIncreaseMethod == UpdateMode.Dynamic || Settings.GameSpeedModified)
         {
             UpdateEveryNTicks.Disable();
             DecoupledGameTick.Enable();
