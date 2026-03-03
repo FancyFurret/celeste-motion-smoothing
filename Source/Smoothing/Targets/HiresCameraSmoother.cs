@@ -1233,7 +1233,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
         Strategies.PushSpriteSmoother.TemporarilyDisablePushSpriteSmoothing = true;
 		Draw.SpriteBatch.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend, SamplerState.PointClamp, DepthStencilState.None, RasterizerState.CullNone, null, Matrix.Identity);
-		Draw.SpriteBatch.Draw(GameplayBuffers.Gameplay, Vector2.Zero, Color.White);
+		Draw.SpriteBatch.Draw(renderer.SmallBuffer, Vector2.Zero, Color.White);
 		Draw.SpriteBatch.End();
 		Strategies.PushSpriteSmoother.TemporarilyDisablePushSpriteSmoothing = false;
 
