@@ -98,6 +98,8 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
     private static Matrix UnsmoothedCameraMatrix;
     private static Matrix UnsmoothedCameraInverse;
 
+    private static Vector2 _lastPlayerOffset;
+
     private readonly HashSet<Hook> _hooks = new();
 
     public override void Load()
@@ -1138,6 +1140,8 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 			{
 				offset.Y = 0;
 			}
+
+            _lastPlayerOffset = offset;
 		}
 
         if (Engine.Scene is Level { Transitioning: true } or { Paused: true })
@@ -1204,24 +1208,6 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
         var renderTargets = Draw.SpriteBatch.GraphicsDevice.GetRenderTargets();
 
-
-
-        var state = MotionSmoothingHandler.Instance.GetState(self) as IPositionSmoothingState;
-
-		Vector2 offset = state.SmoothedRealPosition - state.SmoothedRealPosition.Round();
-
-        if (!PlayerSmoother.AllowSubpixelRenderingX)
-        {
-            offset.X = 0;
-        }
-
-        if (!PlayerSmoother.AllowSubpixelRenderingY)
-        {
-            offset.Y = 0;
-        }
-
-
-
         Engine.Instance.GraphicsDevice.SetRenderTarget(renderer.SmallBuffer);
         Engine.Instance.GraphicsDevice.Clear(Color.Transparent);
 
@@ -1231,11 +1217,25 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
         Engine.Instance.GraphicsDevice.SetRenderTargets(renderTargets);
 
+
+
+        _offsetWhenDrawnTo.Clear();
+        foreach (var target in renderTargets)
+        {
+            _offsetWhenDrawnTo.Add(target.RenderTarget);
+        }
+
         Strategies.PushSpriteSmoother.TemporarilyDisablePushSpriteSmoothing = true;
 		Draw.SpriteBatch.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend, SamplerState.PointClamp, DepthStencilState.None, RasterizerState.CullNone, null, Matrix.Identity);
-		Draw.SpriteBatch.Draw(renderer.SmallBuffer, Vector2.Zero, Color.White);
+		Draw.SpriteBatch.Draw(
+            renderer.SmallBuffer,
+            MotionSmoothingModule.Settings.RenderMadelineWithSubpixels ? _lastPlayerOffset : Vector2.Zero,
+            Color.White
+        );
 		Draw.SpriteBatch.End();
 		Strategies.PushSpriteSmoother.TemporarilyDisablePushSpriteSmoothing = false;
+
+        _offsetWhenDrawnTo.Clear();
 
 
 
