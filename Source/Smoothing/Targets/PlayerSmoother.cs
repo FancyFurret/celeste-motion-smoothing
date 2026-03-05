@@ -189,6 +189,10 @@ public static class PlayerSmoother
             state.DrawPositionHistory[0].Y != state.DrawPositionHistory[1].Y
             || isMovingInBothDirections
             || !canClimb
+            // This annoying extra check lets the player be smoothed when holding onto falling blocks.
+            // We don't include it in the subpixel rendering check since we need madeline to stay fixed
+            // on the wall.
+            || Math.Abs(player.Speed.Y) < 0.001
         );
     }
     
