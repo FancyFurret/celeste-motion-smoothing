@@ -1,6 +1,6 @@
 # Troublesome Maps
 
-Maps and mods to check when messing with details.
+Maps and mods to check when messing with details. Check all of these with and without subpixel Madeline and smooth background.
 
 - Strawberry Jam: the Advanced Heart Side.
 	- Color grade masks and bloom masks at the end of flag 18 and the start of flag 17
