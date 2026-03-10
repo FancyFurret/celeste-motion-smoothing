@@ -1633,39 +1633,34 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
             return null;
         }
 
+        // Standard buffers: enable flags take absolute precedence.
+        // Never fall through to _largeExternalTextureMap for these,
+        // since other mods may swap buffer targets at runtime.
+        if (texture == GameplayBuffers.Gameplay.Target)
+            return _enableLargeGameplayBuffer ? renderer.LargeGameplayBuffer : null;
+
+        if (texture == GameplayBuffers.Level.Target)
+            return _enableLargeLevelBuffer ? renderer.LargeLevelBuffer : null;
+
+        if (texture == GameplayBuffers.TempA.Target)
+            return _enableLargeTempABuffer ? renderer.LargeTempABuffer : null;
+
+        if (texture == GameplayBuffers.TempB.Target)
+            return _enableLargeTempBBuffer ? renderer.LargeTempBBuffer : null;
+
+        // External (non-standard) textures only.
         if (_largeExternalTextureMap.TryGetValue(texture, out var largeRenderTarget))
         {
             if (largeRenderTarget?.Target != null)
             {
                 return largeRenderTarget;
             }
-
             else
             {
                 // Large target was disposed, remove stale entry
                 _largeExternalTextureMap.Remove(texture);
                 _largeTextures.Remove(largeRenderTarget?.Target);
             }
-        }
-
-        else if (texture == GameplayBuffers.Gameplay.Target && _enableLargeGameplayBuffer)
-        {
-            return renderer.LargeGameplayBuffer;
-        }
-
-        else if (texture == GameplayBuffers.Level.Target && _enableLargeLevelBuffer)
-        {
-            return renderer.LargeLevelBuffer;
-        }
-
-        else if (texture == GameplayBuffers.TempA.Target && _enableLargeTempABuffer)
-        {
-            return renderer.LargeTempABuffer;
-        }
-
-        else if (texture == GameplayBuffers.TempB.Target && _enableLargeTempBBuffer)
-        {
-            return renderer.LargeTempBBuffer;
         }
 
         return null;
@@ -1678,13 +1673,28 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
             return texture;
         }
 
+        // Standard buffers: enable flags take absolute precedence.
+        // Never fall through to _largeExternalTextureMap for these,
+        // since other mods may swap buffer targets at runtime.
+        if (texture == GameplayBuffers.Gameplay.Target)
+            return _enableLargeGameplayBuffer ? renderer.LargeGameplayBuffer : texture;
+
+        if (texture == GameplayBuffers.Level.Target)
+            return _enableLargeLevelBuffer ? renderer.LargeLevelBuffer : texture;
+
+        if (texture == GameplayBuffers.TempA.Target)
+            return _enableLargeTempABuffer ? renderer.LargeTempABuffer : texture;
+
+        if (texture == GameplayBuffers.TempB.Target)
+            return _enableLargeTempBBuffer ? renderer.LargeTempBBuffer : texture;
+
+        // External (non-standard) textures only.
         if (_largeExternalTextureMap.TryGetValue(texture, out var largeRenderTarget))
         {
             if (largeRenderTarget?.Target != null)
             {
                 return largeRenderTarget.Target;
             }
-
             else
             {
                 // Large target was disposed, remove stale entry
@@ -1692,26 +1702,6 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
                 _largeTextures.Remove(largeRenderTarget?.Target);
                 return texture;
             }
-        }
-
-        else if (texture == GameplayBuffers.Gameplay.Target && _enableLargeGameplayBuffer)
-        {
-            return renderer.LargeGameplayBuffer;
-        }
-
-        else if (texture == GameplayBuffers.Level.Target && _enableLargeLevelBuffer)
-        {
-            return renderer.LargeLevelBuffer;
-        }
-
-        else if (texture == GameplayBuffers.TempA.Target && _enableLargeTempABuffer)
-        {
-            return renderer.LargeTempABuffer;
-        }
-
-        else if (texture == GameplayBuffers.TempB.Target && _enableLargeTempBBuffer)
-        {
-            return renderer.LargeTempBBuffer;
         }
 
         return texture;
@@ -2210,6 +2200,18 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 			// what's drawn to the screen (ahem CelesteNet), in which case we will still
 			// be ditching the scale above where this is called -- which is exactly correct
 			// in that case!
+            return false;
+        }
+
+        // Don't hot-create for standard GameplayBuffers targets — they have
+        // dedicated large versions managed by enable flags. Hot-creating them
+        // would add entries to _largeExternalTextureMap that could bypass the
+        // flag checks, especially when other mods swap buffer targets at runtime.
+        if (smallTexture == GameplayBuffers.Gameplay.Target
+            || smallTexture == GameplayBuffers.Level.Target
+            || smallTexture == GameplayBuffers.TempA.Target
+            || smallTexture == GameplayBuffers.TempB.Target)
+        {
             return false;
         }
 
