@@ -38,6 +38,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 	// A blunt tool for fixing weird mods like SpirialisHelper. When this is enabled,
 	// spritebatch.begin will use the 181/180 scale matrix.
 	private static bool _forceZoomDrawingToScreen = false;
+	private static bool _suppressLargeBuffers = false;
     private static bool _currentlyRenderingBackground = false;
 	private static bool _currentlyRenderingGameplay = false;
     private static bool _currentlyRenderingPlayerOnTopOfFlash = false;
@@ -1644,6 +1645,8 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
             return null;
         }
 
+        if (_suppressLargeBuffers) return null;
+
         // Gameplay and Level: enable flags always take absolute precedence.
         // Never fall through to _largeExternalTextureMap for these, as other
         // mods swapping buffer targets could bypass the flag checks.
@@ -1685,6 +1688,8 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
         {
             return texture;
         }
+
+        if (_suppressLargeBuffers) return texture;
 
         // Gameplay and Level: enable flags always take absolute precedence.
         if (texture == GameplayBuffers.Gameplay.Target)
@@ -2523,7 +2528,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 		if (Everest.Loader.TryGetDependency(spirialisHelper, out var spirialisHelperModule))
 		{
             // No exact version check here because there was no public repo to take out a PR on
-            AddSpirialisHelperHook();
+            AddSpirialisHelperHooks();
 		}
 
         
@@ -2631,10 +2636,11 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
 
 	private delegate void orig_DrawTimeStopEntities(object self);
+	private delegate void orig_RenderTimestopEntities(object self);
 
 	// noinlining necessary to avoid crashes when the jit attempts inline this method while jitting methods that use this function
 	[MethodImpl(MethodImplOptions.NoInlining)]
-	private void AddSpirialisHelperHook()
+	private void AddSpirialisHelperHooks()
 	{
 		Type t_TimeController = Type.GetType("Celeste.Mod.Spirialis.TimeController, Spirialis");
 		MethodInfo m_DrawTimeStopEntities = t_TimeController?.GetMethod(
@@ -2646,6 +2652,16 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 		{
 			AddHook(new Hook(m_DrawTimeStopEntities, DrawTimeStopEntitiesHook));
 		}
+
+		MethodInfo m_RenderTimestopEntities = t_TimeController?.GetMethod(
+			"RenderTimestopEntities",
+			BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic
+		);
+
+		if (m_RenderTimestopEntities != null)
+		{
+			AddHook(new Hook(m_RenderTimestopEntities, RenderTimestopEntitiesHook));
+		}
 	}
 
 	private static void DrawTimeStopEntitiesHook(orig_DrawTimeStopEntities orig, object self)
@@ -2653,6 +2669,13 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 		_forceZoomDrawingToScreen = true;
 		orig(self);
 		_forceZoomDrawingToScreen = false;
+	}
+
+	private static void RenderTimestopEntitiesHook(orig_RenderTimestopEntities orig, object self)
+	{
+		_suppressLargeBuffers = true;
+		orig(self);
+		_suppressLargeBuffers = false;
 	}
 
 
