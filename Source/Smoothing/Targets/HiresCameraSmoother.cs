@@ -918,6 +918,16 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 			return true;
 		}
 
+		// The two-phase parallax filter only applies when rendering to the Level
+		// buffer itself. Other renderers (e.g. StylegroundMasks' DummyBackdropRenderer)
+		// render to their own buffers and need all backdrops unfiltered.
+		if (HiresRenderer.Instance is { } renderer
+			&& _currentRenderTarget != GameplayBuffers.Level.Target
+			&& _currentRenderTarget != renderer.LargeLevelBuffer.Target)
+		{
+			return true;
+		}
+
 		bool isParallaxOne = self is Parallax && self.Scroll.X == 1.0 && self.Scroll.Y == 1.0;
 
 		return _allowParallaxOneBackgrounds == isParallaxOne;
