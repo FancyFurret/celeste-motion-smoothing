@@ -1635,24 +1635,16 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
         }
 
         // Gameplay and Level: enable flags always take absolute precedence.
-        // Never fall through to _largeExternalTextureMap for these.
+        // Never fall through to _largeExternalTextureMap for these, as other
+        // mods swapping buffer targets could bypass the flag checks.
         if (texture == GameplayBuffers.Gameplay.Target)
             return _enableLargeGameplayBuffer ? renderer.LargeGameplayBuffer : null;
 
         if (texture == GameplayBuffers.Level.Target)
             return _enableLargeLevelBuffer ? renderer.LargeLevelBuffer : null;
 
-        // TempA/TempB: when flag is OFF, block immediately (prevents cascading
-        // hot creation when other mods swap buffer targets at runtime).
-        // When flag is ON, fall through to external map — a hot-created buffer
-        // may contain a more correct result (e.g. LuckyHelper's bloom blend).
-        if (texture == GameplayBuffers.TempA.Target && !_enableLargeTempABuffer)
-            return null;
-
-        if (texture == GameplayBuffers.TempB.Target && !_enableLargeTempBBuffer)
-            return null;
-
-        // External textures (and TempA/TempB with flags ON).
+        // External textures (including hot-created entries for TempA/TempB
+        // from other mods like StylegroundMasks).
         if (_largeExternalTextureMap.TryGetValue(texture, out var largeRenderTarget))
         {
             if (largeRenderTarget?.Target != null)
@@ -1667,12 +1659,12 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
             }
         }
 
-        // TempA/TempB with flags ON but no external entry: use standard large buffer.
+        // TempA/TempB: use standard large buffer when enabled, null otherwise.
         if (texture == GameplayBuffers.TempA.Target)
-            return renderer.LargeTempABuffer;
+            return _enableLargeTempABuffer ? renderer.LargeTempABuffer : null;
 
         if (texture == GameplayBuffers.TempB.Target)
-            return renderer.LargeTempBBuffer;
+            return _enableLargeTempBBuffer ? renderer.LargeTempBBuffer : null;
 
         return null;
     }
@@ -1691,15 +1683,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
         if (texture == GameplayBuffers.Level.Target)
             return _enableLargeLevelBuffer ? renderer.LargeLevelBuffer : texture;
 
-        // TempA/TempB: when flag is OFF, return original (prevents cascading).
-        // When flag is ON, fall through to external map first.
-        if (texture == GameplayBuffers.TempA.Target && !_enableLargeTempABuffer)
-            return texture;
-
-        if (texture == GameplayBuffers.TempB.Target && !_enableLargeTempBBuffer)
-            return texture;
-
-        // External textures (and TempA/TempB with flags ON).
+        // External textures (including hot-created entries for TempA/TempB).
         if (_largeExternalTextureMap.TryGetValue(texture, out var largeRenderTarget))
         {
             if (largeRenderTarget?.Target != null)
@@ -1715,12 +1699,12 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
             }
         }
 
-        // TempA/TempB with flags ON but no external entry: use standard large buffer.
+        // TempA/TempB: use standard large buffer when enabled, original otherwise.
         if (texture == GameplayBuffers.TempA.Target)
-            return renderer.LargeTempABuffer;
+            return _enableLargeTempABuffer ? renderer.LargeTempABuffer : texture;
 
         if (texture == GameplayBuffers.TempB.Target)
-            return renderer.LargeTempBBuffer;
+            return _enableLargeTempBBuffer ? renderer.LargeTempBBuffer : texture;
 
         return texture;
     }
@@ -2222,14 +2206,11 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
         }
 
         // Don't hot-create for Gameplay/Level — they have dedicated large versions
-        // and should never enter the external map.
-        // For TempA/TempB, only block when their flags are OFF (prevents cascading
-        // when other mods swap buffer targets). When flags are ON (e.g. during bloom),
-        // allow hot creation so other mods' blend results are captured correctly.
+        // and should never enter the external map. Other mods swapping buffer targets
+        // at runtime could otherwise bypass the enable flag checks and cause cascading
+        // hot creation.
         if (smallTexture == GameplayBuffers.Gameplay.Target
-            || smallTexture == GameplayBuffers.Level.Target
-            || (smallTexture == GameplayBuffers.TempA.Target && !_enableLargeTempABuffer)
-            || (smallTexture == GameplayBuffers.TempB.Target && !_enableLargeTempBBuffer))
+            || smallTexture == GameplayBuffers.Level.Target)
         {
             return false;
         }
