@@ -41,11 +41,12 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
     private static bool _currentlyRenderingBackground = false;
 	private static bool _currentlyRenderingGameplay = false;
     private static bool _currentlyRenderingPlayerOnTopOfFlash = false;
-    private static bool _smallBufferBackdropRendering = false;
-    private static BlendState _runningBlendState = BlendState.AlphaBlend;
+    private static bool _allowParallaxOneBackgrounds = false;
+    private static bool _currentlyRenderingForeground = false;
+    private static BlendState _foregroundBlendState = BlendState.AlphaBlend;
 
-    private enum FlushGroup { AlphaBlend, Additive, Direct }
-    private static FlushGroup _currentFlushGroup = FlushGroup.AlphaBlend;
+    private enum ForegroundFlushGroup { AlphaBlend, Additive, Direct }
+    private static ForegroundFlushGroup _currentFlushGroup = ForegroundFlushGroup.AlphaBlend;
     private static readonly BlendState _additiveFlushBlendState = new BlendState
     {
         ColorSourceBlend = Blend.One,
@@ -563,6 +564,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 		}
         
         _offsetWhenDrawnTo.Clear();
+        _allowParallaxOneBackgrounds = false;
         _currentlyRenderingBackground = true;
         _currentlyRenderingPlayerOnTopOfFlash = false;
         _disableFloorFunctions = DisableFloorFunctionsMode.Integer;
@@ -815,9 +817,9 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
             Engine.Instance.GraphicsDevice.SetRenderTarget(renderer.SmallBuffer);
             Engine.Instance.GraphicsDevice.Clear(Color.Transparent);
 
-            _smallBufferBackdropRendering = true;
-            _runningBlendState = BlendState.AlphaBlend;
-            _currentFlushGroup = FlushGroup.AlphaBlend;
+            _currentlyRenderingForeground = true;
+            _foregroundBlendState = BlendState.AlphaBlend;
+            _currentFlushGroup = ForegroundFlushGroup.AlphaBlend;
             _disableFloorFunctions = DisableFloorFunctionsMode.Rational;
 
             orig(self, scene);
@@ -826,50 +828,45 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
             // Only flush if we're still on the small buffer (last group was bufferable)
             if (_currentRenderTarget == renderer.SmallBuffer.Target)
-                FlushSmallBuffer(renderer, _currentFlushGroup);
+                FlushForegroundSmallBuffer(renderer, _currentFlushGroup);
 
-            _smallBufferBackdropRendering = false;
+            _currentlyRenderingForeground = false;
             return;
         }
 
 
 
-        // Single-pass background rendering: render into SmallBuffer grouped by blend state,
-        // flushing (scaling up) to LargeLevelBuffer at group transitions.
-        // Parallax-one backdrops render directly to LargeLevelBuffer at full scale.
+        _enableLargeLevelBuffer = false;
+        _allowParallaxOneBackgrounds = false;
+        orig(self, scene);
 
-        // Enable large level buffer mapping so flushes and Direct draws go to LargeLevelBuffer
-        _enableLargeLevelBuffer = true;
-
-        // Clear LargeLevelBuffer for fresh background compositing
+        // Go to the large level buffer for compositing time.
         Engine.Instance.GraphicsDevice.SetRenderTarget(renderer.LargeLevelBuffer);
         Engine.Instance.GraphicsDevice.Clear(Color.Transparent);
 
-        // Set up small buffer for rendering
-        Engine.Instance.GraphicsDevice.SetRenderTarget(renderer.SmallBuffer);
-        Engine.Instance.GraphicsDevice.Clear(Color.Transparent);
+        // Draw the background into GameplayBuffers.Level. It'll get upscaled for us automatically.
+        Draw.SpriteBatch.Begin(SpriteSortMode.Deferred, BlendState.Opaque, SamplerState.PointClamp, DepthStencilState.None, RasterizerState.CullNone, null, Matrix.Identity);
+        // Draw the non-parallax one backgrounds.
+        Draw.SpriteBatch.Draw(GameplayBuffers.Level, Vector2.Zero, Color.White);
+        Draw.SpriteBatch.End();
 
-        // Enable subpixel offset for parallax-one backdrops rendering to LargeLevelBuffer
-        _offsetWhenDrawnTo.Add(renderer.LargeLevelBuffer);
 
-        _smallBufferBackdropRendering = true;
-        _runningBlendState = BlendState.AlphaBlend;
-        _currentFlushGroup = FlushGroup.AlphaBlend;
+
+        // Now draw the parallax-one backgrounds
+        _allowParallaxOneBackgrounds = true;
         _disableFloorFunctions = DisableFloorFunctionsMode.Rational;
+
+		_offsetWhenDrawnTo.Clear();
+        _offsetWhenDrawnTo.Add(renderer.LargeLevelBuffer);
 
         orig(self, scene);
 
-        _disableFloorFunctions = DisableFloorFunctionsMode.Integer;
+		_offsetWhenDrawnTo.Clear();
 
-        // Final flush if still on the small buffer
-        if (_currentRenderTarget == renderer.SmallBuffer.Target)
-            FlushSmallBuffer(renderer, _currentFlushGroup);
-
-        _smallBufferBackdropRendering = false;
-        _offsetWhenDrawnTo.Clear();
-
-        // Ensure we end on the large level buffer
+        _enableLargeLevelBuffer = true;
         Engine.Instance.GraphicsDevice.SetRenderTarget(GameplayBuffers.Level);
+
+        _disableFloorFunctions = DisableFloorFunctionsMode.Integer;
     }
 
 	private static void BackdropRendererRenderHook(ILContext il)
@@ -903,7 +900,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 			// Render path: handle foreground buffer transitions, then restore Scene
 			cursor.MarkLabel(doRender);
 			cursor.Emit(OpCodes.Dup);                              // Stack: [Backdrop, Backdrop]
-			cursor.EmitDelegate(BeforeSmallBufferBackdropRender);   // Stack: [Backdrop]
+			cursor.EmitDelegate(BeforeForegroundBackdropRender);   // Stack: [Backdrop]
 			cursor.Emit(OpCodes.Ldloc, sceneLocal);                // Stack: [Backdrop, Scene]
 			
 			// Move past the callvirt to mark the skip label
@@ -914,49 +911,53 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
 	private static bool ShouldRenderBackdrop(Backdrop self)
 	{
-		return true;
+		if (
+			MotionSmoothingModule.Settings.RenderBackgroundHires
+			|| !_currentlyRenderingBackground
+		) {
+			return true;
+		}
+
+		bool isParallaxOne = self is Parallax && self.Scroll.X == 1.0 && self.Scroll.Y == 1.0;
+
+		return _allowParallaxOneBackgrounds == isParallaxOne;
 	}
 
-	private static FlushGroup GetFlushGroup(BlendState blendState)
+	private static ForegroundFlushGroup GetFlushGroup(BlendState blendState)
 	{
 		if (blendState.ColorBlendFunction != BlendFunction.Add)
-			return FlushGroup.Direct;
+			return ForegroundFlushGroup.Direct;
 
 		// Additive: destination blend is One (purely additive accumulation)
 		if (blendState.ColorDestinationBlend == Blend.One)
-			return FlushGroup.Additive;
+			return ForegroundFlushGroup.Additive;
 
 		// AlphaBlend: premultiplied alpha (One, InverseSourceAlpha) or opaque (*, Zero)
 		if (blendState.ColorDestinationBlend == Blend.Zero)
-			return FlushGroup.AlphaBlend;
+			return ForegroundFlushGroup.AlphaBlend;
 		if (blendState.ColorDestinationBlend == Blend.InverseSourceAlpha
 		    && blendState.ColorSourceBlend == Blend.One)
-			return FlushGroup.AlphaBlend;
+			return ForegroundFlushGroup.AlphaBlend;
 
-		return FlushGroup.Direct;
+		return ForegroundFlushGroup.Direct;
 	}
 
-	private static void BeforeSmallBufferBackdropRender(Backdrop backdrop)
+	private static void BeforeForegroundBackdropRender(Backdrop backdrop)
 	{
-		if (!_smallBufferBackdropRendering || HiresRenderer.Instance is not { } renderer)
+		if (!_currentlyRenderingForeground || HiresRenderer.Instance is not { } renderer)
 			return;
 
 		// Track blend state, mirroring BackdropRenderer's own running blendState variable.
 		// Only Parallax backdrops update the running blend state; non-Parallax SpriteBatch
 		// backdrops inherit it via StartSpritebatch(blendState).
 		if (backdrop is Parallax p)
-			_runningBlendState = p.BlendState;
+			_foregroundBlendState = p.BlendState;
 
-		// Determine flush group for this backdrop:
-		// - Non-SpriteBatch backdrops manage their own rendering → Direct
-		// - Parallax-one backgrounds must render at full scale → Direct
-		// - Otherwise classify by blend state
-		bool isParallaxOne = _currentlyRenderingBackground
-			&& backdrop is Parallax { Scroll: { X: 1.0f, Y: 1.0f } };
-
-		var newGroup = (!backdrop.UseSpritebatch || isParallaxOne)
-			? FlushGroup.Direct
-			: GetFlushGroup(_runningBlendState);
+		// Non-SpriteBatch backdrops manage their own rendering and blend states,
+		// so we can't predict their blend state — render them directly.
+		var newGroup = !backdrop.UseSpritebatch
+			? ForegroundFlushGroup.Direct
+			: GetFlushGroup(_foregroundBlendState);
 
 		if (newGroup == _currentFlushGroup)
 			return;
@@ -966,11 +967,11 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 		if (spriteBatchActive) Draw.SpriteBatch.End();
 
 		bool wasOnSmallBuffer = _currentRenderTarget == renderer.SmallBuffer.Target;
-		bool newNeedsSmallBuffer = newGroup != FlushGroup.Direct;
+		bool newNeedsSmallBuffer = newGroup != ForegroundFlushGroup.Direct;
 
 		// Flush accumulated small-buffer content to level buffer
 		if (wasOnSmallBuffer)
-			FlushSmallBuffer(renderer, _currentFlushGroup);
+			FlushForegroundSmallBuffer(renderer, _currentFlushGroup);
 
 		// Set render target for the new group
 		if (newNeedsSmallBuffer)
@@ -989,12 +990,12 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 			Draw.SpriteBatch.Begin(sm, bs, ss, ds, rs, eff, mx);
 	}
 
-	private static void FlushSmallBuffer(HiresRenderer renderer, FlushGroup group)
+	private static void FlushForegroundSmallBuffer(HiresRenderer renderer, ForegroundFlushGroup group)
 	{
 		bool spriteBatchActive = (bool)_beginCalledField.GetValue(Draw.SpriteBatch);
 		if (spriteBatchActive) Draw.SpriteBatch.End();
 
-		var flushBlendState = group == FlushGroup.Additive
+		var flushBlendState = group == ForegroundFlushGroup.Additive
 			? _additiveFlushBlendState
 			: BlendState.AlphaBlend;
 
