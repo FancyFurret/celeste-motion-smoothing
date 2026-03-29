@@ -348,8 +348,9 @@ public class MotionSmoothingSettings : EverestModuleSettings
     }
 
     [SettingSubText(
-        "Interval: Has the best compatibility, but restricts the FPS to multiples of 60.\n\n" +
-        "Dynamic: Allows any FPS, but may rarely break other mods (e.g. TAS Recorder).\n"
+        "Interval: [Recommended] Has the best compatibility, but restricts the FPS\n" +
+        "to multiples of 60.\n" +
+        "Dynamic: Allows any FPS, but may rarely break other mods (e.g. TAS Recorder)."
     )]
     public UpdateMode FramerateIncreaseMethod
     {
@@ -367,7 +368,7 @@ public class MotionSmoothingSettings : EverestModuleSettings
         "*** This does not affect gameplay in levels! ***\n" +
         "By default, the overworld is updated at the full\n" +
         "framerate since accuracy there is not as important.\n" +
-        "Turning this on locks the overworld update at 60FPS\n" +
+        "Turning this on locks the overworld update at 60 FPS\n" +
         "so that TASes function properly.")]
     public bool TasMode
     {

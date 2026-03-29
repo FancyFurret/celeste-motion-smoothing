@@ -33,6 +33,7 @@ public abstract class SmoothingState<TObject, TValue> : ISmoothingState<TValue>
     public TValue Smoothed { get; set; }
     public TValue Original { get; set; }
     protected TValue PreSmoothed { get; set; }
+    protected bool _initialized;
 
     public TValue GetValue(object obj) => GetValue((TObject)obj);
     public void SetValue(object obj, TValue value) => SetValue((TObject)obj, value);
@@ -46,19 +47,30 @@ public abstract class SmoothingState<TObject, TValue> : ISmoothingState<TValue>
 
     protected virtual void SetSmoothed(TObject obj)
     {
-        if (CancelSmoothing) return;
+        if (CancelSmoothing || !_initialized) return;
         PreSmoothed = GetValue(obj);
         SetValue(obj, Smoothed);
     }
 
     protected virtual void SetOriginal(TObject obj)
     {
-        if (CancelSmoothing) return;
+        if (CancelSmoothing || !_initialized) return;
         SetValue(obj, PreSmoothed);
     }
 
     public void UpdateHistory(object obj)
     {
+        if (!_initialized)
+        {
+            var value = GetValue((TObject)obj);
+            History[0] = value;
+            History[1] = value;
+            Original = value;
+            Smoothed = value;
+            _initialized = true;
+            return;
+        }
+
         History[1] = History[0];
         History[0] = GetValue((TObject)obj);
         Original = History[0];
@@ -107,6 +119,7 @@ public abstract class PositionSmoothingState<T> : IPositionSmoothingState
     public Vector2 OriginalDrawPosition { get; private set; }
     protected Vector2 PreSmoothedPosition { get; set; }
     public bool WasInvisible { get; set; }
+    protected bool _initialized;
 
     public bool GetVisible(object obj) => GetVisible((T)obj);
 
@@ -121,14 +134,14 @@ public abstract class PositionSmoothingState<T> : IPositionSmoothingState
 
     protected virtual void SetSmoothed(T obj)
     {
-        if (CancelSmoothing) return;
+        if (CancelSmoothing || !_initialized) return;
         PreSmoothedPosition = GetDrawPosition(obj);
         SetPosition(obj, SmoothedRealPosition.Round());
     }
 
     protected virtual void SetOriginal(T obj)
     {
-        if (CancelSmoothing) return;
+        if (CancelSmoothing || !_initialized) return;
         SetPosition(obj, PreSmoothedPosition);
     }
 
@@ -147,6 +160,29 @@ public abstract class PositionSmoothingState<T> : IPositionSmoothingState
 
     public void UpdateHistory(object obj)
     {
+        if (!_initialized)
+        {
+            var realPos = GetRealPosition((T)obj);
+            RealPositionHistory[0] = realPos;
+            RealPositionHistory[1] = realPos;
+            RealPositionHistory[2] = realPos;
+            OriginalRealPosition = realPos;
+
+            var drawPos = GetDrawPosition((T)obj).Round();
+            DrawPositionHistory[0] = drawPos;
+            DrawPositionHistory[1] = drawPos;
+            DrawPositionHistory[2] = drawPos;
+            OriginalDrawPosition = drawPos;
+
+            SmoothedRealPosition = realPos;
+
+            if (!GetVisible((T)obj))
+                WasInvisible = true;
+
+            _initialized = true;
+            return;
+        }
+
         RealPositionHistory[2] = RealPositionHistory[1];
         RealPositionHistory[1] = RealPositionHistory[0];
         RealPositionHistory[0] = GetRealPosition((T)obj);
