@@ -1,4 +1,5 @@
-﻿using Celeste.Mod.MotionSmoothing.Smoothing.States;
+﻿using System;
+using Celeste.Mod.MotionSmoothing.Smoothing.States;
 using Celeste.Mod.MotionSmoothing.Utilities;
 using Microsoft.Xna.Framework;
 using Monocle;
@@ -24,6 +25,52 @@ public static class PositionSmoother
         // If we are changing Y direction, cancel Y smoothing
         if (DirectionChanged(state.RealPositionHistory[2].Y, state.RealPositionHistory[1].Y,
                 state.RealPositionHistory[0].Y))
+            smoothed.Y = state.OriginalDrawPosition.Y;
+
+        // Detect subpixel X oscillation
+        if (state.DrawPositionHistory[0].X != state.DrawPositionHistory[1].X)
+        {
+            state.IgnoreSubpixelMotionX = false;
+            state.XDeltaSignChanges = 0;
+            state.PrevXDeltaSign = 0;
+        }
+        else if (!state.IgnoreSubpixelMotionX)
+        {
+            int sign = Math.Sign(state.RealPositionHistory[0].X - state.RealPositionHistory[1].X);
+            if (sign != 0)
+            {
+                if (state.PrevXDeltaSign != 0 && sign != state.PrevXDeltaSign)
+                    state.XDeltaSignChanges++;
+                state.PrevXDeltaSign = sign;
+            }
+            if (state.XDeltaSignChanges >= 2)
+                state.IgnoreSubpixelMotionX = true;
+        }
+
+        // Detect subpixel Y oscillation
+        if (state.DrawPositionHistory[0].Y != state.DrawPositionHistory[1].Y)
+        {
+            state.IgnoreSubpixelMotionY = false;
+            state.YDeltaSignChanges = 0;
+            state.PrevYDeltaSign = 0;
+        }
+        else if (!state.IgnoreSubpixelMotionY)
+        {
+            int sign = Math.Sign(state.RealPositionHistory[0].Y - state.RealPositionHistory[1].Y);
+            if (sign != 0)
+            {
+                if (state.PrevYDeltaSign != 0 && sign != state.PrevYDeltaSign)
+                    state.YDeltaSignChanges++;
+                state.PrevYDeltaSign = sign;
+            }
+            if (state.YDeltaSignChanges >= 2)
+                state.IgnoreSubpixelMotionY = true;
+        }
+
+        if (state.IgnoreSubpixelMotionX)
+            smoothed.X = state.OriginalDrawPosition.X;
+
+        if (state.IgnoreSubpixelMotionY)
             smoothed.Y = state.OriginalDrawPosition.Y;
 
         return smoothed;

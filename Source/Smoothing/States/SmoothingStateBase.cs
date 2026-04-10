@@ -106,6 +106,13 @@ public interface IPositionSmoothingState : ISmoothingState
 
     public Vector2 GetLastDrawPosition(SmoothingMode mode);
     public Vector2 GetSmoothedOffset(SmoothingMode mode);
+
+    public bool IgnoreSubpixelMotionX { get; set; }
+    public bool IgnoreSubpixelMotionY { get; set; }
+    public int XDeltaSignChanges { get; set; }
+    public int PrevXDeltaSign { get; set; }
+    public int YDeltaSignChanges { get; set; }
+    public int PrevYDeltaSign { get; set; }
 }
 
 public abstract class PositionSmoothingState<T> : IPositionSmoothingState
@@ -120,6 +127,13 @@ public abstract class PositionSmoothingState<T> : IPositionSmoothingState
     protected Vector2 PreSmoothedPosition { get; set; }
     public bool WasInvisible { get; set; }
     protected bool _initialized;
+
+    public bool IgnoreSubpixelMotionX { get; set; }
+    public bool IgnoreSubpixelMotionY { get; set; }
+    public int XDeltaSignChanges { get; set; }
+    public int PrevXDeltaSign { get; set; }
+    public int YDeltaSignChanges { get; set; }
+    public int PrevYDeltaSign { get; set; }
 
     public bool GetVisible(object obj) => GetVisible((T)obj);
 
