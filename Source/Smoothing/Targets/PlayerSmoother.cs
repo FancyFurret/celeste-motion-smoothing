@@ -87,7 +87,7 @@ public static class PlayerSmoother
         // smoothed while standing still on moving platforms.
         // We initialize it in this bizarre way so MoveBlocks can
         // override individual directions later.
-        bool isNotStandingStillX = playerSpeed.X != 0 || playerSpeed.Y != 0;
+        bool isNotStandingStillX = Math.Abs(playerSpeed.X) > 0.001 || Math.Abs(playerSpeed.Y) > 0.001;
         bool isNotStandingStillY = isNotStandingStillX;
         
         var computedSpeed = (state.RealPositionHistory[0] - state.RealPositionHistory[1]) * 60;
@@ -152,32 +152,47 @@ public static class PlayerSmoother
         return smoothedPosition;
     }
 
-    private static void UpdateIsSmoothing(bool pusherOffsetApplied, Vector2 pusherVelocity, Vector2 playerSpeed, bool isNotStandingStillX, bool isNotStandingStillY, IPositionSmoothingState state, Player player)
-    {
-        // A player standing still on a moving Solid should still be smoothed,
-        // but only in the direction the Solid is actually moving.
-        // JumpThrus are excluded because they shouldn't override the standing-still check.
+    private static void UpdateIsSmoothing(
+        bool pusherOffsetApplied,
+        Vector2 pusherVelocity,
+        Vector2 playerSpeed,
+        bool isNotStandingStillX,
+        bool isNotStandingStillY,
+        IPositionSmoothingState state,
+        Player player
+    ) {
+        // A player standing still on a moving platform should still be smoothed,
+        // but only in the direction the platform is actually moving.
         bool ridingMovingSolid = pusherOffsetApplied && ActorPushTracker.Instance.IsPlayerRidingSolid;
-        if (ridingMovingSolid && pusherVelocity.X != 0)
+        bool ridingMovingJumpThru = pusherOffsetApplied && ActorPushTracker.Instance.IsPlayerRidingJumpThru;
+        bool ridingMovingEntity = ridingMovingSolid || ridingMovingJumpThru;
+
+        if (ridingMovingEntity && Math.Abs(pusherVelocity.X) > 0.001)
             isNotStandingStillX = true;
-        if (ridingMovingSolid && pusherVelocity.Y != 0)
+        if (ridingMovingEntity && Math.Abs(pusherVelocity.Y) > 0.001)
             isNotStandingStillY = true;
 
         // We don't use float.Epsilon because there are edge cases where Madeline
         // can have nonzero but extremely small downward speed.
         bool isMovingInBothDirections = Math.Abs(playerSpeed.X) > 0.001 && Math.Abs(playerSpeed.Y) > 0.001;
-        
+
         bool canClimb = player.StateMachine.State == Player.StClimb;
 
         IsSmoothingX = isNotStandingStillX && !_ignoreSubpixelMotionX && (
             state.DrawPositionHistory[0].X != state.DrawPositionHistory[1].X
             || isMovingInBothDirections
+            // This extra check supports riding slow jumpthrus
+            || (ridingMovingEntity && Math.Abs(pusherVelocity.X) > 0.001)
         );
 
         IsSmoothingY = isNotStandingStillY && !_ignoreSubpixelMotionY && (
             state.DrawPositionHistory[0].Y != state.DrawPositionHistory[1].Y
             || isMovingInBothDirections
             || !canClimb
+            // This annoying extra check lets the player be smoothed when holding onto falling blocks.
+            // We don't include it in the subpixel rendering check since we need madeline to stay fixed
+            // on the wall.
+            || Math.Abs(player.Speed.Y) < 0.001
         );
     }
     
@@ -186,17 +201,12 @@ public static class PlayerSmoother
     // steerable move blocks.
     private static void UpdateAllowSubpixelRendering(bool pusherOffsetApplied, Vector2 pusherVelocity, Vector2 playerSpeed, bool isNotStandingStillX, bool isNotStandingStillY, IPositionSmoothingState state, Player player)
     {
-        // A player standing still on a moving Solid should still be smoothed,
-        // but only in the direction the Solid is actually moving.
-        // JumpThrus are excluded because they shouldn't override the standing-still check.
         bool ridingSteerableMoveBlock = pusherOffsetApplied && ActorPushTracker.Instance.IsPlayerRidingSteerableMoveBlock;
         if (ridingSteerableMoveBlock && pusherVelocity.X != 0)
             isNotStandingStillX = true;
         if (ridingSteerableMoveBlock && pusherVelocity.Y != 0)
             isNotStandingStillY = true;
 
-        // We don't use float.Epsilon because there are edge cases where Madeline
-        // can have nonzero but extremely small downward speed.
         bool isMovingInBothDirections = Math.Abs(playerSpeed.X) > 0.001 && Math.Abs(playerSpeed.Y) > 0.001;
         
         bool canClimb = player.StateMachine.State == Player.StClimb;

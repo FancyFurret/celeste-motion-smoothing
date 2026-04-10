@@ -113,7 +113,7 @@ public class CameraSmoothingState : PositionSmoothingState<Camera>
 
     protected override void SetSmoothed(Camera obj)
     {
-        if (CancelSmoothing) return;
+        if (CancelSmoothing || !_initialized) return;
         PreSmoothedPosition = obj.Position;
         obj.Position = SmoothedRealPosition.Floor();
     }

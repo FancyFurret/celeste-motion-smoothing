@@ -37,11 +37,25 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
 	// A blunt tool for fixing weird mods like SpirialisHelper. When this is enabled,
 	// spritebatch.begin will use the 181/180 scale matrix.
-	private static bool _forceZoomDrawingToScreen = false;
+	private static bool _forceOffsetZoomDrawingToScreen = false;
+	private static bool _suppressLargeBuffers = false;
     private static bool _currentlyRenderingBackground = false;
 	private static bool _currentlyRenderingGameplay = false;
     private static bool _currentlyRenderingPlayerOnTopOfFlash = false;
     private static bool _allowParallaxOneBackgrounds = false;
+    private static bool _currentlyRenderingForeground = false;
+    private static BlendState _foregroundBlendState = BlendState.AlphaBlend;
+
+    private enum ForegroundFlushGroup { AlphaBlend, Additive, Direct }
+    private static ForegroundFlushGroup _currentFlushGroup = ForegroundFlushGroup.AlphaBlend;
+    private static readonly BlendState _additiveFlushBlendState = new BlendState
+    {
+        ColorSourceBlend = Blend.One,
+        ColorDestinationBlend = Blend.One,
+        AlphaSourceBlend = Blend.One,
+        AlphaDestinationBlend = Blend.One
+    };
+
     private static bool _interceptDistortRender = false;
 
     private enum DisableFloorFunctionsMode
@@ -85,6 +99,8 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
     private static Vector2 UnsmoothedCameraPosition;
     private static Matrix UnsmoothedCameraMatrix;
     private static Matrix UnsmoothedCameraInverse;
+
+    private static Vector2 _lastPlayerOffset;
 
     private readonly HashSet<Hook> _hooks = new();
 
@@ -760,10 +776,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
 	private static void BackdropRenderer_Update(On.Celeste.BackdropRenderer.orig_Update orig, BackdropRenderer self, Scene scene)
 	{
-        if (MotionSmoothingModule.Settings.RenderBackgroundHires)
-        {
-            _disableFloorFunctions = DisableFloorFunctionsMode.Rational;
-        }
+        _disableFloorFunctions = DisableFloorFunctionsMode.Rational;
 
 		orig(self, scene);
 
@@ -774,24 +787,55 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
     {
         if (
             HiresRenderer.Instance is not { } renderer
-            || MotionSmoothingModule.Settings.RenderBackgroundHires
-            || !_currentlyRenderingBackground
             || (
                 _currentRenderTarget != GameplayBuffers.Level.Target
                 && _currentRenderTarget != renderer.LargeLevelBuffer.Target
             )
         ) {
-            // The foreground gets rendered like normal, and the smoothed camera position automatically lines it
-            // up with the gameplay. We don't menually offset this because then parallax foregrounds don't work.
-            // Similarly, when rendering the background Hires, we don't need to composite anything ourselves.
+            orig(self, scene);
+            return;
+        }
+
+        if (
+            _currentlyRenderingBackground && MotionSmoothingModule.Settings.RenderBackgroundHires
+            || !_currentlyRenderingBackground && MotionSmoothingModule.Settings.RenderForegroundHires
+        ) {
+            _disableFloorFunctions = DisableFloorFunctionsMode.Rational;
+            orig(self, scene);
+            _disableFloorFunctions = DisableFloorFunctionsMode.Integer;
+
+            return;
+        }
+
+
+
+        // Now we're free to assume we're doing some weird render small and scale up stuff.
+        
+        if (!_currentlyRenderingBackground)
+        {
+            // Render foreground backdrops into a small buffer grouped by compatible blend states,
+            // flushing (scaling up) to the level buffer at each group transition.
+            Engine.Instance.GraphicsDevice.SetRenderTarget(renderer.SmallBuffer);
+            Engine.Instance.GraphicsDevice.Clear(Color.Transparent);
+
+            _currentlyRenderingForeground = true;
+            _foregroundBlendState = BlendState.AlphaBlend;
+            _currentFlushGroup = ForegroundFlushGroup.AlphaBlend;
             _disableFloorFunctions = DisableFloorFunctionsMode.Rational;
 
             orig(self, scene);
 
             _disableFloorFunctions = DisableFloorFunctionsMode.Integer;
 
+            // Only flush if we're still on the small buffer (last group was bufferable)
+            if (_currentRenderTarget == renderer.SmallBuffer.Target)
+                FlushForegroundSmallBuffer(renderer, _currentFlushGroup);
+
+            _currentlyRenderingForeground = false;
             return;
         }
+
+
 
         _enableLargeLevelBuffer = false;
         _allowParallaxOneBackgrounds = false;
@@ -854,9 +898,11 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 			cursor.Emit(OpCodes.Pop);                  // Stack: []
 			cursor.Emit(OpCodes.Br, skip);
 			
-			// Render path: restore Scene and fall through to callvirt
+			// Render path: handle foreground buffer transitions, then restore Scene
 			cursor.MarkLabel(doRender);
-			cursor.Emit(OpCodes.Ldloc, sceneLocal);    // Stack: [Backdrop, Scene]
+			cursor.Emit(OpCodes.Dup);                              // Stack: [Backdrop, Backdrop]
+			cursor.EmitDelegate(BeforeForegroundBackdropRender);   // Stack: [Backdrop]
+			cursor.Emit(OpCodes.Ldloc, sceneLocal);                // Stack: [Backdrop, Scene]
 			
 			// Move past the callvirt to mark the skip label
 			cursor.GotoNext(MoveType.After, i => i.MatchCallvirt<Backdrop>("Render"));
@@ -873,12 +919,104 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 			return true;
 		}
 
+		// The two-phase parallax filter only applies when rendering to the Level
+		// buffer itself. Other renderers (e.g. StylegroundMasks' DummyBackdropRenderer)
+		// render to their own buffers and need all backdrops unfiltered.
+		if (HiresRenderer.Instance is { } renderer
+			&& _currentRenderTarget != GameplayBuffers.Level.Target
+			&& _currentRenderTarget != renderer.LargeLevelBuffer.Target)
+		{
+			return true;
+		}
+
 		bool isParallaxOne = self is Parallax && self.Scroll.X == 1.0 && self.Scroll.Y == 1.0;
 
 		return _allowParallaxOneBackgrounds == isParallaxOne;
 	}
 
+	private static ForegroundFlushGroup GetFlushGroup(BlendState blendState)
+	{
+		if (blendState.ColorBlendFunction != BlendFunction.Add)
+			return ForegroundFlushGroup.Direct;
 
+		// Additive: destination blend is One (purely additive accumulation)
+		if (blendState.ColorDestinationBlend == Blend.One)
+			return ForegroundFlushGroup.Additive;
+
+		// AlphaBlend: premultiplied alpha (One, InverseSourceAlpha) or opaque (*, Zero)
+		if (blendState.ColorDestinationBlend == Blend.Zero)
+			return ForegroundFlushGroup.AlphaBlend;
+		if (blendState.ColorDestinationBlend == Blend.InverseSourceAlpha
+		    && blendState.ColorSourceBlend == Blend.One)
+			return ForegroundFlushGroup.AlphaBlend;
+
+		return ForegroundFlushGroup.Direct;
+	}
+
+	private static void BeforeForegroundBackdropRender(Backdrop backdrop)
+	{
+		if (!_currentlyRenderingForeground || HiresRenderer.Instance is not { } renderer)
+			return;
+
+		// Track blend state, mirroring BackdropRenderer's own running blendState variable.
+		// Only Parallax backdrops update the running blend state; non-Parallax SpriteBatch
+		// backdrops inherit it via StartSpritebatch(blendState).
+		if (backdrop is Parallax p)
+			_foregroundBlendState = p.BlendState;
+
+		// Non-SpriteBatch backdrops manage their own rendering and blend states,
+		// so we can't predict their blend state — render them directly.
+		var newGroup = !backdrop.UseSpritebatch
+			? ForegroundFlushGroup.Direct
+			: GetFlushGroup(_foregroundBlendState);
+
+		if (newGroup == _currentFlushGroup)
+			return;
+
+		bool spriteBatchActive = (bool)_beginCalledField.GetValue(Draw.SpriteBatch);
+		var savedParams = _lastSpriteBatchBeginParams;
+		if (spriteBatchActive) Draw.SpriteBatch.End();
+
+		bool wasOnSmallBuffer = _currentRenderTarget == renderer.SmallBuffer.Target;
+		bool newNeedsSmallBuffer = newGroup != ForegroundFlushGroup.Direct;
+
+		// Flush accumulated small-buffer content to level buffer
+		if (wasOnSmallBuffer)
+			FlushForegroundSmallBuffer(renderer, _currentFlushGroup);
+
+		// Set render target for the new group
+		if (newNeedsSmallBuffer)
+		{
+			Engine.Instance.GraphicsDevice.SetRenderTarget(renderer.SmallBuffer);
+			Engine.Instance.GraphicsDevice.Clear(Color.Transparent);
+		}
+		else
+		{
+			Engine.Instance.GraphicsDevice.SetRenderTarget(GameplayBuffers.Level);
+		}
+
+		_currentFlushGroup = newGroup;
+
+		if (spriteBatchActive && savedParams is var (sm, bs, ss, ds, rs, eff, mx))
+			Draw.SpriteBatch.Begin(sm, bs, ss, ds, rs, eff, mx);
+	}
+
+	private static void FlushForegroundSmallBuffer(HiresRenderer renderer, ForegroundFlushGroup group)
+	{
+		bool spriteBatchActive = (bool)_beginCalledField.GetValue(Draw.SpriteBatch);
+		if (spriteBatchActive) Draw.SpriteBatch.End();
+
+		var flushBlendState = group == ForegroundFlushGroup.Additive
+			? _additiveFlushBlendState
+			: BlendState.AlphaBlend;
+
+		Engine.Instance.GraphicsDevice.SetRenderTarget(GameplayBuffers.Level);
+		Draw.SpriteBatch.Begin(SpriteSortMode.Deferred, flushBlendState,
+			SamplerState.PointClamp, DepthStencilState.None, RasterizerState.CullNone,
+			null, Matrix.Identity);
+		Draw.SpriteBatch.Draw(renderer.SmallBuffer, Vector2.Zero, Color.White);
+		Draw.SpriteBatch.End();
+	}
 
     private static void GameplayRenderer_Render(On.Celeste.GameplayRenderer.orig_Render orig, GameplayRenderer self, Scene scene)
     {
@@ -1014,6 +1152,8 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 			{
 				offset.Y = 0;
 			}
+
+            _lastPlayerOffset = offset;
 		}
 
         if (Engine.Scene is Level { Transitioning: true } or { Paused: true })
@@ -1080,24 +1220,6 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
         var renderTargets = Draw.SpriteBatch.GraphicsDevice.GetRenderTargets();
 
-
-
-        var state = MotionSmoothingHandler.Instance.GetState(self) as IPositionSmoothingState;
-
-		Vector2 offset = state.SmoothedRealPosition - state.SmoothedRealPosition.Round();
-
-        if (!PlayerSmoother.AllowSubpixelRenderingX)
-        {
-            offset.X = 0;
-        }
-
-        if (!PlayerSmoother.AllowSubpixelRenderingY)
-        {
-            offset.Y = 0;
-        }
-
-
-
         Engine.Instance.GraphicsDevice.SetRenderTarget(renderer.SmallBuffer);
         Engine.Instance.GraphicsDevice.Clear(Color.Transparent);
 
@@ -1107,11 +1229,25 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
         Engine.Instance.GraphicsDevice.SetRenderTargets(renderTargets);
 
+
+
+        _offsetWhenDrawnTo.Clear();
+        foreach (var target in renderTargets)
+        {
+            _offsetWhenDrawnTo.Add(target.RenderTarget);
+        }
+
         Strategies.PushSpriteSmoother.TemporarilyDisablePushSpriteSmoothing = true;
 		Draw.SpriteBatch.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend, SamplerState.PointClamp, DepthStencilState.None, RasterizerState.CullNone, null, Matrix.Identity);
-		Draw.SpriteBatch.Draw(GameplayBuffers.Gameplay, Vector2.Zero, Color.White);
+		Draw.SpriteBatch.Draw(
+            renderer.SmallBuffer,
+            MotionSmoothingModule.Settings.RenderMadelineWithSubpixels ? _lastPlayerOffset : Vector2.Zero,
+            Color.White
+        );
 		Draw.SpriteBatch.End();
 		Strategies.PushSpriteSmoother.TemporarilyDisablePushSpriteSmoothing = false;
+
+        _offsetWhenDrawnTo.Clear();
 
 
 
@@ -1239,15 +1375,18 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
         private static VertexPositionColor[] outputVertices = new VertexPositionColor[4096];
         private static int outputCount;
 
-        public static void DrawPixelated(Matrix matrix, VertexPositionColor[] vertices, int vertexCount)
-        {
+        public static void DrawPixelated(
+            Matrix matrix,
+            VertexPositionColor[] vertices,
+            int vertexCount
+        ) {
             outputCount = 0;
 
             float offsetX = 0f, offsetY = 0f;
 
             for (int i = 0; i + 2 < vertexCount; i += 3)
             {
-                bool newGroup = (i == 0);
+                bool newGroup = i == 0;
 
                 if (!newGroup)
                 {
@@ -1506,13 +1645,25 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
             return null;
         }
 
+        if (_suppressLargeBuffers) return null;
+
+        // Gameplay and Level: enable flags always take absolute precedence.
+        // Never fall through to _largeExternalTextureMap for these, as other
+        // mods swapping buffer targets could bypass the flag checks.
+        if (texture == GameplayBuffers.Gameplay.Target)
+            return _enableLargeGameplayBuffer ? renderer.LargeGameplayBuffer : null;
+
+        if (texture == GameplayBuffers.Level.Target)
+            return _enableLargeLevelBuffer ? renderer.LargeLevelBuffer : null;
+
+        // External textures (including hot-created entries for TempA/TempB
+        // from other mods like StylegroundMasks).
         if (_largeExternalTextureMap.TryGetValue(texture, out var largeRenderTarget))
         {
             if (largeRenderTarget?.Target != null)
             {
                 return largeRenderTarget;
             }
-
             else
             {
                 // Large target was disposed, remove stale entry
@@ -1521,25 +1672,12 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
             }
         }
 
-        else if (texture == GameplayBuffers.Gameplay.Target && _enableLargeGameplayBuffer)
-        {
-            return renderer.LargeGameplayBuffer;
-        }
+        // TempA/TempB: use standard large buffer when enabled, null otherwise.
+        if (texture == GameplayBuffers.TempA.Target)
+            return _enableLargeTempABuffer ? renderer.LargeTempABuffer : null;
 
-        else if (texture == GameplayBuffers.Level.Target && _enableLargeLevelBuffer)
-        {
-            return renderer.LargeLevelBuffer;
-        }
-
-        else if (texture == GameplayBuffers.TempA.Target && _enableLargeTempABuffer)
-        {
-            return renderer.LargeTempABuffer;
-        }
-
-        else if (texture == GameplayBuffers.TempB.Target && _enableLargeTempBBuffer)
-        {
-            return renderer.LargeTempBBuffer;
-        }
+        if (texture == GameplayBuffers.TempB.Target)
+            return _enableLargeTempBBuffer ? renderer.LargeTempBBuffer : null;
 
         return null;
     }
@@ -1551,13 +1689,22 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
             return texture;
         }
 
+        if (_suppressLargeBuffers) return texture;
+
+        // Gameplay and Level: enable flags always take absolute precedence.
+        if (texture == GameplayBuffers.Gameplay.Target)
+            return _enableLargeGameplayBuffer ? renderer.LargeGameplayBuffer : texture;
+
+        if (texture == GameplayBuffers.Level.Target)
+            return _enableLargeLevelBuffer ? renderer.LargeLevelBuffer : texture;
+
+        // External textures (including hot-created entries for TempA/TempB).
         if (_largeExternalTextureMap.TryGetValue(texture, out var largeRenderTarget))
         {
             if (largeRenderTarget?.Target != null)
             {
                 return largeRenderTarget.Target;
             }
-
             else
             {
                 // Large target was disposed, remove stale entry
@@ -1567,25 +1714,12 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
             }
         }
 
-        else if (texture == GameplayBuffers.Gameplay.Target && _enableLargeGameplayBuffer)
-        {
-            return renderer.LargeGameplayBuffer;
-        }
+        // TempA/TempB: use standard large buffer when enabled, original otherwise.
+        if (texture == GameplayBuffers.TempA.Target)
+            return _enableLargeTempABuffer ? renderer.LargeTempABuffer : texture;
 
-        else if (texture == GameplayBuffers.Level.Target && _enableLargeLevelBuffer)
-        {
-            return renderer.LargeLevelBuffer;
-        }
-
-        else if (texture == GameplayBuffers.TempA.Target && _enableLargeTempABuffer)
-        {
-            return renderer.LargeTempABuffer;
-        }
-
-        else if (texture == GameplayBuffers.TempB.Target && _enableLargeTempBBuffer)
-        {
-            return renderer.LargeTempBBuffer;
-        }
+        if (texture == GameplayBuffers.TempB.Target)
+            return _enableLargeTempBBuffer ? renderer.LargeTempBBuffer : texture;
 
         return texture;
     }
@@ -1718,7 +1852,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
             }
         }
 
-		else if (_forceZoomDrawingToScreen && _currentRenderTarget == null)
+		else if (_forceOffsetZoomDrawingToScreen && _currentRenderTarget == null)
 		{
 			transformMatrix = transformMatrix * ZoomMatrix;
 		}
@@ -1840,6 +1974,12 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
     private static Vector2 GetCurrentDrawingOffset(Texture sourceTexture, float x, float y, float scale)
     {
+        if (_forceOffsetZoomDrawingToScreen && _currentRenderTarget == null)
+        {
+            Vector2 offset = GetCameraOffset();
+            return new Vector2(x + offset.X * 1, y + offset.Y * 1);
+        }
+
         if (_offsetWhenDrawnTo.Contains(_currentRenderTarget))
         {
             Vector2 offset = GetCameraOffset();
@@ -2086,6 +2226,16 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
             return false;
         }
 
+        // Don't hot-create for Gameplay/Level — they have dedicated large versions
+        // and should never enter the external map. Other mods swapping buffer targets
+        // at runtime could otherwise bypass the enable flag checks and cause cascading
+        // hot creation.
+        if (smallTexture == GameplayBuffers.Gameplay.Target
+            || smallTexture == GameplayBuffers.Level.Target)
+        {
+            return false;
+        }
+
         VirtualRenderTarget largeTarget = GameplayBuffers.Create(
 			(int) (smallTexture.Width * Scale),
 			(int) (smallTexture.Height * Scale)
@@ -2197,29 +2347,70 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
     private static bool _inPixelatedDraw = false;
 
+    private static void FloorVerticesIfNeeded<T>(T[] vertices, int vertexCount) where T : struct, IVertexType
+    {
+        if (
+            _currentlyRenderingBackground && MotionSmoothingModule.Settings.RenderBackgroundHires
+            || !_currentlyRenderingBackground && MotionSmoothingModule.Settings.RenderForegroundHires
+        ) {
+            return;
+        }
+
+        if (vertexCount <= 0)
+            return;
+
+        // Use the first vertex's subpixel position as the offset for all vertices,
+        // so they all shift by the same amount and preserve relative geometry.
+        if (vertices is VertexPositionColor[] vpcVerts)
+        {
+            float offsetX = vpcVerts[0].Position.X - (float)Math.Floor(vpcVerts[0].Position.X);
+            float offsetY = vpcVerts[0].Position.Y - (float)Math.Floor(vpcVerts[0].Position.Y);
+            for (int i = 0; i < vertexCount; i++)
+            {
+                vpcVerts[i].Position.X -= offsetX;
+                vpcVerts[i].Position.Y -= offsetY;
+            }
+        }
+        else if (vertices is VertexPositionColorTexture[] vpctVerts)
+        {
+            float offsetX = vpctVerts[0].Position.X - (float)Math.Floor(vpctVerts[0].Position.X);
+            float offsetY = vpctVerts[0].Position.Y - (float)Math.Floor(vpctVerts[0].Position.Y);
+            for (int i = 0; i < vertexCount; i++)
+            {
+                vpctVerts[i].Position.X -= offsetX;
+                vpctVerts[i].Position.Y -= offsetY;
+            }
+        }
+        else if (vertices is LightingRenderer.VertexPositionColorMaskTexture[] vpcmtVerts)
+        {
+            float offsetX = vpcmtVerts[0].Position.X - (float)Math.Floor(vpcmtVerts[0].Position.X);
+            float offsetY = vpcmtVerts[0].Position.Y - (float)Math.Floor(vpcmtVerts[0].Position.Y);
+            for (int i = 0; i < vertexCount; i++)
+            {
+                vpcmtVerts[i].Position.X -= offsetX;
+                vpcmtVerts[i].Position.Y -= offsetY;
+            }
+        }
+    }
+
     private static bool TryDrawPixelated<T>(Matrix matrix, T[] vertices, int vertexCount) where T : struct, IVertexType
     {
-        if (_inPixelatedDraw)
+        if (_inPixelatedDraw || vertexCount > 100)
         {
             return false;
         }
 
-        var renderTargets = Draw.SpriteBatch.GraphicsDevice.GetRenderTargets();
-
-        if (renderTargets == null || renderTargets.Length == 0)
-        {
-            return false;
-        }
-
-        if (!_largeTextures.Contains(renderTargets[0].RenderTarget))
-        {
+        if (
+            _currentRenderTarget == null
+            || !_largeTextures.Contains(_currentRenderTarget)
+        ) {
             return false;
         }
 
         // Refuse to draw more than 100 vertices at a time for performance
         // (this prevents the background in the badeline fight from getting
         // this treatment, which is unfortunately too slow)
-        if (vertices is VertexPositionColor[] vpcVertices && vertexCount < 100)
+        if (vertices is VertexPositionColor[] vpcVertices)
         {
             _inPixelatedDraw = true;
             PixelatedRenderer.DrawPixelated(matrix, vpcVertices, vertexCount);
@@ -2235,6 +2426,11 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
     {
         var cursor = new ILCursor(il);
         cursor.Index = 0;
+
+        // Floor vertex positions when not rendering foreground
+        cursor.Emit(OpCodes.Ldarg_1);
+        cursor.Emit(OpCodes.Ldarg_2);
+        cursor.EmitDelegate<Action<T[], int>>(FloorVerticesIfNeeded);
 
         // Try the pixelated path first
         cursor.Emit(OpCodes.Ldarg_0);
@@ -2259,18 +2455,6 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
         var cursor = new ILCursor(il);
         cursor.Index = 0;
 
-        // Try the pixelated path first
-        cursor.Emit(OpCodes.Ldarg_0);
-        cursor.Emit(OpCodes.Ldarg_1);
-        cursor.Emit(OpCodes.Ldarg_2);
-        cursor.EmitDelegate<Func<Matrix, T[], int, bool>>(TryDrawPixelated);
-
-        var continueLabel = cursor.DefineLabel();
-        cursor.Emit(OpCodes.Brfalse_S, continueLabel);
-        cursor.Emit(OpCodes.Ret);
-        cursor.MarkLabel(continueLabel);
-
-        // Fallback: scale matrix multiplication (non-VPC types, or non-large textures)
         cursor.Emit(OpCodes.Ldarg_0);
         cursor.EmitDelegate(GetScaleMatrixForDrawVertices);
         cursor.EmitDelegate(MultiplyMatrices);
@@ -2350,7 +2534,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 		if (Everest.Loader.TryGetDependency(spirialisHelper, out var spirialisHelperModule))
 		{
             // No exact version check here because there was no public repo to take out a PR on
-            AddSpirialisHelperHook();
+            AddSpirialisHelperHooks();
 		}
 
         
@@ -2458,10 +2642,11 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
 
 	private delegate void orig_DrawTimeStopEntities(object self);
+	private delegate void orig_RenderTimestopEntities(object self);
 
 	// noinlining necessary to avoid crashes when the jit attempts inline this method while jitting methods that use this function
 	[MethodImpl(MethodImplOptions.NoInlining)]
-	private void AddSpirialisHelperHook()
+	private void AddSpirialisHelperHooks()
 	{
 		Type t_TimeController = Type.GetType("Celeste.Mod.Spirialis.TimeController, Spirialis");
 		MethodInfo m_DrawTimeStopEntities = t_TimeController?.GetMethod(
@@ -2473,13 +2658,30 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 		{
 			AddHook(new Hook(m_DrawTimeStopEntities, DrawTimeStopEntitiesHook));
 		}
+
+		MethodInfo m_RenderTimestopEntities = t_TimeController?.GetMethod(
+			"RenderTimestopEntities",
+			BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic
+		);
+
+		if (m_RenderTimestopEntities != null)
+		{
+			AddHook(new Hook(m_RenderTimestopEntities, RenderTimestopEntitiesHook));
+		}
 	}
 
 	private static void DrawTimeStopEntitiesHook(orig_DrawTimeStopEntities orig, object self)
 	{
-		_forceZoomDrawingToScreen = true;
+		_forceOffsetZoomDrawingToScreen = true;
 		orig(self);
-		_forceZoomDrawingToScreen = false;
+		_forceOffsetZoomDrawingToScreen = false;
+	}
+
+	private static void RenderTimestopEntitiesHook(orig_RenderTimestopEntities orig, object self)
+	{
+		_suppressLargeBuffers = true;
+		orig(self);
+		_suppressLargeBuffers = false;
 	}
 
 

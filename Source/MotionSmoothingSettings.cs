@@ -34,8 +34,9 @@ public class MotionSmoothingSettings : EverestModuleSettings
     private bool _tasMode = false;
     private int _frameRate = 120;
     private UnlockCameraStrategy _unlockCameraStrategy = UnlockCameraStrategy.Hires;
-    private bool _renderBackgroundHires = true;
     private bool _renderMadelineWithSubpixels = true;
+    private bool _renderBackgroundHires = true;
+    private bool _renderForegroundHires = true;
 	private bool _hideStretchedEdges = true;
     private SmoothingMode _smoothingMode = SmoothingMode.Extrapolate;
     private UpdateMode _updateMode = UpdateMode.Interval;
@@ -45,9 +46,10 @@ public class MotionSmoothingSettings : EverestModuleSettings
     private bool _gameSpeedInLevelOnly = true;
 
     private FrameRateTextMenuItem _frameRateMenuItem;
-
-    private TextMenu.Item _renderBackgroundHiresItem;
+    
     private TextMenu.Item _renderMadelineWithSubpixelsItem;
+    private TextMenu.Item _renderBackgroundHiresItem;
+    private TextMenu.Item _renderForegroundHiresItem;
 	private TextMenu.Item _hideStretchedEdgesItem;
 
     public bool Enabled
@@ -69,10 +71,10 @@ public class MotionSmoothingSettings : EverestModuleSettings
     }
 
     [DefaultButtonBinding(new Buttons(), Keys.F8)]
-    public ButtonBinding ButtonToggleSmoothing { get; set; }
+    public ButtonBinding ButtonToggleMotionSmoothingEnabled { get; set; }
 
     [DefaultButtonBinding(new Buttons(), Keys.F9)]
-    public ButtonBinding ButtonToggleUnlockStrategy { get; set; }
+    public ButtonBinding ButtonChangeCameraSmoothingMode { get; set; }
 
     public int FrameRate
     {
@@ -141,10 +143,15 @@ public class MotionSmoothingSettings : EverestModuleSettings
             UnlockCameraStrategy = (UnlockCameraStrategy)index;
 
 			bool shouldDisableRenderBackgroundHires = UnlockCameraStrategy != UnlockCameraStrategy.Hires;
+
+            _renderMadelineWithSubpixelsItem.Disabled = shouldDisableRenderBackgroundHires;
+			_renderMadelineWithSubpixelsItem.Selectable = !shouldDisableRenderBackgroundHires;
+
             _renderBackgroundHiresItem.Disabled = shouldDisableRenderBackgroundHires;
             _renderBackgroundHiresItem.Selectable = !shouldDisableRenderBackgroundHires;
-			_renderMadelineWithSubpixelsItem.Disabled = shouldDisableRenderBackgroundHires;
-			_renderMadelineWithSubpixelsItem.Selectable = !shouldDisableRenderBackgroundHires;
+
+             _renderForegroundHiresItem.Disabled = shouldDisableRenderBackgroundHires;
+            _renderForegroundHiresItem.Selectable = !shouldDisableRenderBackgroundHires;
 
 			bool shouldDisableHideStretchedEdges = UnlockCameraStrategy == UnlockCameraStrategy.Off;
             _hideStretchedEdgesItem.Disabled = shouldDisableHideStretchedEdges;
@@ -155,54 +162,12 @@ public class MotionSmoothingSettings : EverestModuleSettings
 
         strategySlider.AddDescription(
             menu,
-            "Lets the camera move continuously: that is, half of a pixel\n" +
-            "could be shown on the side of the screen while the camera \n" +
-            "is moving. This is especially noticeable when the camera\n" +
-			"is slowly catching up to the player.\n\n" +
-            "Fancy: Produces the highest quality visuals, but is\n" +
-            "incompatible with a small number of other mods and may\n" +
-            "impact performance on low-end systems.\n\n" +
-            "Fast: Has negligible performance impact, but makes\n" +
-            "the entire background jitter uncontrollably when moving."
-        );
-    }
-
-    public bool RenderBackgroundHires
-    {
-        get => _renderBackgroundHires;
-        set
-        {
-            _renderBackgroundHires = value;
-            MotionSmoothingModule.Instance.ApplySettings();
-        }
-    }
-
-    public void CreateRenderBackgroundHiresEntry(TextMenu menu, bool inGame)
-    {
-        _renderBackgroundHiresItem = new TextMenu.OnOff(
-            "Smooth Background",
-            _renderBackgroundHires
-        );
-
-        (_renderBackgroundHiresItem as TextMenu.OnOff).Change(value =>
-        {
-            RenderBackgroundHires = value;
-        });
-
-        // Set initial state based on UnlockCameraStrategy
-        bool shouldDisable = UnlockCameraStrategy != UnlockCameraStrategy.Hires;
-        _renderBackgroundHiresItem.Disabled = shouldDisable;
-        _renderBackgroundHiresItem.Selectable = !shouldDisable;
-
-        menu.Add(_renderBackgroundHiresItem);
-
-        _renderBackgroundHiresItem.AddDescription(
-            menu,
-            "Only applies if Smooth Camera is set to Fancy.\n" +
-            "Determines whether the background is drawn at a 6x scale.\n" +
-            "This makes for a much smoother result, particularly with\n" +
-            "parallax, and fixes occasional slightly incorrect colors\n" +
-            "(for example in the final checkpoints of Farewell)"
+            "Lets the camera move continuously: that is, half of a pixel could be shown on\n" +
+            "the side of the screen while the camera is moving. This is especially noticeable\n" +
+            "when the camera is moving slowly.\n\n" +
+            "Fancy: The highest quality result, but may impact performance on low-end systems.\n\n" +
+            "Fast: Has negligible performance impact, but makes the entire background jitter\n" +
+            "uncontrollably when moving." 
         );
     }
 
@@ -239,12 +204,91 @@ public class MotionSmoothingSettings : EverestModuleSettings
 
         _renderMadelineWithSubpixelsItem.AddDescription(
             menu,
-            "Only applies if Smooth Camera is set to Fancy.\n" +
-            "Determines whether Madeline is drawn at her exact subpixel\n" +
-            "position (i.e. offset from the pixel grid). This makes\n" +
-			"Madeline's sprite appear much more smooth and clear when\n" +
-            "moving. When not moving, Madeline will always be drawn aligned\n" +
-            "to the grid, so that subpixel information cannot be gleaned.\n"
+            "Only applies if Smooth Camera is set to Fancy. Turning this on lets Madeline\n" +
+            "be drawn at her exact subpixel position (i.e. offset from the pixel grid),\n" +
+			"which dramatically improves the clarity of her sprite while moving. There are\n" +
+            "many safeguards in place to prevent subpixel information from being gleanable.\n" +
+            "Turning this off may mildly improve performance.\n"
+        );
+    }
+
+
+
+    public bool RenderBackgroundHires
+    {
+        get => _renderBackgroundHires;
+        set
+        {
+            _renderBackgroundHires = value;
+            MotionSmoothingModule.Instance.ApplySettings();
+        }
+    }
+
+    public void CreateRenderBackgroundHiresEntry(TextMenu menu, bool inGame)
+    {
+        _renderBackgroundHiresItem = new TextMenu.OnOff(
+            "Smooth Background",
+            _renderBackgroundHires
+        );
+
+        (_renderBackgroundHiresItem as TextMenu.OnOff).Change(value =>
+        {
+            RenderBackgroundHires = value;
+        });
+
+        // Set initial state based on UnlockCameraStrategy
+        bool shouldDisable = UnlockCameraStrategy != UnlockCameraStrategy.Hires;
+        _renderBackgroundHiresItem.Disabled = shouldDisable;
+        _renderBackgroundHiresItem.Selectable = !shouldDisable;
+
+        menu.Add(_renderBackgroundHiresItem);
+
+        _renderBackgroundHiresItem.AddDescription(
+            menu,
+            "Only applies if Smooth Camera is set to Fancy. Turning this on lets the\n" +
+            "background draw unlocked from the pixel grid, which makes parallax\n" +
+            "backgrounds substantially smoother. Turning this off may mildly *reduce*\n" +
+            "performance, especially in levels with unusually complicated backgrounds."
+        );
+    }
+
+
+
+    public bool RenderForegroundHires
+    {
+        get => _renderForegroundHires;
+        set
+        {
+            _renderForegroundHires = value;
+            MotionSmoothingModule.Instance.ApplySettings();
+        }
+    }
+
+    public void CreateRenderForegroundHiresEntry(TextMenu menu, bool inGame)
+    {
+        _renderForegroundHiresItem = new TextMenu.OnOff(
+            "Smooth Foreground",
+            _renderForegroundHires
+        );
+
+        (_renderForegroundHiresItem as TextMenu.OnOff).Change(value =>
+        {
+            RenderForegroundHires = value;
+        });
+
+        // Set initial state based on UnlockCameraStrategy
+        bool shouldDisable = UnlockCameraStrategy != UnlockCameraStrategy.Hires;
+        _renderForegroundHiresItem.Disabled = shouldDisable;
+        _renderForegroundHiresItem.Selectable = !shouldDisable;
+
+        menu.Add(_renderForegroundHiresItem);
+
+        _renderForegroundHiresItem.AddDescription(
+            menu,
+            "Only applies if Smooth Camera is set to Fancy. Turning this on lets the\n" +
+            "foreground draw unlocked from the pixel grid; for example, the snow in\n" +
+            "chapter 7 will drift smoothly. Turning this off may moderately *reduce*\n" +
+            "performance, especially in levels with unusually complicated foregrounds."
         );
     }
 
@@ -293,24 +337,22 @@ public class MotionSmoothingSettings : EverestModuleSettings
 
 
     [SettingSubText(
-        "Extrapolate: [Recommended] Predicts object positions\n" +
-        "        * Should feel very similar to vanilla\n" +
-        "Interpolate: Smooths object position\n" +
-        "        * The smoothest option, at the cost of 1-2 frames of delay")]
-    public SmoothingMode SmoothingMode
+        "Extrapolate: [Recommended] Predicts object positions in between physics frames\n" +
+        "based on their velocities.\n\n" +
+        "Interpolate: Uses the last two physics frames to compute the exact positions\n" +
+        "in between. This is more technically correct, but it adds 1-2 frames of input delay.")]
+    public SmoothingMode ObjectSmoothing
     {
         get => _smoothingMode;
         set => _smoothingMode = value;
     }
 
     [SettingSubText(
-        "Interval: Update the game every N draws\n" +
-        "        * FPS must be a multiple of 60\n" +
-        "Dynamic: Update and draw at different rates\n" +
-        "        * FPS can be any value\n" +
-        "        * More likely to break other mods"
+        "Interval: [Recommended] Has the best compatibility, but restricts the FPS\n" +
+        "to multiples of 60.\n" +
+        "Dynamic: Allows any FPS, but may rarely break other mods (e.g. TAS Recorder)."
     )]
-    public UpdateMode UpdateMode
+    public UpdateMode FramerateIncreaseMethod
     {
         get => _updateMode;
         set
@@ -323,11 +365,11 @@ public class MotionSmoothingSettings : EverestModuleSettings
     }
 
     [SettingSubText(
-        "*** This mode does not affect gameplay in levels! ***\n" +
-        "By default, the Overworld will be updated at the full\n" +
+        "*** This does not affect gameplay in levels! ***\n" +
+        "By default, the overworld is updated at the full\n" +
         "framerate since accuracy there is not as important.\n" +
-        "This mode will keep the Overworld update at 60fps as\n" +
-        "well, so that TASes will function properly.")]
+        "Turning this on locks the overworld update at 60 FPS\n" +
+        "so that TASes function properly.")]
     public bool TasMode
     {
         get => _tasMode;

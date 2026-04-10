@@ -1,6 +1,6 @@
 # Troublesome Maps
 
-Maps and mods to check when messing with details.
+Maps and mods to check when messing with details. Check all of these with and without subpixel Madeline and smooth background.
 
 - Strawberry Jam: the Advanced Heart Side.
 	- Color grade masks and bloom masks at the end of flag 18 and the start of flag 17
@@ -13,6 +13,7 @@ Maps and mods to check when messing with details.
     - Ruins of Hallownest. The bloom mask can be broken since it's loaded so early
 - Extended Variants: Zoom
 - auspicioushelper: test map
+- Lucky Helper: Subpixel Madeline off
 - CelesteTAS: hitboxes
 - SpeedrunTool
 	- Save state, teleport, load state
@@ -23,4 +24,4 @@ Maps and mods to check when messing with details.
 	- Bloom masks around globes
     - Drawing hires gameplay
 - Oblivion
-	- HoldableBarriers in room 4 
+	- HoldableBarriers in room 4
