@@ -125,6 +125,7 @@ public class MotionSmoothingModule : EverestModule
 	public override void Initialize()
 	{
         CelesteTasInterop.Load();
+        TimeDilationInterop.Load();
 
 		ApplySettings();
 	}
@@ -162,8 +163,12 @@ public class MotionSmoothingModule : EverestModule
 
 
 
-        // If the game speed is modified, then we have to use dynamic mode
-        if (Settings.FramerateIncreaseMethod == UpdateMode.Dynamic || Settings.GameSpeedModified)
+        // If the game speed is modified, then we have to use dynamic mode.
+        // Same for TimeDilation's TrueSlowdown, which varies the physics rate based on player
+        // speed and cannot fit into Interval mode's fixed draws-per-update ratio.
+        if (Settings.FramerateIncreaseMethod == UpdateMode.Dynamic
+            || Settings.GameSpeedModified
+            || TimeDilationInterop.TrueSlowdownEnabled)
         {
             UpdateEveryNTicks.Disable();
             DecoupledGameTick.Enable();

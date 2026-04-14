@@ -90,7 +90,7 @@ public static class PlayerSmoother
         bool isNotStandingStillX = Math.Abs(playerSpeed.X) > 0.001 || Math.Abs(playerSpeed.Y) > 0.001;
         bool isNotStandingStillY = isNotStandingStillX;
         
-        var computedSpeed = (state.RealPositionHistory[0] - state.RealPositionHistory[1]) * 60;
+        var computedSpeed = (state.RealPositionHistory[0] - state.RealPositionHistory[1]) / SmoothingMath.SecondsPerUpdate;
 
         
 

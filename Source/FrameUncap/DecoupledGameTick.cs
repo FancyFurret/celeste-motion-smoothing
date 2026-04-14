@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Threading;
+using Celeste.Mod.MotionSmoothing.Interop;
 using Celeste.Mod.MotionSmoothing.Utilities;
 using Microsoft.Xna.Framework;
 using Monocle;
@@ -72,7 +73,7 @@ public class DecoupledGameTick : ToggleableFeature<DecoupledGameTick>, IFrameUnc
         {
             static double GetDeltaTime(float oldDt)
             {
-                if (MotionSmoothingModule.Settings.GameSpeedModified)
+                if (MotionSmoothingModule.Settings.GameSpeedModified || TimeDilationInterop.IsActive)
                     return Instance.TargetUpdateElapsedTime.TotalSeconds;
                 return oldDt;
             }
@@ -175,7 +176,16 @@ public class DecoupledGameTick : ToggleableFeature<DecoupledGameTick>, IFrameUnc
         var ticks = _game.gameTimer.Elapsed.Ticks;
         var timeSpan = TimeSpan.FromTicks(ticks - _previousTicks);
         _accumulatedElapsedTime += timeSpan;
-        _accumulatedUpdateElapsedTime += timeSpan;
+
+        // TimeDilation's TrueSlowdown is implemented as an IL hook on Game.AdvanceElapsedTime,
+        // which Dynamic mode bypasses entirely. Replicate its effect by scaling the update
+        // accumulator (but not the draw accumulator) so physics runs at 60 * factor Hz wall-clock
+        // while draws continue at the configured target framerate.
+        var updateFactor = TimeDilationInterop.EffectiveFactor;
+        _accumulatedUpdateElapsedTime += updateFactor == 1f
+            ? timeSpan
+            : TimeSpan.FromTicks((long)(timeSpan.Ticks * updateFactor));
+
         _accumulatedDrawElapsedTime += timeSpan;
         _previousTicks = ticks;
         return timeSpan;

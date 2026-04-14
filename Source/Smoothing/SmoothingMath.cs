@@ -1,3 +1,4 @@
+using Celeste.Mod.MotionSmoothing.Interop;
 using Microsoft.Xna.Framework;
 using Monocle;
 
@@ -5,7 +6,11 @@ namespace Celeste.Mod.MotionSmoothing.Smoothing;
 
 public static class SmoothingMath
 {
-    public static float SecondsPerUpdate => (float)(1f / MotionSmoothingModule.Settings.GameSpeed);
+    // Divide by TimeDilation's EffectiveFactor so the smoothing interval tracks the stretched
+    // wall-clock time between physics updates when TrueSlowdown is active. EffectiveFactor is
+    // 1f when inactive, so this is a no-op in that case.
+    public static float SecondsPerUpdate =>
+        (float)(1f / MotionSmoothingModule.Settings.GameSpeed) / TimeDilationInterop.EffectiveFactor;
 
     public static float Smooth(float[] history, double elapsedSeconds, SmoothingMode mode)
     {
