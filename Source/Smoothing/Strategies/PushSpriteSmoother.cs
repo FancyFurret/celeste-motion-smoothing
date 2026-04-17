@@ -91,8 +91,12 @@ public class PushSpriteSmoother : SmoothingStrategy<PushSpriteSmoother>
             : GetState(hair.Entity)) as IPositionSmoothingState;
         if (playerState == null) return Vector2.Zero;
 
+        // Subtract the unrounded real position so the offset cancels the subpixel component of
+        // entity.Position, leaving destY' = Round(SmoothedReal) + spriteOffset. Using the rounded
+        // OriginalDrawPosition instead would double-round and cause jitter at half-integer positions
+        // (e.g. ice FireBall moving at 0.5 px/frame) due to banker's-rounding parity flips.
         var targetPos = playerState.SmoothedRealPosition.Round();
-        return targetPos - playerState.OriginalDrawPosition;
+        return targetPos - playerState.OriginalRealPosition;
     }
 
     private Vector2 GetOffset(object obj)
@@ -101,7 +105,7 @@ public class PushSpriteSmoother : SmoothingStrategy<PushSpriteSmoother>
             return Vector2.Zero;
 
         var targetPos = state.SmoothedRealPosition.Round();
-        return targetPos - state.OriginalDrawPosition;
+        return targetPos - state.OriginalRealPosition;
     }
 
     private void HookComponentRender<T>() where T : Component
