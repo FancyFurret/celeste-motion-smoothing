@@ -83,12 +83,11 @@ public static class PlayerSmoother
     {
         var playerSpeed = player.Speed;
 
-        // Checking this prevents the player from being incorrectly
-        // smoothed while standing still on moving platforms.
-        // We initialize it in this bizarre way so MoveBlocks can
-        // override individual directions later.
-        bool isNotStandingStillX = Math.Abs(playerSpeed.X) > 0.001 || Math.Abs(playerSpeed.Y) > 0.001;
-        bool isNotStandingStillY = isNotStandingStillX;
+        // Checking this prevents the player from being incorrectly smoothed while standing still on
+        // moving platforms. Per-axis so that moving only in X doesn't enable Y subpixel rendering
+        // (and vice versa). The pusher overrides below add back the axis a moveblock is carrying us along.
+        bool isNotStandingStillX = Math.Abs(playerSpeed.X) > 0.001;
+        bool isNotStandingStillY = Math.Abs(playerSpeed.Y) > 0.001;
         
         var computedSpeed = (state.RealPositionHistory[0] - state.RealPositionHistory[1]) * 60;
 
