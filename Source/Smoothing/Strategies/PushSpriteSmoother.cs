@@ -91,12 +91,21 @@ public class PushSpriteSmoother : SmoothingStrategy<PushSpriteSmoother>
             : GetState(hair.Entity)) as IPositionSmoothingState;
         if (playerState == null) return Vector2.Zero;
 
-        // Subtract the unrounded real position so the offset cancels the subpixel component of
-        // entity.Position, leaving destY' = Round(SmoothedReal) + spriteOffset. Using the rounded
-        // OriginalDrawPosition instead would double-round and cause jitter at half-integer positions
-        // (e.g. ice FireBall moving at 0.5 px/frame) due to banker's-rounding parity flips.
+        // PlayerHair.Nodes[0] is computed in AfterUpdate from Sprite.RenderPosition (which reads
+        // Sprite.Entity.Position — always integer for an Actor, since subpixels live in
+        // ExactPosition via movementCounter) and floored again in Render. So the destination
+        // passed to PushSprite is integer-valued. Subtracting the *unrounded* real position
+        // (ExactPosition) would produce a fractional offset, and adding that to an integer node
+        // lands the destination on a half-integer — banker's-rounding parity flips it ±1 px
+        // (visible as hair jitter while jumping or floating in water, and worsened during the
+        // post-landing squash animation where Sprite.Scale.Y adds more fractional terms).
+        //
+        // Using OriginalDrawPosition (= Position.Round() captured at update time — integer for
+        // an Actor) keeps the offset integer, matching the integer stride that ValueSmoother
+        // applies to Player.Position via SmoothedRealPosition.Round(). The non-player-hair
+        // branch is unaffected (ice FireBall et al. go through GetOffset, not GetHairOffset).
         var targetPos = playerState.SmoothedRealPosition.Round();
-        return targetPos - playerState.OriginalRealPosition;
+        return targetPos - playerState.OriginalDrawPosition;
     }
 
     private Vector2 GetOffset(object obj)
