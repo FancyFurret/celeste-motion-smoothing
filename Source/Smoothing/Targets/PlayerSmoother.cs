@@ -41,10 +41,19 @@ public static class PlayerSmoother
     {
         GetExtrapolatedPositionAndUpdateIsSmoothing(player, state, elapsed);
 
-        if (ActorPushTracker.Instance.ApplyPusherOffset(player, elapsed, SmoothingMode.Interpolate, out var pushed))
-            return pushed;
+        var ownInterp = SmoothingMath.Interpolate(state.RealPositionHistory, elapsed);
 
-        return SmoothingMath.Interpolate(state.RealPositionHistory, elapsed);
+        if (ActorPushTracker.Instance.ApplyPusherOffset(player, elapsed, SmoothingMode.Interpolate, out var pushed, out var pusherVelocity))
+        {
+            // Per-axis: only take the pusher path on axes the pusher is moving on, otherwise
+            // integer-stepped `pushed` clobbers the player's own fractional walking extrapolation.
+            // Same issue as the Extrapolate branch (e.g. BounceBlock Y-bob while walking across).
+            if (Math.Abs(pusherVelocity.X) > 0.001) ownInterp.X = pushed.X;
+            if (Math.Abs(pusherVelocity.Y) > 0.001) ownInterp.Y = pushed.Y;
+            return ownInterp;
+        }
+
+        return ownInterp;
     }
 
     private static Vector2 Extrapolate(Player player, IPositionSmoothingState state, double elapsed)
@@ -98,8 +107,14 @@ public static class PlayerSmoother
         bool pusherOffsetApplied = ActorPushTracker.Instance.ApplyPusherOffset(player, elapsed, SmoothingMode.Extrapolate, out var pushed, out var pusherVelocity);
         if (pusherOffsetApplied)
         {
+            // Per-axis replacement: only take the pusher path on axes where the pusher is
+            // actually contributing motion. Otherwise `pushed.<axis> = lastDrawPosition.<axis>`
+            // (an integer snapshot) clobbers the player's own fractional walking extrapolation,
+            // producing integer-stepped motion and zero subpixel offset for the hires camera
+            // (visible as smearing on e.g. a vertically-winding BounceBlock the player walks across).
+            if (Math.Abs(pusherVelocity.X) > 0.001) smoothedPosition.X = pushed.X;
+            if (Math.Abs(pusherVelocity.Y) > 0.001) smoothedPosition.Y = pushed.Y;
             playerSpeed = pusherVelocity;
-            smoothedPosition = pushed;
         }
 
 
