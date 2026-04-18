@@ -41,10 +41,19 @@ public static class PlayerSmoother
     {
         GetExtrapolatedPositionAndUpdateIsSmoothing(player, state, elapsed);
 
-        if (ActorPushTracker.Instance.ApplyPusherOffset(player, elapsed, SmoothingMode.Interpolate, out var pushed))
-            return pushed;
+        var ownInterp = SmoothingMath.Interpolate(state.RealPositionHistory, elapsed);
 
-        return SmoothingMath.Interpolate(state.RealPositionHistory, elapsed);
+        if (ActorPushTracker.Instance.ApplyPusherOffset(player, elapsed, SmoothingMode.Interpolate, out var pushed, out var pusherVelocity))
+        {
+            // Per-axis: only take the pusher path on axes the pusher is moving on, otherwise
+            // integer-stepped `pushed` clobbers the player's own fractional walking extrapolation.
+            // Same issue as the Extrapolate branch (e.g. BounceBlock Y-bob while walking across).
+            if (Math.Abs(pusherVelocity.X) > 0.001) ownInterp.X = pushed.X;
+            if (Math.Abs(pusherVelocity.Y) > 0.001) ownInterp.Y = pushed.Y;
+            return ownInterp;
+        }
+
+        return ownInterp;
     }
 
     private static Vector2 Extrapolate(Player player, IPositionSmoothingState state, double elapsed)
@@ -83,12 +92,11 @@ public static class PlayerSmoother
     {
         var playerSpeed = player.Speed;
 
-        // Checking this prevents the player from being incorrectly
-        // smoothed while standing still on moving platforms.
-        // We initialize it in this bizarre way so MoveBlocks can
-        // override individual directions later.
-        bool isNotStandingStillX = Math.Abs(playerSpeed.X) > 0.001 || Math.Abs(playerSpeed.Y) > 0.001;
-        bool isNotStandingStillY = isNotStandingStillX;
+        // Checking this prevents the player from being incorrectly smoothed while standing still on
+        // moving platforms. Per-axis so that moving only in X doesn't enable Y subpixel rendering
+        // (and vice versa). The pusher overrides below add back the axis a moveblock is carrying us along.
+        bool isNotStandingStillX = Math.Abs(playerSpeed.X) > 0.001;
+        bool isNotStandingStillY = Math.Abs(playerSpeed.Y) > 0.001;
         
         var computedSpeed = (state.RealPositionHistory[0] - state.RealPositionHistory[1]) * 60;
 
@@ -99,8 +107,14 @@ public static class PlayerSmoother
         bool pusherOffsetApplied = ActorPushTracker.Instance.ApplyPusherOffset(player, elapsed, SmoothingMode.Extrapolate, out var pushed, out var pusherVelocity);
         if (pusherOffsetApplied)
         {
+            // Per-axis replacement: only take the pusher path on axes where the pusher is
+            // actually contributing motion. Otherwise `pushed.<axis> = lastDrawPosition.<axis>`
+            // (an integer snapshot) clobbers the player's own fractional walking extrapolation,
+            // producing integer-stepped motion and zero subpixel offset for the hires camera
+            // (visible as smearing on e.g. a vertically-winding BounceBlock the player walks across).
+            if (Math.Abs(pusherVelocity.X) > 0.001) smoothedPosition.X = pushed.X;
+            if (Math.Abs(pusherVelocity.Y) > 0.001) smoothedPosition.Y = pushed.Y;
             playerSpeed = pusherVelocity;
-            smoothedPosition = pushed;
         }
 
 
@@ -196,15 +210,17 @@ public static class PlayerSmoother
         );
     }
     
-    // The logic for when we should use subpixel rendering is identical to position extrapolation,
-    // except we don't just allow riding any moving solids (like moon blocks), but only specifically
-    // steerable move blocks.
+    // Mirrors UpdateIsSmoothing's pusher override: any moving solid we're riding contributes its
+    // moving axes (jumpthrus stay excluded, same as the IsSmoothing version). This is what lets
+    // subpixel rendering track the player on a diagonally-moving moveblock — without this, the
+    // per-axis init above would disable Y subpixel whenever the player's own Speed.Y is zero
+    // (e.g. running on a diagonal block where the block, not the player, supplies the Y motion).
     private static void UpdateAllowSubpixelRendering(bool pusherOffsetApplied, Vector2 pusherVelocity, Vector2 playerSpeed, bool isNotStandingStillX, bool isNotStandingStillY, IPositionSmoothingState state, Player player)
     {
-        bool ridingSteerableMoveBlock = pusherOffsetApplied && ActorPushTracker.Instance.IsPlayerRidingSteerableMoveBlock;
-        if (ridingSteerableMoveBlock && pusherVelocity.X != 0)
+        bool ridingMovingSolid = pusherOffsetApplied && ActorPushTracker.Instance.IsPlayerRidingSolid;
+        if (ridingMovingSolid && pusherVelocity.X != 0)
             isNotStandingStillX = true;
-        if (ridingSteerableMoveBlock && pusherVelocity.Y != 0)
+        if (ridingMovingSolid && pusherVelocity.Y != 0)
             isNotStandingStillY = true;
 
         bool isMovingInBothDirections = Math.Abs(playerSpeed.X) > 0.001 && Math.Abs(playerSpeed.Y) > 0.001;
