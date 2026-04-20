@@ -2505,9 +2505,19 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
     
     private delegate Vector2 orig_Floor(Vector2 self);
 
+    private static DisableFloorFunctionsMode GetEffectiveFloorMode()
+    {
+		if (MotionSmoothingModule.Settings.SillyMode)
+		{
+			return DisableFloorFunctionsMode.Continuous;
+		}
+		
+        return _disableFloorFunctions;
+    }
+
     private static Vector2 FloorHook(orig_Floor orig, Vector2 self)
     {
-        switch (_disableFloorFunctions)
+        switch (GetEffectiveFloorMode())
         {
             case DisableFloorFunctionsMode.Continuous:
                 return self;
@@ -2526,7 +2536,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
     private static Vector2 CeilingHook(orig_Ceiling orig, Vector2 self)
     {
-        switch (_disableFloorFunctions)
+        switch (GetEffectiveFloorMode())
         {
             case DisableFloorFunctionsMode.Continuous:
                 return self;
@@ -2545,7 +2555,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
     private static Vector2 RoundHook(orig_Round orig, Vector2 self)
     {
-        switch (_disableFloorFunctions)
+        switch (GetEffectiveFloorMode())
         {
             case DisableFloorFunctionsMode.Continuous:
                 return self;
