@@ -264,8 +264,10 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
         AddHook(new Hook(typeof(Calc).GetMethod(nameof(Calc.Ceiling), [typeof(Vector2)])!, CeilingHook));
         AddHook(new Hook(typeof(Calc).GetMethod(nameof(Calc.Round), [typeof(Vector2)])!, RoundHook));
 
-		if (MotionSmoothingModule.Settings.RenderMadelineWithSubpixels)
-		{
+		if (
+			MotionSmoothingModule.Settings.RenderMadelineWithSubpixels
+			&& !MotionSmoothingModule.Settings.SillyMode
+		) {
 			EnableHiresDistort();
 		}
 
@@ -1020,8 +1022,11 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
     private static void GameplayRenderer_Render(On.Celeste.GameplayRenderer.orig_Render orig, GameplayRenderer self, Scene scene)
     {
-		if (HiresRenderer.Instance is not { } renderer || !MotionSmoothingModule.Settings.RenderMadelineWithSubpixels)
-		{
+		if (
+			HiresRenderer.Instance is not { } renderer
+			|| !MotionSmoothingModule.Settings.RenderMadelineWithSubpixels
+			|| MotionSmoothingModule.Settings.SillyMode
+		) {
 			orig(self, scene);
 			return;
 		}
@@ -1095,6 +1100,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 		if (
 			!_currentlyRenderingGameplay
 			|| !MotionSmoothingModule.Settings.RenderMadelineWithSubpixels
+			|| MotionSmoothingModule.Settings.SillyMode
 		) {
 			return false;
 		}
@@ -1239,11 +1245,14 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
         Strategies.PushSpriteSmoother.TemporarilyDisablePushSpriteSmoothing = true;
 		Draw.SpriteBatch.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend, SamplerState.PointClamp, DepthStencilState.None, RasterizerState.CullNone, null, Matrix.Identity);
-		Draw.SpriteBatch.Draw(
-            renderer.SmallBuffer,
-            MotionSmoothingModule.Settings.RenderMadelineWithSubpixels ? _lastPlayerOffset : Vector2.Zero,
-            Color.White
-        );
+
+		Vector2 offset = MotionSmoothingModule.Settings.RenderMadelineWithSubpixels
+			&& !MotionSmoothingModule.Settings.SillyMode
+				? _lastPlayerOffset
+				: Vector2.Zero;
+
+		Draw.SpriteBatch.Draw(renderer.SmallBuffer, offset, Color.White);
+
 		Draw.SpriteBatch.End();
 		Strategies.PushSpriteSmoother.TemporarilyDisablePushSpriteSmoothing = false;
 
@@ -1261,8 +1270,10 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
     private static void Distort_Render(On.Celeste.Distort.orig_Render orig, Texture2D source, Texture2D map, bool hasDistortion)
     {
-        if (HiresRenderer.Instance is not { } renderer || !_interceptDistortRender)
-        {
+        if (
+			HiresRenderer.Instance is not { } renderer
+			|| !_interceptDistortRender
+		) {
 			orig(source, map, hasDistortion);
             return;
         }
@@ -1270,6 +1281,31 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 		_currentlyRenderingBackground = false;
 
 		var renderTargets = Draw.SpriteBatch.GraphicsDevice.GetRenderTargets();
+
+
+
+		if (MotionSmoothingModule.Settings.SillyMode)
+		{
+			Engine.Instance.GraphicsDevice.SetRenderTarget(GameplayBuffers.Gameplay);
+
+			orig(source, map, hasDistortion);
+
+			Engine.Instance.GraphicsDevice.SetRenderTargets(renderTargets);
+
+            _offsetWhenDrawnTo.Clear();
+            foreach (var target in renderTargets)
+            {
+                _offsetWhenDrawnTo.Add(target.RenderTarget);
+            }
+
+			Draw.SpriteBatch.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend, SamplerState.PointClamp, DepthStencilState.None, RasterizerState.CullNone, null, Matrix.Identity);
+			Draw.SpriteBatch.Draw(GameplayBuffers.Gameplay, Vector2.Zero, Color.White);
+			Draw.SpriteBatch.End();
+
+            _offsetWhenDrawnTo.Clear();
+
+			return;
+		}
 
 
 
@@ -1651,7 +1687,9 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
         // Never fall through to _largeExternalTextureMap for these, as other
         // mods swapping buffer targets could bypass the flag checks.
         if (texture == GameplayBuffers.Gameplay.Target)
-            return _enableLargeGameplayBuffer ? renderer.LargeGameplayBuffer : null;
+            return _enableLargeGameplayBuffer || MotionSmoothingModule.Settings.SillyMode
+				? renderer.LargeGameplayBuffer
+				: null;
 
         if (texture == GameplayBuffers.Level.Target)
             return _enableLargeLevelBuffer ? renderer.LargeLevelBuffer : null;
@@ -1693,7 +1731,9 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
         // Gameplay and Level: enable flags always take absolute precedence.
         if (texture == GameplayBuffers.Gameplay.Target)
-            return _enableLargeGameplayBuffer ? renderer.LargeGameplayBuffer : texture;
+            return _enableLargeGameplayBuffer || MotionSmoothingModule.Settings.SillyMode
+				? renderer.LargeGameplayBuffer
+				: texture;
 
         if (texture == GameplayBuffers.Level.Target)
             return _enableLargeLevelBuffer ? renderer.LargeLevelBuffer : texture;
