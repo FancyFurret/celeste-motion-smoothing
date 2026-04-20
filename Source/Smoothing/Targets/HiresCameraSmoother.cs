@@ -2435,7 +2435,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
     private static bool TryDrawPixelated<T>(Matrix matrix, T[] vertices, int vertexCount) where T : struct, IVertexType
     {
-        if (_inPixelatedDraw || vertexCount > 100)
+        if (_inPixelatedDraw || vertexCount > 100 || MotionSmoothingModule.Settings.SillyMode)
         {
             return false;
         }
