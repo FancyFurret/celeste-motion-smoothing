@@ -113,6 +113,11 @@ public class PushSpriteSmoother : SmoothingStrategy<PushSpriteSmoother>
         if (GetState(obj) is not IPositionSmoothingState state)
             return Vector2.Zero;
 
+		if (MotionSmoothingModule.Settings.SillyMode)
+		{
+			return state.SmoothedRealPosition - state.SmoothedRealPosition.Round();
+		}
+
         var targetPos = state.SmoothedRealPosition.Round();
 
         // For Actors, Position is always integer (subpixels live in ExactPosition via
