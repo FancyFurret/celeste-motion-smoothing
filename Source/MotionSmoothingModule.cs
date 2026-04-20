@@ -206,7 +206,7 @@ public class MotionSmoothingModule : EverestModule
 			HiresCameraSmoother.ZoomScale = Settings.HideStretchedEdges ? 181f / 180f : 1;
 			HiresCameraSmoother.ZoomMatrix = Matrix.CreateScale(HiresCameraSmoother.ZoomScale);
 
-			if (Settings.RenderMadelineWithSubpixels)
+			if (Settings.RenderMadelineWithSubpixels && !Settings.SillyMode)
 			{
 				HiresCameraSmoother.EnableHiresDistort();
 			}
@@ -214,7 +214,11 @@ public class MotionSmoothingModule : EverestModule
 			else
 			{
 				HiresCameraSmoother.DisableHiresDistort();
-                HiresCameraSmoother.DisableLargeGameplayBuffer();
+			}
+
+			if (!Settings.RenderMadelineWithSubpixels && !Settings.SillyMode)
+			{
+				HiresCameraSmoother.DisableLargeGameplayBuffer();
 			}
         }
 

@@ -105,6 +105,7 @@ public interface IPositionSmoothingState : ISmoothingState
     public bool GetVisible(object obj);
 
     public Vector2 GetLastDrawPosition(SmoothingMode mode);
+    public Vector2 GetLastRealPosition(SmoothingMode mode);
     public Vector2 GetSmoothedOffset(SmoothingMode mode);
 
     public bool IgnoreSubpixelMotionX { get; set; }
@@ -150,7 +151,13 @@ public abstract class PositionSmoothingState<T> : IPositionSmoothingState
     {
         if (CancelSmoothing || !_initialized) return;
         PreSmoothedPosition = GetDrawPosition(obj);
-        SetPosition(obj, SmoothedRealPosition.Round());
+        // SillyMode: write the unrounded SmoothedRealPosition so the Player (which is routed
+        // through ValueSmoother → SetPosition rather than through PushSpriteSmoother) renders
+        // at 1/6-px precision under the 6x composite. SetOriginal restores PreSmoothedPosition
+        // after the draw, so physics is unaffected.
+        SetPosition(obj, MotionSmoothingModule.Settings.SillyMode
+            ? SmoothedRealPosition
+            : SmoothedRealPosition.Round());
     }
 
     protected virtual void SetOriginal(T obj)
@@ -224,9 +231,20 @@ public abstract class PositionSmoothingState<T> : IPositionSmoothingState
         return mode == SmoothingMode.Interpolate ? DrawPositionHistory[1] : DrawPositionHistory[0];
     }
 
+    // Sibling of GetLastDrawPosition that returns the *unrounded* historical position.
+    // Used in SillyMode where pusher math (ActorPushTracker) and GetSmoothedOffset must
+    // stay subpixel — otherwise pusher-carried actors on diagonal moveblocks would still
+    // snap to the integer grid even though everything else is rendered at subpixel.
+    public Vector2 GetLastRealPosition(SmoothingMode mode)
+    {
+        return mode == SmoothingMode.Interpolate ? RealPositionHistory[1] : RealPositionHistory[0];
+    }
+
     public Vector2 GetSmoothedOffset(SmoothingMode mode)
     {
-        return SmoothedRealPosition - GetLastDrawPosition(mode);
+        return SmoothedRealPosition - (MotionSmoothingModule.Settings.SillyMode
+            ? GetLastRealPosition(mode)
+            : GetLastDrawPosition(mode));
     }
 }
 

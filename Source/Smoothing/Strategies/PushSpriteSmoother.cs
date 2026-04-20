@@ -104,7 +104,13 @@ public class PushSpriteSmoother : SmoothingStrategy<PushSpriteSmoother>
         // an Actor) keeps the offset integer, matching the integer stride that ValueSmoother
         // applies to Player.Position via SmoothedRealPosition.Round(). The non-player-hair
         // branch is unaffected (ice FireBall et al. go through GetOffset, not GetHairOffset).
-        var targetPos = playerState.SmoothedRealPosition.Round();
+        // SillyMode: draw at the unrounded SmoothedRealPosition so the 6x composite gets
+        // 1/6-px hair motion instead of a 6-px grid snap. Anchor stays OriginalDrawPosition
+        // (integer) so the offset still lands the head at SmoothedRealPosition and shifts
+        // Nodes[1..N] by the same delta.
+        var targetPos = MotionSmoothingModule.Settings.SillyMode
+            ? playerState.SmoothedRealPosition
+            : playerState.SmoothedRealPosition.Round();
         return targetPos - playerState.OriginalDrawPosition;
     }
 
@@ -112,13 +118,6 @@ public class PushSpriteSmoother : SmoothingStrategy<PushSpriteSmoother>
     {
         if (GetState(obj) is not IPositionSmoothingState state)
             return Vector2.Zero;
-
-		if (MotionSmoothingModule.Settings.SillyMode)
-		{
-			return state.SmoothedRealPosition - state.SmoothedRealPosition.Round();
-		}
-
-        var targetPos = state.SmoothedRealPosition.Round();
 
         // For Actors, Position is always integer (subpixels live in ExactPosition via
         // movementCounter), so the destination PushSprite receives is integer-anchored.
@@ -135,6 +134,14 @@ public class PushSpriteSmoother : SmoothingStrategy<PushSpriteSmoother>
         // OriginalRealPosition is the right anchor and the integer-rounding form would
         // strip the subpixel motion.
         var anchor = obj is Actor ? state.OriginalDrawPosition : state.OriginalRealPosition;
+
+        // SillyMode draws gameplay at 6x, so a 1-px grid snap becomes a visible 6-px jump
+        // on screen. Skip the .Round() so the destination lands at the unrounded
+        // SmoothedRealPosition. Smoothing (extrapolation/interpolation/cancellation) still
+        // runs; only the final quantize to the gameplay pixel grid is suppressed.
+        var targetPos = MotionSmoothingModule.Settings.SillyMode
+            ? state.SmoothedRealPosition
+            : state.SmoothedRealPosition.Round();
         return targetPos - anchor;
     }
 
@@ -194,7 +201,9 @@ public class PushSpriteSmoother : SmoothingStrategy<PushSpriteSmoother>
             if (parentState != null)
             {
                 var originalPosition = border.Parent.Position;
-                border.Parent.Position = parentState.SmoothedRealPosition.Round();
+                border.Parent.Position = MotionSmoothingModule.Settings.SillyMode
+                    ? parentState.SmoothedRealPosition
+                    : parentState.SmoothedRealPosition.Round();
                 orig(self);
                 border.Parent.Position = originalPosition;
                 return;

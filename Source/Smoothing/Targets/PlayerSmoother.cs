@@ -58,9 +58,13 @@ public static class PlayerSmoother
 
     private static Vector2 Extrapolate(Player player, IPositionSmoothingState state, double elapsed)
     {
+        // SillyMode: snap-back destinations use OriginalRealPosition so we don't drop back
+        // onto the integer grid on a pipeline that's otherwise rendering at 1/6-px.
+        var sillyMode = MotionSmoothingModule.Settings.SillyMode;
+
         // Disable during screen transitions or pause
         if (Engine.Scene is not Level || Engine.Scene is Level { Transitioning: true } or { Paused: true })
-            return state.OriginalDrawPosition;
+            return sillyMode ? state.OriginalRealPosition : state.OriginalDrawPosition;
 
         var smoothedPosition = GetExtrapolatedPositionAndUpdateIsSmoothing(player, state, elapsed);
 
@@ -72,17 +76,17 @@ public static class PlayerSmoother
                 || MotionSmoothingHandler.Instance.AtDrawInputHandler.PressedThisUpdate(Input.CrouchDash)
             )
         ) {
-            return state.OriginalDrawPosition;
+            return sillyMode ? state.OriginalRealPosition : state.OriginalDrawPosition;
         }
-        
+
         if (!IsSmoothingX)
         {
-            smoothedPosition.X = state.OriginalDrawPosition.X;
+            smoothedPosition.X = sillyMode ? state.OriginalRealPosition.X : state.OriginalDrawPosition.X;
         }
 
         if (!IsSmoothingY)
         {
-            smoothedPosition.Y = state.OriginalDrawPosition.Y;
+            smoothedPosition.Y = sillyMode ? state.OriginalRealPosition.Y : state.OriginalDrawPosition.Y;
         }
 
         return smoothedPosition;
