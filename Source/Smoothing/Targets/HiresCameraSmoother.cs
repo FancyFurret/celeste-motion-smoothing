@@ -2507,11 +2507,24 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
     private static DisableFloorFunctionsMode GetEffectiveFloorMode()
     {
-		if (MotionSmoothingModule.Settings.SillyMode)
-		{
-			return DisableFloorFunctionsMode.Continuous;
-		}
-		
+        // SillyMode renders the entire gameplay at 6x. A 1-px gameplay-space snap becomes
+        // a visible 6-px on-screen jump, so any Calc.Floor/Round/Ceiling call that would
+        // quantize to the integer gameplay grid must instead quantize to the 1/6-px grid
+        // (= 1 on-screen pixel). Force Rational mode whenever SillyMode is active,
+        // regardless of RenderBackgroundHires (which is what normally flips the pipeline
+        // into Rational in AfterLevelClear).
+        //
+        // NOT Continuous: Continuous makes Floor/Round/Ceiling no-ops, which breaks the
+        // camera composite — GetCameraOffset() below depends on Floor(SmoothedReal) being
+        // quantized so the [-1/6, 0] per-axis residual it returns can be used as the
+        // sub-screen-pixel composite shift. Under Continuous it would collapse to zero,
+        // and the camera would effectively snap back to the integer grid once per update.
+        if (MotionSmoothingModule.Settings.SillyMode
+            && _disableFloorFunctions == DisableFloorFunctionsMode.Integer)
+        {
+            return DisableFloorFunctionsMode.Rational;
+        }
+
         return _disableFloorFunctions;
     }
 

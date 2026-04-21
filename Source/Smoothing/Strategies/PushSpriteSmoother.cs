@@ -119,21 +119,26 @@ public class PushSpriteSmoother : SmoothingStrategy<PushSpriteSmoother>
         if (GetState(obj) is not IPositionSmoothingState state)
             return Vector2.Zero;
 
-        // For Actors, Position is always integer (subpixels live in ExactPosition via
-        // movementCounter), so the destination PushSprite receives is integer-anchored.
-        // Subtracting the *unrounded* ExactPosition (OriginalRealPosition) here would produce
-        // a fractional offset and land the destination on a half-integer — banker's-rounding
-        // parity then flips it ±1 px on rasterization. This is the same root cause as the
-        // PlayerHair jitter fix above, and is what causes a thrown Glider to vertically
-        // jitter ~2 px during its fall (movementCounter cycles 0/0.5/0/0.5 at the steady
-        // ~30 px/s gravity-clamped speed, putting the offset right at the half-integer
-        // boundary every other tick).
+        // For Actors *and Platforms* (e.g. MoveBlock, which is Solid → Platform), Position
+        // is always integer — subpixels live in ExactPosition via movementCounter, and
+        // physics moves via MoveH/MoveV. So the destination PushSprite receives is integer-
+        // anchored. Subtracting the *unrounded* ExactPosition (OriginalRealPosition) here
+        // would produce a fractional offset and land the destination on a half-integer —
+        // banker's-rounding parity then flips it ±1 px on rasterization. This is the same
+        // root cause as the PlayerHair jitter fix above, and is what causes a thrown Glider
+        // to vertically jitter ~2 px during its fall (movementCounter cycles 0/0.5/0/0.5
+        // at the steady ~30 px/s gravity-clamped speed, putting the offset right at the
+        // half-integer boundary every other tick). Under SillyMode it also manifested as
+        // MoveBlocks appearing to grid-snap while everything else rendered subpixel,
+        // because the offset math here was adding a fractional delta on top of an integer
+        // Position, but the delta was measured from the *subpixel* ExactPosition — so it
+        // effectively erased the subpixel advance.
         //
-        // For non-Actor Entities (e.g. FireBall in ice mode), render position itself is
-        // subpixel — Position is set fractionally and passed straight to PushSprite — so
-        // OriginalRealPosition is the right anchor and the integer-rounding form would
-        // strip the subpixel motion.
-        var anchor = obj is Actor ? state.OriginalDrawPosition : state.OriginalRealPosition;
+        // For non-Actor/non-Platform Entities (e.g. FireBall in ice mode), render position
+        // itself is subpixel — Position is set fractionally and passed straight to
+        // PushSprite — so OriginalRealPosition is the right anchor and the integer-rounding
+        // form would strip the subpixel motion.
+        var anchor = obj is Actor or Platform ? state.OriginalDrawPosition : state.OriginalRealPosition;
 
         // SillyMode draws gameplay at 6x, so a 1-px grid snap becomes a visible 6-px jump
         // on screen. Skip the .Round() so the destination lands at the unrounded
