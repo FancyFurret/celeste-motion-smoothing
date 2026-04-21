@@ -53,7 +53,7 @@ public static class PlayerSmoother
             return ownInterp;
         }
 
-        return ownInterp;
+		return ownInterp;
     }
 
     private static Vector2 Extrapolate(Player player, IPositionSmoothingState state, double elapsed)
@@ -64,7 +64,7 @@ public static class PlayerSmoother
 
         // Disable during screen transitions or pause
         if (Engine.Scene is not Level || Engine.Scene is Level { Transitioning: true } or { Paused: true })
-            return sillyMode ? state.OriginalRealPosition : state.OriginalDrawPosition;
+            return sillyMode ? state.SmoothedRealPosition : state.OriginalDrawPosition;
 
         var smoothedPosition = GetExtrapolatedPositionAndUpdateIsSmoothing(player, state, elapsed);
 
@@ -76,17 +76,17 @@ public static class PlayerSmoother
                 || MotionSmoothingHandler.Instance.AtDrawInputHandler.PressedThisUpdate(Input.CrouchDash)
             )
         ) {
-            return sillyMode ? state.OriginalRealPosition : state.OriginalDrawPosition;
+            return sillyMode ? state.SmoothedRealPosition : state.OriginalDrawPosition;
         }
 
-        if (!IsSmoothingX)
+        if (!IsSmoothingX && !sillyMode)
         {
-            smoothedPosition.X = sillyMode ? state.OriginalRealPosition.X : state.OriginalDrawPosition.X;
+            smoothedPosition.X = state.OriginalDrawPosition.X;
         }
 
-        if (!IsSmoothingY)
+        if (!IsSmoothingY && !sillyMode)
         {
-            smoothedPosition.Y = sillyMode ? state.OriginalRealPosition.Y : state.OriginalDrawPosition.Y;
+            smoothedPosition.Y = state.OriginalDrawPosition.Y;
         }
 
         return smoothedPosition;
@@ -212,6 +212,12 @@ public static class PlayerSmoother
             // on the wall.
             || Math.Abs(player.Speed.Y) < 0.001
         );
+
+		if (MotionSmoothingModule.Settings.SillyMode)
+		{
+			IsSmoothingX = true;
+			IsSmoothingY = true;
+		}
     }
     
     // Mirrors UpdateIsSmoothing's pusher override: any moving solid we're riding contributes its
@@ -241,5 +247,11 @@ public static class PlayerSmoother
             || isMovingInBothDirections
             || !canClimb
         );
+
+		if (MotionSmoothingModule.Settings.SillyMode)
+		{
+			AllowSubpixelRenderingX = true;
+			AllowSubpixelRenderingY = true;
+		}
     }
 }

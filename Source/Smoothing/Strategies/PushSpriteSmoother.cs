@@ -204,9 +204,7 @@ public class PushSpriteSmoother : SmoothingStrategy<PushSpriteSmoother>
             if (parentState != null)
             {
                 var originalPosition = border.Parent.Position;
-                border.Parent.Position = MotionSmoothingModule.Settings.SillyMode
-                    ? parentState.SmoothedRealPosition
-                    : parentState.SmoothedRealPosition.Round();
+                border.Parent.Position = parentState.SmoothedRealPosition.Round();
                 orig(self);
                 border.Parent.Position = originalPosition;
                 return;

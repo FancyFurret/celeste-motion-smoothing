@@ -242,9 +242,7 @@ public abstract class PositionSmoothingState<T> : IPositionSmoothingState
 
     public Vector2 GetSmoothedOffset(SmoothingMode mode)
     {
-        return SmoothedRealPosition - (MotionSmoothingModule.Settings.SillyMode
-            ? GetLastRealPosition(mode)
-            : GetLastDrawPosition(mode));
+        return SmoothedRealPosition - GetLastDrawPosition(mode);
     }
 }
 

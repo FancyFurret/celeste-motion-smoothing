@@ -447,9 +447,9 @@ public class MotionSmoothingSettings : EverestModuleSettings
         _sillyModeItem.AddDescription(
             menu,
             "Smoothing too close to the sun (:\n\n" +
-            "This setting is just for fun because it's technically possible.\n" +
-            "Playing with it will get your submissions rejected from Goldberries,\n" +
-            "the Hardlist, etc."
+            "This setting is just for fun because it's technically possible; not\n" +
+            "everything will be perfect. Playing with this enabled will get your\n" +
+            "submissions rejected from Goldberries, the Hardlist, etc."
         );
     }
 }

@@ -1097,20 +1097,23 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
 	private static bool ShouldInterceptEntityRender(Entity self)
 	{
+		var player = MotionSmoothingHandler.Instance.Player;
+
+		// if (_currentlyRenderingGameplay && MotionSmoothingModule.Settings.SillyMode)
+		// {
+		// 	return self == player;
+		// }
+
 		if (
 			!_currentlyRenderingGameplay
 			|| !MotionSmoothingModule.Settings.RenderMadelineWithSubpixels
-			|| MotionSmoothingModule.Settings.SillyMode
 		) {
 			return false;
 		}
 
-		var player = MotionSmoothingHandler.Instance.Player;
-
 		return self == player
 			|| player?.Holding?.Entity == self // A currently-held holdable
 			|| self is Strawberry { Golden: true } strawberry && strawberry.Follower.Leader != null; // A golden attacked to the player
-
 	}
 
 	private static void RenderEntityAtSubpixelPosition(Entity self)
@@ -1218,6 +1221,15 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
     private static void Player_Render(On.Celeste.Player.orig_Render orig, Player self)
     {
+		if (MotionSmoothingModule.Settings.SillyMode)
+		{
+			_disableFloorFunctions = DisableFloorFunctionsMode.Continuous;
+			orig(self);
+			_disableFloorFunctions = DisableFloorFunctionsMode.Integer;
+
+			return;
+		}
+
         if (HiresRenderer.Instance is not { } renderer || !_currentlyRenderingPlayerOnTopOfFlash)
         {
             orig(self);
