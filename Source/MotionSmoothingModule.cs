@@ -126,6 +126,8 @@ public class MotionSmoothingModule : EverestModule
 	{
         CelesteTasInterop.Load();
 
+		Settings.SillyMode = false;
+
 		ApplySettings();
 	}
 
