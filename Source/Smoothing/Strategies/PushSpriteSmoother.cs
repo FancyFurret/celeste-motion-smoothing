@@ -119,6 +119,11 @@ public class PushSpriteSmoother : SmoothingStrategy<PushSpriteSmoother>
         if (GetState(obj) is not IPositionSmoothingState state)
             return Vector2.Zero;
 
+		if (MotionSmoothingModule.Settings.SillyMode)
+		{
+			return state.SmoothedRealPosition - state.OriginalDrawPosition;
+		}
+
         // For Actors *and Platforms* (e.g. MoveBlock, which is Solid → Platform), Position
         // is always integer — subpixels live in ExactPosition via movementCounter, and
         // physics moves via MoveH/MoveV. So the destination PushSprite receives is integer-
@@ -140,14 +145,7 @@ public class PushSpriteSmoother : SmoothingStrategy<PushSpriteSmoother>
         // form would strip the subpixel motion.
         var anchor = obj is Actor or Platform ? state.OriginalDrawPosition : state.OriginalRealPosition;
 
-        // SillyMode draws gameplay at 6x, so a 1-px grid snap becomes a visible 6-px jump
-        // on screen. Skip the .Round() so the destination lands at the unrounded
-        // SmoothedRealPosition. Smoothing (extrapolation/interpolation/cancellation) still
-        // runs; only the final quantize to the gameplay pixel grid is suppressed.
-        var targetPos = MotionSmoothingModule.Settings.SillyMode
-            ? state.SmoothedRealPosition
-            : state.SmoothedRealPosition.Round();
-        return targetPos - anchor;
+        return state.SmoothedRealPosition.Round() - anchor;
     }
 
     private void HookComponentRender<T>() where T : Component
