@@ -125,7 +125,6 @@ public class MotionSmoothingModule : EverestModule
 	public override void Initialize()
 	{
         CelesteTasInterop.Load();
-        TimeDilationInterop.Load();
 
 		Settings.SillyMode = false;
 

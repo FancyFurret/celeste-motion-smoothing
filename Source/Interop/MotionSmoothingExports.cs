@@ -52,4 +52,25 @@ public static class MotionSmoothingExports
 	{
 		MotionSmoothingModule.ReloadLargeTextures();
 	}
+
+	// [1.4.0+]
+	// TimeDilation interop: called by TimeDilation whenever its TrueSlowdown setting changes.
+	public static void SetTimeDilationTrueSlowdownEnabled(bool enabled)
+	{
+		var changed = TimeDilationInterop.PushedTrueSlowdownEnabled != enabled;
+		TimeDilationInterop.PushedTrueSlowdownEnabled = enabled;
+		TimeDilationInterop.MarkAvailable();
+
+		// ApplySettings picks Dynamic mode based on TrueSlowdownEnabled; re-run on change.
+		if (changed)
+			MotionSmoothingModule.Instance?.ApplySettings();
+	}
+
+	// [1.4.0+]
+	// TimeDilation interop: called by TimeDilation every physics tick with the current DilationFactor.
+	public static void SetTimeDilationFactor(float factor)
+	{
+		TimeDilationInterop.PushedDilationFactor = factor;
+		TimeDilationInterop.MarkAvailable();
+	}
 }
