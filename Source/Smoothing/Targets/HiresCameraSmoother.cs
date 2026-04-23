@@ -2610,6 +2610,21 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
         }
 
 
+
+		Version springCollab2020Version = new Version(1, 7, 9);
+
+        EverestModuleMetadata springCollab2020 = new() {
+			Name = "SpringCollab2020",
+            Version = springCollab2020Version
+		};
+
+		if (Everest.Loader.TryGetDependency(springCollab2020, out var springCollab2020Module))
+        {
+            // No exact version check here because there was no public repo to take out a PR on
+            AddSpringCollab2020Hook();
+        }
+
+
         
         Version extendedCameraDynamicsVersion = new Version(1, 1, 2);
 
@@ -2750,6 +2765,23 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 	{
 		Type t_InstantTeleporterRenderer = Type.GetType("Celeste.Mod.AcidHelper.Entities.InstantTeleporterRenderer, AcidHelper");
 		MethodInfo m_OnRenderBloom = t_InstantTeleporterRenderer?.GetMethod(
+			"OnRenderBloom",
+			BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic
+		);
+
+		if (m_OnRenderBloom != null)
+		{
+			AddHook(new ILHook(m_OnRenderBloom, SeekerBarrierRendererRenderHook));
+		}
+	}
+
+
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	private void AddSpringCollab2020Hook()
+	{
+		Type t_CrystalBombDetonatorRenderer = Type.GetType("Celeste.Mod.SpringCollab2020.Entities.CrystalBombDetonatorRenderer, SpringCollab2020");
+		MethodInfo m_OnRenderBloom = t_CrystalBombDetonatorRenderer?.GetMethod(
 			"OnRenderBloom",
 			BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic
 		);
