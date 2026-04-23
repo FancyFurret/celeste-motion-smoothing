@@ -41,6 +41,8 @@ public class MotionSmoothingSettings : EverestModuleSettings
     private SmoothingMode _smoothingMode = SmoothingMode.Extrapolate;
     private UpdateMode _updateMode = UpdateMode.Interval;
 
+	private bool _sillyMode = false;
+
     // Used for compatibility with Viv's game speed mod
     private double _gameSpeed = 60;
     private bool _gameSpeedInLevelOnly = true;
@@ -51,6 +53,8 @@ public class MotionSmoothingSettings : EverestModuleSettings
     private TextMenu.Item _renderBackgroundHiresItem;
     private TextMenu.Item _renderForegroundHiresItem;
 	private TextMenu.Item _hideStretchedEdgesItem;
+
+	private TextMenu.Item _sillyModeItem;
 
     public bool Enabled
     {
@@ -156,6 +160,9 @@ public class MotionSmoothingSettings : EverestModuleSettings
 			bool shouldDisableHideStretchedEdges = UnlockCameraStrategy == UnlockCameraStrategy.Off;
             _hideStretchedEdgesItem.Disabled = shouldDisableHideStretchedEdges;
             _hideStretchedEdgesItem.Selectable = !shouldDisableHideStretchedEdges;
+
+			_sillyModeItem.Disabled = shouldDisableRenderBackgroundHires;
+            _sillyModeItem.Selectable = !shouldDisableRenderBackgroundHires;
         });
 
         menu.Add(strategySlider);
@@ -404,5 +411,45 @@ public class MotionSmoothingSettings : EverestModuleSettings
             _gameSpeedInLevelOnly = value;
             MotionSmoothingModule.Instance.ApplySettings();
         }
+    }
+
+
+
+	public bool SillyMode
+    {
+        get => _sillyMode;
+        set
+        {
+            _sillyMode = value;
+            MotionSmoothingModule.Instance.ApplySettings();
+        }
+    }
+
+    public void CreateSillyModeEntry(TextMenu menu, bool inGame)
+    {
+        _sillyModeItem = new TextMenu.OnOff(
+            "Silly Mode",
+            _sillyMode
+        );
+
+        (_sillyModeItem as TextMenu.OnOff).Change(value =>
+        {
+            SillyMode = value;
+        });
+
+        // Set initial state based on UnlockCameraStrategy
+        bool shouldDisable = UnlockCameraStrategy != UnlockCameraStrategy.Hires;
+        _sillyModeItem.Disabled = shouldDisable;
+        _sillyModeItem.Selectable = !shouldDisable;
+
+        menu.Add(_sillyModeItem);
+
+        _sillyModeItem.AddDescription(
+            menu,
+            "Smoothing too close to the sun (:\n\n" +
+            "This setting is just for fun because it's technically possible; not\n" +
+            "everything will be perfect. Playing with this enabled will get your\n" +
+            "submissions rejected from Goldberries, the Hardlist, etc."
+        );
     }
 }

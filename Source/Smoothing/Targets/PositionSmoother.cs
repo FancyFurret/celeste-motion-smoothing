@@ -12,20 +12,25 @@ public static class PositionSmoother
 
     public static Vector2 Smooth(IPositionSmoothingState state, object obj, double elapsedSeconds, SmoothingMode mode)
     {
+        // SillyMode: cancellations and subpixel-ignores still snap *back*, but to the
+        // unrounded OriginalRealPosition so we don't introduce 1-px grid snaps on a
+        // pipeline that's otherwise rendering at 1/6-px under the 6x composite.
+        var sillyMode = MotionSmoothingModule.Settings.SillyMode;
+
         if (ShouldCancelSmoothing(state, obj))
-            return state.OriginalDrawPosition;
+            return sillyMode ? state.OriginalRealPosition : state.OriginalDrawPosition;
 
         var smoothed = GetSmoothedPosition(state, obj, elapsedSeconds, mode);
 
         // If we are changing X direction, cancel X smoothing
         if (DirectionChanged(state.RealPositionHistory[2].X, state.RealPositionHistory[1].X,
                 state.RealPositionHistory[0].X))
-            smoothed.X = state.OriginalDrawPosition.X;
+            smoothed.X = sillyMode ? state.OriginalRealPosition.X : state.OriginalDrawPosition.X;
 
         // If we are changing Y direction, cancel Y smoothing
         if (DirectionChanged(state.RealPositionHistory[2].Y, state.RealPositionHistory[1].Y,
                 state.RealPositionHistory[0].Y))
-            smoothed.Y = state.OriginalDrawPosition.Y;
+            smoothed.Y = sillyMode ? state.OriginalRealPosition.Y : state.OriginalDrawPosition.Y;
 
         // Detect subpixel X oscillation
         if (state.DrawPositionHistory[0].X != state.DrawPositionHistory[1].X)
@@ -68,10 +73,10 @@ public static class PositionSmoother
         }
 
         if (state.IgnoreSubpixelMotionX)
-            smoothed.X = state.OriginalDrawPosition.X;
+            smoothed.X = sillyMode ? state.OriginalRealPosition.X : state.OriginalDrawPosition.X;
 
         if (state.IgnoreSubpixelMotionY)
-            smoothed.Y = state.OriginalDrawPosition.Y;
+            smoothed.Y = sillyMode ? state.OriginalRealPosition.Y : state.OriginalDrawPosition.Y;
 
         return smoothed;
     }

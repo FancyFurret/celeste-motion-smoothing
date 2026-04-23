@@ -41,17 +41,30 @@ public static class PlayerSmoother
     {
         GetExtrapolatedPositionAndUpdateIsSmoothing(player, state, elapsed);
 
-        if (ActorPushTracker.Instance.ApplyPusherOffset(player, elapsed, SmoothingMode.Interpolate, out var pushed))
-            return pushed;
+        var ownInterp = SmoothingMath.Interpolate(state.RealPositionHistory, elapsed);
 
-        return SmoothingMath.Interpolate(state.RealPositionHistory, elapsed);
+        if (ActorPushTracker.Instance.ApplyPusherOffset(player, elapsed, SmoothingMode.Interpolate, out var pushed, out var pusherVelocity))
+        {
+            // Per-axis: only take the pusher path on axes the pusher is moving on, otherwise
+            // integer-stepped `pushed` clobbers the player's own fractional walking extrapolation.
+            // Same issue as the Extrapolate branch (e.g. BounceBlock Y-bob while walking across).
+            if (Math.Abs(pusherVelocity.X) > 0.001) ownInterp.X = pushed.X;
+            if (Math.Abs(pusherVelocity.Y) > 0.001) ownInterp.Y = pushed.Y;
+            return ownInterp;
+        }
+
+		return ownInterp;
     }
 
     private static Vector2 Extrapolate(Player player, IPositionSmoothingState state, double elapsed)
     {
+        // SillyMode: snap-back destinations use OriginalRealPosition so we don't drop back
+        // onto the integer grid on a pipeline that's otherwise rendering at 1/6-px.
+        var sillyMode = MotionSmoothingModule.Settings.SillyMode;
+
         // Disable during screen transitions or pause
         if (Engine.Scene is not Level || Engine.Scene is Level { Transitioning: true } or { Paused: true })
-            return state.OriginalDrawPosition;
+            return sillyMode ? state.SmoothedRealPosition : state.OriginalDrawPosition;
 
         var smoothedPosition = GetExtrapolatedPositionAndUpdateIsSmoothing(player, state, elapsed);
 
@@ -63,15 +76,15 @@ public static class PlayerSmoother
                 || MotionSmoothingHandler.Instance.AtDrawInputHandler.PressedThisUpdate(Input.CrouchDash)
             )
         ) {
-            return state.OriginalDrawPosition;
+            return sillyMode ? state.SmoothedRealPosition : state.OriginalDrawPosition;
         }
-        
-        if (!IsSmoothingX)
+
+        if (!IsSmoothingX && !sillyMode)
         {
             smoothedPosition.X = state.OriginalDrawPosition.X;
         }
 
-        if (!IsSmoothingY)
+        if (!IsSmoothingY && !sillyMode)
         {
             smoothedPosition.Y = state.OriginalDrawPosition.Y;
         }
@@ -83,12 +96,11 @@ public static class PlayerSmoother
     {
         var playerSpeed = player.Speed;
 
-        // Checking this prevents the player from being incorrectly
-        // smoothed while standing still on moving platforms.
-        // We initialize it in this bizarre way so MoveBlocks can
-        // override individual directions later.
-        bool isNotStandingStillX = Math.Abs(playerSpeed.X) > 0.001 || Math.Abs(playerSpeed.Y) > 0.001;
-        bool isNotStandingStillY = isNotStandingStillX;
+        // Checking this prevents the player from being incorrectly smoothed while standing still on
+        // moving platforms. Per-axis so that moving only in X doesn't enable Y subpixel rendering
+        // (and vice versa). The pusher overrides below add back the axis a moveblock is carrying us along.
+        bool isNotStandingStillX = Math.Abs(playerSpeed.X) > 0.001;
+        bool isNotStandingStillY = Math.Abs(playerSpeed.Y) > 0.001;
         
         var computedSpeed = (state.RealPositionHistory[0] - state.RealPositionHistory[1]) / SmoothingMath.SecondsPerUpdate;
 
@@ -99,8 +111,14 @@ public static class PlayerSmoother
         bool pusherOffsetApplied = ActorPushTracker.Instance.ApplyPusherOffset(player, elapsed, SmoothingMode.Extrapolate, out var pushed, out var pusherVelocity);
         if (pusherOffsetApplied)
         {
+            // Per-axis replacement: only take the pusher path on axes where the pusher is
+            // actually contributing motion. Otherwise `pushed.<axis> = lastDrawPosition.<axis>`
+            // (an integer snapshot) clobbers the player's own fractional walking extrapolation,
+            // producing integer-stepped motion and zero subpixel offset for the hires camera
+            // (visible as smearing on e.g. a vertically-winding BounceBlock the player walks across).
+            if (Math.Abs(pusherVelocity.X) > 0.001) smoothedPosition.X = pushed.X;
+            if (Math.Abs(pusherVelocity.Y) > 0.001) smoothedPosition.Y = pushed.Y;
             playerSpeed = pusherVelocity;
-            smoothedPosition = pushed;
         }
 
 
@@ -194,6 +212,12 @@ public static class PlayerSmoother
             // on the wall.
             || Math.Abs(player.Speed.Y) < 0.001
         );
+
+		if (MotionSmoothingModule.Settings.SillyMode)
+		{
+			IsSmoothingX = true;
+			IsSmoothingY = true;
+		}
     }
     
     // The logic for when we should use subpixel rendering is identical to position extrapolation,
@@ -221,5 +245,11 @@ public static class PlayerSmoother
             || isMovingInBothDirections
             || !canClimb
         );
+
+		if (MotionSmoothingModule.Settings.SillyMode)
+		{
+			AllowSubpixelRenderingX = true;
+			AllowSubpixelRenderingY = true;
+		}
     }
 }

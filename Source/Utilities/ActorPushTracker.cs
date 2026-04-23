@@ -52,7 +52,13 @@ public class ActorPushTracker : ToggleableFeature<ActorPushTracker>
         if (!GetPusherOffset(actor, elapsedSeconds, out var offset, out pusherVelocity))
             return false;
 
-        pushed = posState.GetLastDrawPosition(mode) + offset;
+        // SillyMode: base against the unrounded historical position so a pusher-carried
+        // actor on e.g. a diagonal moveblock doesn't snap to the 1-px grid while the rest
+        // of the pipeline renders at 1/6-px under the 6x composite.
+        var basePos = MotionSmoothingModule.Settings.SillyMode
+            ? posState.GetLastRealPosition(mode)
+            : posState.GetLastDrawPosition(mode);
+        pushed = basePos + offset;
         return true;
     }
 
@@ -79,6 +85,9 @@ public class ActorPushTracker : ToggleableFeature<ActorPushTracker>
             pushed = true;
             offset += GetSolidOffset(state, pusher, elapsedSeconds, out var velocity);
             pusherVelocity += velocity;
+
+			// Only allow at most one pusher per frame
+			break;
         }
 
         return pushed;

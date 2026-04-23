@@ -264,8 +264,10 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
         AddHook(new Hook(typeof(Calc).GetMethod(nameof(Calc.Ceiling), [typeof(Vector2)])!, CeilingHook));
         AddHook(new Hook(typeof(Calc).GetMethod(nameof(Calc.Round), [typeof(Vector2)])!, RoundHook));
 
-		if (MotionSmoothingModule.Settings.RenderMadelineWithSubpixels)
-		{
+		if (
+			MotionSmoothingModule.Settings.RenderMadelineWithSubpixels
+			&& !MotionSmoothingModule.Settings.SillyMode
+		) {
 			EnableHiresDistort();
 		}
 
@@ -1020,8 +1022,11 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
     private static void GameplayRenderer_Render(On.Celeste.GameplayRenderer.orig_Render orig, GameplayRenderer self, Scene scene)
     {
-		if (HiresRenderer.Instance is not { } renderer || !MotionSmoothingModule.Settings.RenderMadelineWithSubpixels)
-		{
+		if (
+			HiresRenderer.Instance is not { } renderer
+			|| !MotionSmoothingModule.Settings.RenderMadelineWithSubpixels
+			|| MotionSmoothingModule.Settings.SillyMode
+		) {
 			orig(self, scene);
 			return;
 		}
@@ -1104,7 +1109,6 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 		return self == player
 			|| player?.Holding?.Entity == self // A currently-held holdable
 			|| self is Strawberry { Golden: true } strawberry && strawberry.Follower.Leader != null; // A golden attacked to the player
-
 	}
 
 	private static void RenderEntityAtSubpixelPosition(Entity self)
@@ -1212,6 +1216,15 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
     private static void Player_Render(On.Celeste.Player.orig_Render orig, Player self)
     {
+		if (MotionSmoothingModule.Settings.SillyMode)
+		{
+			_disableFloorFunctions = DisableFloorFunctionsMode.Continuous;
+			orig(self);
+			_disableFloorFunctions = DisableFloorFunctionsMode.Integer;
+
+			return;
+		}
+
         if (HiresRenderer.Instance is not { } renderer || !_currentlyRenderingPlayerOnTopOfFlash)
         {
             orig(self);
@@ -1270,6 +1283,31 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 		_currentlyRenderingBackground = false;
 
 		var renderTargets = Draw.SpriteBatch.GraphicsDevice.GetRenderTargets();
+
+
+
+		if (MotionSmoothingModule.Settings.SillyMode)
+		{
+			Engine.Instance.GraphicsDevice.SetRenderTarget(GameplayBuffers.Gameplay);
+
+			orig(source, map, hasDistortion);
+
+			Engine.Instance.GraphicsDevice.SetRenderTargets(renderTargets);
+
+            _offsetWhenDrawnTo.Clear();
+            foreach (var target in renderTargets)
+            {
+                _offsetWhenDrawnTo.Add(target.RenderTarget);
+            }
+
+			Draw.SpriteBatch.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend, SamplerState.PointClamp, DepthStencilState.None, RasterizerState.CullNone, null, Matrix.Identity);
+			Draw.SpriteBatch.Draw(GameplayBuffers.Gameplay, Vector2.Zero, Color.White);
+			Draw.SpriteBatch.End();
+
+            _offsetWhenDrawnTo.Clear();
+
+			return;
+		}
 
 
 
@@ -1651,7 +1689,9 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
         // Never fall through to _largeExternalTextureMap for these, as other
         // mods swapping buffer targets could bypass the flag checks.
         if (texture == GameplayBuffers.Gameplay.Target)
-            return _enableLargeGameplayBuffer ? renderer.LargeGameplayBuffer : null;
+            return _enableLargeGameplayBuffer || MotionSmoothingModule.Settings.SillyMode
+				? renderer.LargeGameplayBuffer
+				: null;
 
         if (texture == GameplayBuffers.Level.Target)
             return _enableLargeLevelBuffer ? renderer.LargeLevelBuffer : null;
@@ -1693,7 +1733,9 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
         // Gameplay and Level: enable flags always take absolute precedence.
         if (texture == GameplayBuffers.Gameplay.Target)
-            return _enableLargeGameplayBuffer ? renderer.LargeGameplayBuffer : texture;
+            return _enableLargeGameplayBuffer || MotionSmoothingModule.Settings.SillyMode
+				? renderer.LargeGameplayBuffer
+				: texture;
 
         if (texture == GameplayBuffers.Level.Target)
             return _enableLargeLevelBuffer ? renderer.LargeLevelBuffer : texture;
@@ -2395,7 +2437,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
     private static bool TryDrawPixelated<T>(Matrix matrix, T[] vertices, int vertexCount) where T : struct, IVertexType
     {
-        if (_inPixelatedDraw || vertexCount > 100)
+        if (_inPixelatedDraw || vertexCount > 100 || MotionSmoothingModule.Settings.SillyMode)
         {
             return false;
         }
@@ -2568,6 +2610,23 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
         }
 
 
+
+		Version springCollab2020Version = new Version(1, 7, 9);
+
+        EverestModuleMetadata springCollab2020 = new() {
+			Name = "SpringCollab2020",
+            Version = springCollab2020Version
+		};
+
+		if (Everest.Loader.TryGetDependency(springCollab2020, out var springCollab2020Module))
+        {
+            if (springCollab2020Module.Metadata.Version.Equals(springCollab2020Version))
+			{
+				AddSpringCollab2020Hook();
+			}
+        }
+
+
         
         Version extendedCameraDynamicsVersion = new Version(1, 1, 2);
 
@@ -2708,6 +2767,23 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 	{
 		Type t_InstantTeleporterRenderer = Type.GetType("Celeste.Mod.AcidHelper.Entities.InstantTeleporterRenderer, AcidHelper");
 		MethodInfo m_OnRenderBloom = t_InstantTeleporterRenderer?.GetMethod(
+			"OnRenderBloom",
+			BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic
+		);
+
+		if (m_OnRenderBloom != null)
+		{
+			AddHook(new ILHook(m_OnRenderBloom, SeekerBarrierRendererRenderHook));
+		}
+	}
+
+
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	private void AddSpringCollab2020Hook()
+	{
+		Type t_CrystalBombDetonatorRenderer = Type.GetType("Celeste.Mod.SpringCollab2020.Entities.CrystalBombDetonatorRenderer, SpringCollab2020");
+		MethodInfo m_OnRenderBloom = t_CrystalBombDetonatorRenderer?.GetMethod(
 			"OnRenderBloom",
 			BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic
 		);
