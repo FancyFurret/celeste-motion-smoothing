@@ -1097,19 +1097,14 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
 	private static bool ShouldInterceptEntityRender(Entity self)
 	{
-		var player = MotionSmoothingHandler.Instance.Player;
-
-		// if (_currentlyRenderingGameplay && MotionSmoothingModule.Settings.SillyMode)
-		// {
-		// 	return self == player;
-		// }
-
 		if (
 			!_currentlyRenderingGameplay
 			|| !MotionSmoothingModule.Settings.RenderMadelineWithSubpixels
 		) {
 			return false;
 		}
+
+		var player = MotionSmoothingHandler.Instance.Player;
 
 		return self == player
 			|| player?.Holding?.Entity == self // A currently-held holdable
@@ -1257,14 +1252,11 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
         Strategies.PushSpriteSmoother.TemporarilyDisablePushSpriteSmoothing = true;
 		Draw.SpriteBatch.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend, SamplerState.PointClamp, DepthStencilState.None, RasterizerState.CullNone, null, Matrix.Identity);
-
-		Vector2 offset = MotionSmoothingModule.Settings.RenderMadelineWithSubpixels
-			&& !MotionSmoothingModule.Settings.SillyMode
-				? _lastPlayerOffset
-				: Vector2.Zero;
-
-		Draw.SpriteBatch.Draw(renderer.SmallBuffer, offset, Color.White);
-
+		Draw.SpriteBatch.Draw(
+            renderer.SmallBuffer,
+            MotionSmoothingModule.Settings.RenderMadelineWithSubpixels ? _lastPlayerOffset : Vector2.Zero,
+            Color.White
+        );
 		Draw.SpriteBatch.End();
 		Strategies.PushSpriteSmoother.TemporarilyDisablePushSpriteSmoothing = false;
 
@@ -1282,10 +1274,8 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
     private static void Distort_Render(On.Celeste.Distort.orig_Render orig, Texture2D source, Texture2D map, bool hasDistortion)
     {
-        if (
-			HiresRenderer.Instance is not { } renderer
-			|| !_interceptDistortRender
-		) {
+        if (HiresRenderer.Instance is not { } renderer || !_interceptDistortRender)
+        {
 			orig(source, map, hasDistortion);
             return;
         }
