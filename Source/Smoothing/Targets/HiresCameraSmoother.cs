@@ -2620,8 +2620,10 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
 		if (Everest.Loader.TryGetDependency(springCollab2020, out var springCollab2020Module))
         {
-            // No exact version check here because there was no public repo to take out a PR on
-            AddSpringCollab2020Hook();
+            if (springCollab2020Module.Metadata.Version.Equals(springCollab2020Version))
+			{
+				AddSpringCollab2020Hook();
+			}
         }
 
 
