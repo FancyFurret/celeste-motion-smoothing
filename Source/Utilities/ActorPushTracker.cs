@@ -85,6 +85,9 @@ public class ActorPushTracker : ToggleableFeature<ActorPushTracker>
             pushed = true;
             offset += GetSolidOffset(state, pusher, elapsedSeconds, out var velocity);
             pusherVelocity += velocity;
+
+			// Only allow at most one pusher per frame
+			break;
         }
 
         return pushed;

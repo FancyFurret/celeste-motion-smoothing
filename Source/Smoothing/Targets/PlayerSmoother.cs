@@ -220,17 +220,15 @@ public static class PlayerSmoother
 		}
     }
     
-    // Mirrors UpdateIsSmoothing's pusher override: any moving solid we're riding contributes its
-    // moving axes (jumpthrus stay excluded, same as the IsSmoothing version). This is what lets
-    // subpixel rendering track the player on a diagonally-moving moveblock — without this, the
-    // per-axis init above would disable Y subpixel whenever the player's own Speed.Y is zero
-    // (e.g. running on a diagonal block where the block, not the player, supplies the Y motion).
+    // The logic for when we should use subpixel rendering is identical to position extrapolation,
+    // except we don't just allow riding any moving solids (like moon blocks), but only specifically
+    // steerable move blocks.
     private static void UpdateAllowSubpixelRendering(bool pusherOffsetApplied, Vector2 pusherVelocity, Vector2 playerSpeed, bool isNotStandingStillX, bool isNotStandingStillY, IPositionSmoothingState state, Player player)
     {
-        bool ridingMovingSolid = pusherOffsetApplied && ActorPushTracker.Instance.IsPlayerRidingSolid;
-        if (ridingMovingSolid && pusherVelocity.X != 0)
+        bool ridingSteerableMoveBlock = pusherOffsetApplied && ActorPushTracker.Instance.IsPlayerRidingSteerableMoveBlock;
+        if (ridingSteerableMoveBlock && pusherVelocity.X != 0)
             isNotStandingStillX = true;
-        if (ridingMovingSolid && pusherVelocity.Y != 0)
+        if (ridingSteerableMoveBlock && pusherVelocity.Y != 0)
             isNotStandingStillY = true;
 
         bool isMovingInBothDirections = Math.Abs(playerSpeed.X) > 0.001 && Math.Abs(playerSpeed.Y) > 0.001;
