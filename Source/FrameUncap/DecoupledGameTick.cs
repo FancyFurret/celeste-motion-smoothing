@@ -28,6 +28,13 @@ public class DecoupledGameTick : ToggleableFeature<DecoupledGameTick>, IFrameUnc
     private TimeSpan _accumulatedDrawElapsedTime;
     private long _previousTicks;
 
+    // Carries the sub-tick remainder from scaling timeSpan.Ticks * factor. Without this,
+    // truncating to long on every call drops up to ~0.5 ticks per call; the spin loop
+    // fires AdvanceElapsedTime millions of times per second, so the cumulative loss can
+    // slow the update accumulator by 30–70% at small factors (e.g. factor=0.25 with
+    // ~3-tick calls truncates 0.75 → 0 every time).
+    private double _updateAccumulatorFraction;
+
     protected override void Hook()
     {
         base.Hook();
@@ -182,9 +189,19 @@ public class DecoupledGameTick : ToggleableFeature<DecoupledGameTick>, IFrameUnc
         // accumulator (but not the draw accumulator) so physics runs at 60 * factor Hz wall-clock
         // while draws continue at the configured target framerate.
         var updateFactor = TimeDilationInterop.EffectiveFactor;
-        _accumulatedUpdateElapsedTime += updateFactor == 1f
-            ? timeSpan
-            : TimeSpan.FromTicks((long)(timeSpan.Ticks * updateFactor));
+        if (updateFactor == 1f)
+        {
+            _accumulatedUpdateElapsedTime += timeSpan;
+        }
+        else
+        {
+            // Carry the sub-tick remainder across calls so we don't lose fractional ticks
+            // to truncation. See _updateAccumulatorFraction comment above.
+            var scaled = timeSpan.Ticks * (double)updateFactor + _updateAccumulatorFraction;
+            var whole = (long)scaled;
+            _updateAccumulatorFraction = scaled - whole;
+            _accumulatedUpdateElapsedTime += TimeSpan.FromTicks(whole);
+        }
 
         _accumulatedDrawElapsedTime += timeSpan;
         _previousTicks = ticks;
