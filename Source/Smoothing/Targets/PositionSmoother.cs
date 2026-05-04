@@ -107,6 +107,38 @@ public static class PositionSmoother
 
         if (obj is Entity entity)
         {
+            // CrystalStaticSpinner fillers (the visual hole-filling background tile
+            // that bridges adjacent spinners) don't have their own StaticMover, but
+            // the owning spinner does. `filler.Position = spinner.Position` is the
+            // invariant kept by CrystalStaticSpinner.Update — so by transitivity
+            // the filler's smoothed render position is *exactly* the spinner's.
+            //
+            // We can't just re-use the static-mover branch below with the filler's
+            // own DrawPositionHistory: that history only updates when the filler's
+            // Update runs (which mirrors spinner.Position), but on a tick where
+            // FloatySpaceBlock.Update integer-steps the spinner *before*
+            // CrystalStaticSpinner.Update mirrors it, the filler's history captures
+            // the OLD spinner position. Result: spinner renders at new+offset,
+            // filler renders at old+offset → 1-px misalignment, visible as jitter.
+            //
+            // Forwarding spinner.SmoothedRealPosition sidesteps that entirely.
+            if (CrystalSpinnerFillerTracker.Instance != null)
+            {
+                var spinner = CrystalSpinnerFillerTracker.Instance.GetSpinnerForFiller(entity);
+                if (spinner != null
+                    && MotionSmoothingHandler.Instance.GetState(spinner) is IPositionSmoothingState spinnerState)
+                {
+                    // Idempotent — `Smooth` overwrites SmoothedRealPosition from
+                    // unchanged history, and the oscillation-detector mutations are
+                    // double-call-safe (sign matches PrevSign on the second call).
+                    // Needed because CalculateSmoothedPositions iterates states in
+                    // ConditionalWeakTable order, which is undefined; the filler may
+                    // be smoothed before its spinner.
+                    spinnerState.Smooth(spinner, elapsedSeconds, mode);
+                    return spinnerState.SmoothedRealPosition;
+                }
+            }
+
             var mover = entity.Get<StaticMover>();
             if (mover is { Platform: not null })
             {

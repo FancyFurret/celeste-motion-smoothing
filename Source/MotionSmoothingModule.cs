@@ -57,6 +57,7 @@ public class MotionSmoothingModule : EverestModule
     private UnlockedCameraSmoother UnlockedCameraSmoother { get; } = new();
     private HiresCameraSmoother HiresCameraSmoother { get; } = new();
     private ActorPushTracker ActorPushTracker { get; } = new();
+    private CrystalSpinnerFillerTracker CrystalSpinnerFillerTracker { get; } = new();
     private UpdateAtDraw UpdateAtDraw { get; } = new();
     private MotionSmoothingInputHandler InputHandler { get; } = new();
     private DebugRenderFix DebugRenderFix { get; } = new();
@@ -89,6 +90,7 @@ public class MotionSmoothingModule : EverestModule
         UnlockedCameraSmoother.Load();
         HiresCameraSmoother.Load();
         ActorPushTracker.Load();
+        CrystalSpinnerFillerTracker.Load();
         UpdateAtDraw.Load();
         InputHandler.Load();
         DebugRenderFix.Load();
@@ -182,6 +184,7 @@ public class MotionSmoothingModule : EverestModule
         {
             MotionSmoothing.Disable();
             ActorPushTracker.Disable();
+            CrystalSpinnerFillerTracker.Disable();
             UpdateAtDraw.Disable();
             UnlockedCameraSmoother.Disable();
             HiresCameraSmoother.Disable();
@@ -190,6 +193,7 @@ public class MotionSmoothingModule : EverestModule
 
         MotionSmoothing.Enable();
         ActorPushTracker.Enable();
+        CrystalSpinnerFillerTracker.Enable();
         UpdateAtDraw.Enable();
         DebugRenderFix.Enable();
         DeltaTimeFix.Enable();
