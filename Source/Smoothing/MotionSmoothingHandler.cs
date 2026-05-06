@@ -71,6 +71,14 @@ public class MotionSmoothingHandler : ToggleableFeature<MotionSmoothingHandler>
         On.Monocle.Camera.ctor += CameraCtorHook;
         On.Monocle.Camera.ctor_int_int += CameraCtorIntIntHook;
         On.Celeste.ScreenWipe.ctor += ScreenWipeCtorHook;
+
+        // Drive the pause-settling counter from the canonical "level actually paused"
+        // event rather than the at-draw Pause-button press: the press fires regardless
+        // of whether the pause was accepted (e.g. denied during cassette pickup,
+        // cutscenes, death animations), and a rejected press would still bump the
+        // counter to 10 and disable→re-enable smoothing over the next 10 ticks for
+        // no reason. OnPause only fires on a real pause.
+        Everest.Events.Level.OnPause += LevelOnPause;
     }
 
     protected override void Unhook()
@@ -90,6 +98,17 @@ public class MotionSmoothingHandler : ToggleableFeature<MotionSmoothingHandler>
         On.Monocle.Camera.ctor -= CameraCtorHook;
         On.Monocle.Camera.ctor_int_int -= CameraCtorIntIntHook;
         On.Celeste.ScreenWipe.ctor -= ScreenWipeCtorHook;
+
+        Everest.Events.Level.OnPause -= LevelOnPause;
+    }
+
+    private static void LevelOnPause(Level level, int startIndex, bool minimal, bool quickReset)
+    {
+        // The decrement guard `!Engine.Scene.Paused` in SceneAfterUpdateHook holds the
+        // counter at 10 for the entire pause duration; once the player unpauses, it
+        // drains to 0 over 10 update ticks, giving the smoothing pipeline a settling
+        // window before extrapolation/interpolation kick back in.
+        Instance._pauseCounter = 10;
     }
 
     public ISmoothingState GetState(object obj)
@@ -134,8 +153,9 @@ public class MotionSmoothingHandler : ToggleableFeature<MotionSmoothingHandler>
             // during smoothing. So temporarily update the input to the current frame.
             Instance.AtDrawInputHandler.UpdateInput();
 
-            if (Instance.AtDrawInputHandler.PressedThisUpdate(Input.Pause))
-                Instance._pauseCounter = 10;
+            // Pause-counter is set from the OnPause event hook (see Hook()) — driven
+            // by the actual pause transition, not a speculative draw-time button press
+            // (which fires even when the pause is rejected, e.g. during cassette pickup).
 
             if (Instance._positionsWereUpdated)
             {
