@@ -2611,20 +2611,21 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
 
 
-		Version springCollab2020Version = new Version(1, 7, 9);
+		Version cavernHelperVersion = new Version(1, 3, 7);
 
-        EverestModuleMetadata springCollab2020 = new() {
-			Name = "SpringCollab2020",
-            Version = springCollab2020Version
+		EverestModuleMetadata cavernHelper = new() {
+			Name = "CavernHelper",
+			Version = cavernHelperVersion
 		};
 
-		if (Everest.Loader.TryGetDependency(springCollab2020, out var springCollab2020Module))
-        {
-            if (springCollab2020Module.Metadata.Version.Equals(springCollab2020Version))
+		// Check for exact version so we don't hook anything if the mod updates
+		if (Everest.Loader.TryGetDependency(cavernHelper, out var cavernHelperModule))
+		{
+			if (cavernHelperModule.Metadata.Version.Equals(cavernHelperVersion))
 			{
-				AddSpringCollab2020Hook();
+				AddCavernHelperHook();
 			}
-        }
+		}
 
 
         
@@ -2659,24 +2660,6 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 			if (zoomOutHelperPrototypeModule.Metadata.Version.Equals(zoomOutHelperPrototypeVersion))
 			{
 				AddZoomOutHelperPrototypeHook();
-			}
-		}
-
-        
-
-        Version flagLinesAndSuchVersion = new Version(1, 6, 60);
-
-        EverestModuleMetadata flagLinesAndSuch = new() {
-			Name = "FlaglinesAndSuch",
-			Version = flagLinesAndSuchVersion
-		};
-
-		// Check for exact version so we don't hook anything if the mod updates
-		if (Everest.Loader.TryGetDependency(flagLinesAndSuch, out var flagLinesAndSuchModule))
-		{
-			if (flagLinesAndSuchModule.Metadata.Version.Equals(flagLinesAndSuchVersion))
-			{
-				AddFlaglinesAndSuchHook();
 			}
 		}
 
@@ -2767,6 +2750,23 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 	{
 		Type t_InstantTeleporterRenderer = Type.GetType("Celeste.Mod.AcidHelper.Entities.InstantTeleporterRenderer, AcidHelper");
 		MethodInfo m_OnRenderBloom = t_InstantTeleporterRenderer?.GetMethod(
+			"OnRenderBloom",
+			BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic
+		);
+
+		if (m_OnRenderBloom != null)
+		{
+			AddHook(new ILHook(m_OnRenderBloom, SeekerBarrierRendererRenderHook));
+		}
+	}
+
+
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	private void AddCavernHelperHook()
+	{
+		Type t_CrystalBombFieldRenderer = Type.GetType("Celeste.Mod.CavernHelper.CrystalBombFieldRenderer, CavernHelper");
+		MethodInfo m_OnRenderBloom = t_CrystalBombFieldRenderer?.GetMethod(
 			"OnRenderBloom",
 			BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic
 		);
