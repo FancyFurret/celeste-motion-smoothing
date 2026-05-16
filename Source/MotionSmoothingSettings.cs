@@ -428,7 +428,7 @@ public class MotionSmoothingSettings : EverestModuleSettings
     public void CreateSillyModeEntry(TextMenu menu, bool inGame)
     {
         _sillyModeItem = new TextMenu.OnOff(
-            "Silly Mode",
+            "Nasty Mode",
             _sillyMode
         );
 
