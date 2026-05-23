@@ -19,6 +19,9 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
 
     private static bool _disableFloorFunctions = false;
 
+    private static Vector2 _lastSmoothedPosition;
+    private static bool _hasLastSmoothedPosition;
+
     protected override void Hook()
     {
         base.Hook();
@@ -57,7 +60,26 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
         if (Engine.Scene is Level level)
         {
             var cameraState = (MotionSmoothingHandler.Instance.GetState(level.Camera) as IPositionSmoothingState)!;
-            var pixelOffset = cameraState.SmoothedRealPosition.Floor() - cameraState.SmoothedRealPosition;
+
+            // During pause, SmoothedRealPosition snaps to the rounded OriginalDrawPosition,
+            // which would zero the fractional offset and visibly shift the background by a
+            // pixel. Hold the last pre-pause smoothed position so the rendered viewport stays
+            // pinned to where it was at the moment of the pause. Computing the offset against
+            // level.Camera.Position (rather than floor(smoothed)) keeps the math correct even
+            // as the underlying camera position shifts on the pause-transition frame.
+            Vector2 smoothed;
+            if ((MotionSmoothingHandler.Instance.WasPaused || level.Paused) && _hasLastSmoothedPosition)
+            {
+                smoothed = _lastSmoothedPosition;
+            }
+            else
+            {
+                smoothed = cameraState.SmoothedRealPosition;
+                _lastSmoothedPosition = smoothed;
+                _hasLastSmoothedPosition = true;
+            }
+
+            var pixelOffset = level.Camera.Position - smoothed;
             return SaveData.Instance.Assists.MirrorMode ? -pixelOffset : pixelOffset;
         }
 
