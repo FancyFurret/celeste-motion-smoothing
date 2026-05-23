@@ -17,6 +17,9 @@ public static class PositionSmoother
         // pipeline that's otherwise rendering at 1/6-px under the 6x composite.
         var sillyMode = MotionSmoothingModule.Settings.SillyMode;
 
+        if (mode == SmoothingMode.Off)
+            return sillyMode ? state.OriginalRealPosition : state.OriginalDrawPosition;
+
         if (ShouldCancelSmoothing(state, obj))
             return sillyMode ? state.OriginalRealPosition : state.OriginalDrawPosition;
 

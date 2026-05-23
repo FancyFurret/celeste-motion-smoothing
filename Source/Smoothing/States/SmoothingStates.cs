@@ -138,6 +138,11 @@ public class CameraSmoothingState : PositionSmoothingState<Camera>
         if (OverrideSmoothingMode.HasValue)
             mode = OverrideSmoothingMode.Value;
 
+        // Carveout: the camera still needs fractional offsets even when global
+        // smoothing is Off, otherwise the entire scene jitters on integer steps.
+        if (mode == SmoothingMode.Off)
+            mode = SmoothingMode.Extrapolate;
+
         var currentStrategy = MotionSmoothingModule.Settings.UnlockCameraStrategy;
         if (_hasLastSmoothedBeforePause && _lastSmoothedStrategy != currentStrategy)
             _hasLastSmoothedBeforePause = false;

@@ -11,7 +11,8 @@ namespace Celeste.Mod.MotionSmoothing;
 public enum SmoothingMode
 {
     Extrapolate,
-    Interpolate
+    Interpolate,
+    Off
 }
 
 public enum UpdateMode
@@ -347,7 +348,8 @@ public class MotionSmoothingSettings : EverestModuleSettings
         "Extrapolate: [Recommended] Predicts object positions in between physics frames\n" +
         "based on their velocities.\n\n" +
         "Interpolate: Uses the last two physics frames to compute the exact positions\n" +
-        "in between. This is more technically correct, but it adds 1-2 frames of input delay.")]
+        "in between. This is more technically correct, but it adds 1-2 frames of input delay.\n\n" +
+        "Off: Disables smoothing entirely. Objects render only at their exact physics positions.")]
     public SmoothingMode ObjectSmoothing
     {
         get => _smoothingMode;

@@ -29,11 +29,12 @@ public static class PlayerSmoother
 
     public static Vector2 Smooth(Player player, IPositionSmoothingState state, double elapsed, SmoothingMode mode)
     {
+        var sillyMode = MotionSmoothingModule.Settings.SillyMode;
         return mode switch
         {
             SmoothingMode.Interpolate => Interpolate(player, state, elapsed),
             SmoothingMode.Extrapolate => Extrapolate(player, state, elapsed),
-            _ => state.OriginalRealPosition
+            _ => sillyMode ? state.OriginalRealPosition : state.OriginalDrawPosition
         };
     }
 
