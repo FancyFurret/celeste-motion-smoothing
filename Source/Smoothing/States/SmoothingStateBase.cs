@@ -122,7 +122,7 @@ public abstract class PositionSmoothingState<T> : IPositionSmoothingState
 
     public Vector2[] RealPositionHistory { get; } = new Vector2[3];
     public Vector2[] DrawPositionHistory { get; } = new Vector2[3];
-    public Vector2 SmoothedRealPosition { get; private set; }
+    public Vector2 SmoothedRealPosition { get; protected set; }
     public Vector2 OriginalRealPosition { get; private set; }
     public Vector2 OriginalDrawPosition { get; private set; }
     protected Vector2 PreSmoothedPosition { get; set; }

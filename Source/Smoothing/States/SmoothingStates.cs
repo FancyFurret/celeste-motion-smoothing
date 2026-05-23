@@ -1,5 +1,6 @@
 using System;
 using Celeste.Mod.MotionSmoothing.Interop;
+using Celeste.Mod.MotionSmoothing.Smoothing.Targets;
 using Microsoft.Xna.Framework;
 using Monocle;
 
@@ -106,6 +107,10 @@ public class FinalBossBeamSmoothingState : AngleSmoothingState<FinalBossBeam>
 
 public class CameraSmoothingState : PositionSmoothingState<Camera>
 {
+    private Vector2 _lastSmoothedBeforePause;
+    private bool _hasLastSmoothedBeforePause;
+    private UnlockCameraStrategy _lastSmoothedStrategy;
+
     protected override bool CancelSmoothing => CelesteTasInterop.CenterCamera;
     protected override Vector2 GetRealPosition(Camera obj) => obj.Position;
     protected override void SetPosition(Camera obj, Vector2 position) => obj.Position = position;
@@ -116,6 +121,40 @@ public class CameraSmoothingState : PositionSmoothingState<Camera>
         if (CancelSmoothing || !_initialized) return;
         PreSmoothedPosition = obj.Position;
         obj.Position = SmoothedRealPosition.Floor();
+    }
+
+    // Override the pause-snap so that the camera does not jump to the rounded
+    // OriginalDrawPosition: that snap can push floor(SmoothedRealPosition) over
+    // an integer boundary and visibly shift the entire scene by one pixel at the
+    // moment of pause. Holding the last pre-pause smoothed position keeps the
+    // rendered camera pinned where it was — for every camera-smoothing mode.
+    //
+    // The cache is invalidated if the camera-smoothing strategy changes, because
+    // Fancy mode leaves camera.position fractional while Fast/Off floor it, so a
+    // cached value from one mode is not safe to reuse in another (a stale value
+    // routed through Fast's per-pixel offset path would shift the level visibly).
+    protected override void Smooth(Camera obj, double elapsedSeconds, SmoothingMode mode)
+    {
+        if (OverrideSmoothingMode.HasValue)
+            mode = OverrideSmoothingMode.Value;
+
+        var currentStrategy = MotionSmoothingModule.Settings.UnlockCameraStrategy;
+        if (_hasLastSmoothedBeforePause && _lastSmoothedStrategy != currentStrategy)
+            _hasLastSmoothedBeforePause = false;
+
+        if (MotionSmoothingHandler.Instance.WasPaused || Engine.Scene.Paused)
+        {
+            SmoothedRealPosition = _hasLastSmoothedBeforePause
+                ? _lastSmoothedBeforePause
+                : OriginalDrawPosition;
+        }
+        else
+        {
+            SmoothedRealPosition = PositionSmoother.Smooth(this, obj, elapsedSeconds, mode);
+            _lastSmoothedBeforePause = SmoothedRealPosition;
+            _lastSmoothedStrategy = currentStrategy;
+            _hasLastSmoothedBeforePause = true;
+        }
     }
 }
 
