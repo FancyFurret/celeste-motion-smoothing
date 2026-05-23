@@ -823,11 +823,8 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
             _currentlyRenderingForeground = true;
             _foregroundBlendState = BlendState.AlphaBlend;
             _currentFlushGroup = ForegroundFlushGroup.AlphaBlend;
-            _disableFloorFunctions = DisableFloorFunctionsMode.Rational;
 
             orig(self, scene);
-
-            _disableFloorFunctions = DisableFloorFunctionsMode.Integer;
 
             // Only flush if we're still on the small buffer (last group was bufferable)
             if (_currentRenderTarget == renderer.SmallBuffer.Target)
