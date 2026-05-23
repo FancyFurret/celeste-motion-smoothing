@@ -145,6 +145,19 @@ public class PushSpriteSmoother : SmoothingStrategy<PushSpriteSmoother>
         // form would strip the subpixel motion.
         var anchor = obj is Actor or Platform ? state.OriginalDrawPosition : state.OriginalRealPosition;
 
+        // At rest (RealPositionHistory unchanged), SmoothedRealPosition collapses to
+        // ExactPosition for an Actor/Platform — i.e. Position + movementCounter. When
+        // movementCounter ends up near ±0.5 after the last integer spill (as IntroCar
+        // does while ridden: MoveV(-10/60) per tick until Platform.MoveV's
+        // Math.Round(counter) flips, leaving counter ≈ 0.5), float-precision drift
+        // can put Round(ExactPosition) one pixel off Position.Round() — even though
+        // nothing is actually moving. The subpixel-oscillation guard above doesn't
+        // catch this because at perfect rest Sign(ΔReal)=0 and the sign-change counter
+        // never advances. Vanilla renders straight from Position (integer), so falling
+        // back to a zero offset here matches vanilla at rest.
+        if (!state.Changed && obj is Actor or Platform)
+            return Vector2.Zero;
+
         return state.SmoothedRealPosition.Round() - anchor;
     }
 
