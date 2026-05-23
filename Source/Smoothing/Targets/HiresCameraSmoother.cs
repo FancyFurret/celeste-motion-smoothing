@@ -2677,24 +2677,6 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 				AddStrawberryJamHook();
 			}
 		}
-
-
-
-		Version maddieHelpingHandVersion = new Version(1, 40, 0);
-
-        EverestModuleMetadata maddieHelpingHand = new() {
-			Name = "MaxHelpingHand",
-			Version = maddieHelpingHandVersion
-		};
-
-		// Check for exact version so we don't hook anything if the mod updates
-		if (Everest.Loader.TryGetDependency(maddieHelpingHand, out var maddieHelpingHandModule))
-		{
-			if (maddieHelpingHandModule.Metadata.Version.Equals(maddieHelpingHandVersion))
-			{
-				AddMaddieHelpingHandHook();
-			}
-		}
 	}
 
 
@@ -2782,23 +2764,6 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 	{
 		Type t_CrystalBombFieldRenderer = Type.GetType("Celeste.Mod.CavernHelper.CrystalBombFieldRenderer, CavernHelper");
 		MethodInfo m_OnRenderBloom = t_CrystalBombFieldRenderer?.GetMethod(
-			"OnRenderBloom",
-			BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic
-		);
-
-		if (m_OnRenderBloom != null)
-		{
-			AddHook(new ILHook(m_OnRenderBloom, SeekerBarrierRendererRenderHook));
-		}
-	}
-
-
-	
-	[MethodImpl(MethodImplOptions.NoInlining)]
-	private void AddMaddieHelpingHandHook()
-	{
-		Type t_KevinBarrierRenderer = Type.GetType("Celeste.Mod.MaxHelpingHand.Entities.KevinBarrierRenderer, MaxHelpingHand");
-		MethodInfo m_OnRenderBloom = t_KevinBarrierRenderer?.GetMethod(
 			"OnRenderBloom",
 			BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic
 		);
