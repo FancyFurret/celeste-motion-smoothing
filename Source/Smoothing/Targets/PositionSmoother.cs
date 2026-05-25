@@ -18,7 +18,15 @@ public static class PositionSmoother
         var sillyMode = MotionSmoothingModule.Settings.SillyMode;
 
         if (mode == SmoothingMode.Off)
+        {
+            // PlayerSmoother is skipped on the Off path, so reset its static oscillation
+            // and IsSmoothing*/AllowSubpixelRendering* flags here — otherwise toggling
+            // ObjectSmoothing back to Extrapolate/Interpolate mid-level resumes with stale
+            // values, suppressing subpixel rendering and per-axis smoothing for a while.
+            if (obj == MotionSmoothingHandler.Instance.Player)
+                PlayerSmoother.ResetStaticState();
             return sillyMode ? state.OriginalRealPosition : state.OriginalDrawPosition;
+        }
 
         if (ShouldCancelSmoothing(state, obj))
             return sillyMode ? state.OriginalRealPosition : state.OriginalDrawPosition;

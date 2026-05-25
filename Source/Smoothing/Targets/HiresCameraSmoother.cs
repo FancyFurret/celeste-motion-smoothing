@@ -572,6 +572,11 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
         _currentlyRenderingPlayerOnTopOfFlash = false;
         _disableFloorFunctions = DisableFloorFunctionsMode.Integer;
         _interceptDistortRender = false;
+        // Stale fractional offset from a previous frame would otherwise be applied to
+        // a freshly-rendered SmallBuffer on frames where RenderEntityAtSubpixelPosition
+        // didn't run (e.g. the flash render path firing on a frame that skipped the
+        // EntityList intercept), producing a single-frame 1-px hop.
+        _lastPlayerOffset = Vector2.Zero;
 
         ComputeSmoothedCameraData(level);
 

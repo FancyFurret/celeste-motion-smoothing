@@ -38,6 +38,27 @@ public static class PlayerSmoother
         };
     }
 
+    // Cold-reset every piece of static state owned by PlayerSmoother. Needed when
+    // ObjectSmoothing is set to Off, because PositionSmoother.Smooth short-circuits
+    // before this class runs, so the oscillation detectors, IsSmoothing*, and
+    // AllowSubpixelRendering* flags would otherwise stay latched at whatever they
+    // held when smoothing was last on — and resurrect those stale values the moment
+    // the user switches back to Extrapolate/Interpolate.
+    public static void ResetStaticState()
+    {
+        IsSmoothingX = false;
+        IsSmoothingY = false;
+        AllowSubpixelRenderingX = false;
+        AllowSubpixelRenderingY = false;
+
+        _ignoreSubpixelMotionX = false;
+        _ignoreSubpixelMotionY = false;
+        _xDeltaSignChanges = 0;
+        _yDeltaSignChanges = 0;
+        _prevXDeltaSign = 0;
+        _prevYDeltaSign = 0;
+    }
+
     private static Vector2 Interpolate(Player player, IPositionSmoothingState state, double elapsed)
     {
         GetExtrapolatedPositionAndUpdateIsSmoothing(player, state, elapsed);
