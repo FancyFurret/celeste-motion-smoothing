@@ -113,7 +113,17 @@ public class MotionSmoothingSettings : EverestModuleSettings
 
     public UnlockCameraStrategy UnlockCameraStrategy
     {
-        get => _unlockCameraStrategy;
+        get
+        {
+            // Fancy (Hires) is incompatible with auspicioushelper, so transparently
+            // fall back to Fast (Unlock) regardless of what's persisted on disk.
+            if (_unlockCameraStrategy == UnlockCameraStrategy.Hires && IsAuspiciousHelperLoaded)
+            {
+                return UnlockCameraStrategy.Unlock;
+            }
+
+            return _unlockCameraStrategy;
+        }
         set
         {
             _unlockCameraStrategy = value;
@@ -123,6 +133,19 @@ public class MotionSmoothingSettings : EverestModuleSettings
 
     public void CreateUnlockCameraStrategyEntry(TextMenu menu, bool inGame)
     {
+        bool auspiciousHelperLoaded = IsAuspiciousHelperLoaded;
+
+        // When auspicioushelper is loaded, Fancy (Hires) is incompatible, so
+        // exclude it from the slider and clamp the current value if needed.
+        int minIndex = auspiciousHelperLoaded ? (int)UnlockCameraStrategy.Unlock : 0;
+        int maxIndex = Enum.GetValues(typeof(UnlockCameraStrategy)).Length - 1;
+        int initialIndex = (int)UnlockCameraStrategy;
+        if (initialIndex < minIndex)
+        {
+            initialIndex = minIndex;
+            UnlockCameraStrategy = (UnlockCameraStrategy)initialIndex;
+        }
+
         var strategySlider = new TextMenu.Slider(
             "Smooth Camera",
             index => {
@@ -138,9 +161,9 @@ public class MotionSmoothingSettings : EverestModuleSettings
 
 				return "Off";
 			},
-            0,
-            Enum.GetValues(typeof(UnlockCameraStrategy)).Length - 1,
-            (int)UnlockCameraStrategy
+            minIndex,
+            maxIndex,
+            initialIndex
         );
 
         strategySlider.Change(index =>
@@ -167,6 +190,15 @@ public class MotionSmoothingSettings : EverestModuleSettings
         });
 
         menu.Add(strategySlider);
+
+        if (auspiciousHelperLoaded)
+        {
+            menu.Add(new TextMenu.SubHeader(
+                "Fancy mode is incompatible with auspicioushelper. Relaunch Celeste\n" +
+                "without it loaded in order to use Fancy mode.",
+                topPadding: false
+            ));
+        }
 
         strategySlider.AddDescription(
             menu,
@@ -221,6 +253,14 @@ public class MotionSmoothingSettings : EverestModuleSettings
     }
 
 
+
+    private static readonly EverestModuleMetadata AuspiciousHelperMetadata = new()
+    {
+        Name = "auspicioushelper",
+        Version = new Version(0, 0, 0)
+    };
+
+    public static bool IsAuspiciousHelperLoaded => Everest.Loader.DependencyLoaded(AuspiciousHelperMetadata);
 
     public bool RenderBackgroundHires
     {
