@@ -1,5 +1,6 @@
 using System;
 using System.Collections;
+using System.Reflection;
 using Celeste.Mod.MotionSmoothing.Utilities;
 using Celeste.Mod.UI;
 using Microsoft.Xna.Framework.Input;
@@ -194,8 +195,7 @@ public class MotionSmoothingSettings : EverestModuleSettings
         if (auspiciousHelperLoaded)
         {
             menu.Add(new TextMenu.SubHeader(
-                "Fancy mode is incompatible with auspicioushelper. Relaunch Celeste\n" +
-                "without it loaded in order to use Fancy mode.",
+                "Fancy mode is incompatible with this map.",
                 topPadding: false
             ));
         }
@@ -254,13 +254,57 @@ public class MotionSmoothingSettings : EverestModuleSettings
 
 
 
-    private static readonly EverestModuleMetadata AuspiciousHelperMetadata = new()
-    {
-        Name = "auspicioushelper",
-        Version = new Version(0, 0, 0)
-    };
+    // Reflection-based handle to auspicioushelper's MaterialPipe.layers field. We resolve
+    // it lazily (the type only exists if the mod is loaded) and cache the FieldInfo.
+    private static FieldInfo _auspiciousMaterialPipeLayersField;
+    private static bool _auspiciousMaterialPipeLayersFieldResolved;
 
-    public static bool IsAuspiciousHelperLoaded => Everest.Loader.DependencyLoaded(AuspiciousHelperMetadata);
+    private static FieldInfo GetAuspiciousMaterialPipeLayersField()
+    {
+        if (_auspiciousMaterialPipeLayersFieldResolved)
+        {
+            return _auspiciousMaterialPipeLayersField;
+        }
+
+        foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies())
+        {
+            Type type;
+            try
+            {
+                type = assembly.GetType("Celeste.Mod.auspicioushelper.MaterialPipe");
+            }
+            catch
+            {
+                continue;
+            }
+
+            if (type != null)
+            {
+                _auspiciousMaterialPipeLayersField = type.GetField(
+                    "layers",
+                    BindingFlags.Static | BindingFlags.NonPublic | BindingFlags.Public
+                );
+                break;
+            }
+        }
+
+        _auspiciousMaterialPipeLayersFieldResolved = true;
+        return _auspiciousMaterialPipeLayersField;
+    }
+
+    public static bool IsAuspiciousHelperLoaded
+    {
+        get
+        {
+            var layersField = GetAuspiciousMaterialPipeLayersField();
+            if (layersField == null)
+            {
+                return false;
+            }
+
+            return layersField.GetValue(null) is ICollection layers && layers.Count > 0;
+        }
+    }
 
     public bool RenderBackgroundHires
     {
