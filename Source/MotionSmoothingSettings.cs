@@ -148,7 +148,7 @@ public class MotionSmoothingSettings : EverestModuleSettings
         }
 
         var strategySlider = new TextMenu.Slider(
-            "Smooth Camera",
+            "Camera Smoothing",
             index => {
 				if ((UnlockCameraStrategy)index == UnlockCameraStrategy.Hires)
 				{
@@ -244,7 +244,7 @@ public class MotionSmoothingSettings : EverestModuleSettings
 
         _renderMadelineWithSubpixelsItem.AddDescription(
             menu,
-            "Only applies if Smooth Camera is set to Fancy. Turning this on lets Madeline\n" +
+            "Only applies if Camera Smoothing is set to Fancy. Turning this on lets Madeline\n" +
             "be drawn at her exact subpixel position (i.e. offset from the pixel grid),\n" +
 			"which dramatically improves the clarity of her sprite while moving. There are\n" +
             "many safeguards in place to prevent subpixel information from being gleanable.\n" +
@@ -337,7 +337,7 @@ public class MotionSmoothingSettings : EverestModuleSettings
 
         _renderBackgroundHiresItem.AddDescription(
             menu,
-            "Only applies if Smooth Camera is set to Fancy. Turning this on lets the\n" +
+            "Only applies if Camera Smoothing is set to Fancy. Turning this on lets the\n" +
             "background draw unlocked from the pixel grid, which makes parallax\n" +
             "backgrounds substantially smoother. Turning this off may mildly *reduce*\n" +
             "performance, especially in levels with unusually complicated backgrounds."
@@ -377,7 +377,7 @@ public class MotionSmoothingSettings : EverestModuleSettings
 
         _renderForegroundHiresItem.AddDescription(
             menu,
-            "Only applies if Smooth Camera is set to Fancy. Turning this on lets the\n" +
+            "Only applies if Camera Smoothing is set to Fancy. Turning this on lets the\n" +
             "foreground draw unlocked from the pixel grid; for example, the snow in\n" +
             "chapter 7 will drift smoothly. Turning this off may moderately *reduce*\n" +
             "performance, especially in levels with unusually complicated foregrounds."
