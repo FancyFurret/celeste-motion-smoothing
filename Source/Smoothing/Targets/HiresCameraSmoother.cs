@@ -2849,16 +2849,21 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 		}
 	}
 
-    private static bool _zoomOutHelperPrototypeNeedBufferInitialization = false;
-
     private delegate void orig_EnsureVanillaBuffers();
 	private static void EnsureVanillaBuffersHook(orig_EnsureVanillaBuffers orig)
 	{
-        _zoomOutHelperPrototypeNeedBufferInitialization = false;
+        // We can't rely on EnsureBufferDimensionsHook to tell us a resize happened:
+        // EnsureBufferDimensions is tiny and the JIT inlines it into EnsureVanillaBuffers,
+        // so that detour never fires for these call sites. Instead, detect the resize here
+        // by comparing the vanilla buffers before and after the original runs. Gameplay,
+        // Level, TempA and TempB are all resized to GameplayBufferWidth/Height in lockstep,
+        // so checking the gameplay buffer is enough to know our large textures are stale.
+        var oldWidth = GameplayBuffers.Gameplay?.Width;
+        var oldHeight = GameplayBuffers.Gameplay?.Height;
 
 		orig();
 
-        if (_zoomOutHelperPrototypeNeedBufferInitialization)
+        if (GameplayBuffers.Gameplay?.Width != oldWidth || GameplayBuffers.Gameplay?.Height != oldHeight)
         {
             InitializeLargeTextures();
         }
@@ -2867,18 +2872,13 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 	private delegate void orig_EnsureBufferDimensionsHook(VirtualRenderTarget target, int padding);
 	private static void EnsureBufferDimensionsHook(orig_EnsureBufferDimensionsHook orig, VirtualRenderTarget target, int padding)
 	{
+		// Redirect any of our large buffers to their resizable originals so the mod's
+		// in-place resize lands on a buffer we can rebuild from. Resize detection happens
+		// in EnsureVanillaBuffersHook (see note there), so this hook only does the swap --
+		// it may be inlined away, which is fine since the swap is a no-op for vanilla buffers.
 		target = MotionSmoothingModule.GetResizableBuffer(target);
-        
-        
-        var oldWidth = target?.Target?.Width;
-        var oldHeight = target?.Target?.Height;
-        
-        orig(target, padding);
 
-        if (target?.Target?.Width != oldWidth || target?.Target?.Height != oldHeight)
-        {
-            _zoomOutHelperPrototypeNeedBufferInitialization = true;
-        }
+        orig(target, padding);
     }
 
 
