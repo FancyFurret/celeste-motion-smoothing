@@ -29,7 +29,7 @@ public static class PlayerSmoother
 
     public static Vector2 Smooth(Player player, IPositionSmoothingState state, double elapsed, SmoothingMode mode)
     {
-        var sillyMode = MotionSmoothingModule.Settings.SillyMode;
+        var sillyMode = MotionSmoothingModule.Instance.CurrentNastyMode;
         return mode switch
         {
             SmoothingMode.Interpolate => Interpolate(player, state, elapsed),
@@ -82,7 +82,7 @@ public static class PlayerSmoother
     {
         // SillyMode: snap-back destinations use OriginalRealPosition so we don't drop back
         // onto the integer grid on a pipeline that's otherwise rendering at 1/6-px.
-        var sillyMode = MotionSmoothingModule.Settings.SillyMode;
+        var sillyMode = MotionSmoothingModule.Instance.CurrentNastyMode;
 
         // Disable during screen transitions or pause
         if (Engine.Scene is not Level || Engine.Scene is Level { Transitioning: true } or { Paused: true })
@@ -235,7 +235,7 @@ public static class PlayerSmoother
             || Math.Abs(player.Speed.Y) < 0.001
         );
 
-		if (MotionSmoothingModule.Settings.SillyMode)
+		if (MotionSmoothingModule.Instance.CurrentNastyMode)
 		{
 			IsSmoothingX = true;
 			IsSmoothingY = true;
@@ -268,7 +268,7 @@ public static class PlayerSmoother
             || !canClimb
         );
 
-		if (MotionSmoothingModule.Settings.SillyMode)
+		if (MotionSmoothingModule.Instance.CurrentNastyMode)
 		{
 			AllowSubpixelRenderingX = true;
 			AllowSubpixelRenderingY = true;

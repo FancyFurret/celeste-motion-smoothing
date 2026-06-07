@@ -108,7 +108,7 @@ public class PushSpriteSmoother : SmoothingStrategy<PushSpriteSmoother>
         // 1/6-px hair motion instead of a 6-px grid snap. Anchor stays OriginalDrawPosition
         // (integer) so the offset still lands the head at SmoothedRealPosition and shifts
         // Nodes[1..N] by the same delta.
-        var targetPos = MotionSmoothingModule.Settings.SillyMode
+        var targetPos = MotionSmoothingModule.Instance.CurrentNastyMode
             ? playerState.SmoothedRealPosition
             : playerState.SmoothedRealPosition.Round();
         return targetPos - playerState.OriginalDrawPosition;
@@ -119,7 +119,7 @@ public class PushSpriteSmoother : SmoothingStrategy<PushSpriteSmoother>
         if (GetState(obj) is not IPositionSmoothingState state)
             return Vector2.Zero;
 
-		if (MotionSmoothingModule.Settings.SillyMode)
+		if (MotionSmoothingModule.Instance.CurrentNastyMode)
 		{
 			return state.SmoothedRealPosition - state.OriginalDrawPosition;
 		}
