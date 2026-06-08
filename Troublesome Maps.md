@@ -25,3 +25,4 @@ Maps and mods to check when messing with details. Check all of these with and wi
     - Drawing hires gameplay
 - Oblivion
 	- HoldableBarriers in room 4
+- ScugHelper: Dream Crystals in test map

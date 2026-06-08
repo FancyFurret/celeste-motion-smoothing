@@ -1072,29 +1072,34 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 	private static void EntityListRenderHook(ILContext il)
 	{
 		var cursor = new ILCursor(il);
-		
-		if (cursor.TryGotoNext(MoveType.Before,
-			i => i.MatchCallvirt<Entity>("Render")))
-		{
-			ILLabel doNormalRender = cursor.DefineLabel();
-			ILLabel skip = cursor.DefineLabel();
-			
-			// Stack: [Entity]
-			cursor.Emit(OpCodes.Dup);                                      // [Entity, Entity]
-			cursor.EmitDelegate<Func<Entity, bool>>(ShouldInterceptEntityRender);      // [Entity, bool]
-			cursor.Emit(OpCodes.Brfalse, doNormalRender);                  // [Entity]
-			
-			// Intercept path: call custom delegate, skip callvirt
-			cursor.EmitDelegate<Action<Entity>>(RenderEntityAtSubpixelPosition);             // []
-			cursor.Emit(OpCodes.Br, skip);
-			
-			// Normal path label (right before original callvirt)
-			cursor.MarkLabel(doNormalRender);
-			
-			// Move past callvirt to place skip label
-			cursor.GotoNext(MoveType.After, i => i.MatchCallvirt<Entity>("Render"));
-			cursor.MarkLabel(skip);
-		}
+
+		if (!cursor.TryGotoNext(MoveType.Before, i => i.MatchCallvirt<Entity>("Render")))
+			return;
+
+		// We used to rewrite the `callvirt Entity::Render` into a branch that *skipped* the
+		// callvirt on the intercept path (Br to a label past it). That broke any other mod
+		// whose IL manipulator wrapped the same callvirt with a setup/teardown pair around a
+		// local: our branch jumped over their setup but landed before their teardown, so the
+		// teardown ran against an uninitialized local. (Concretely: Mapping Utils' Profiling
+		// tab wraps it with `BeginFor; Stloc info` ... `Ldloc info; EndRender`, and the skip
+		// left `info` null → NullReferenceException inside EntityList.RenderExcept.)
+		//
+		// Instead, leave the callvirt always executing — it *is* the entity's Render — and
+		// bracket it with straight-line pre/post delegates that do the subpixel buffer
+		// juggling. The pre delegate returns whether it set up an interception; that bool is
+		// stashed in a per-call-site local and handed to the post delegate so the two stay
+		// paired no matter how other manipulators interleave their own straight-line code.
+		var didIntercept = new VariableDefinition(il.Import(typeof(bool)));
+		il.Body.Variables.Add(didIntercept);
+
+		// Stack: [Entity]
+		cursor.Emit(OpCodes.Dup);                                            // [Entity, Entity]
+		cursor.EmitDelegate<Func<Entity, bool>>(BeginSubpixelEntityRender);  // [Entity, bool]
+		cursor.Emit(OpCodes.Stloc, didIntercept);                           // [Entity]
+
+		cursor.GotoNext(MoveType.After, i => i.MatchCallvirt<Entity>("Render"));
+		cursor.Emit(OpCodes.Ldloc, didIntercept);
+		cursor.EmitDelegate<Action<bool>>(EndSubpixelEntityRender);
 	}
 
 	private static bool ShouldInterceptEntityRender(Entity self)
@@ -1108,16 +1113,44 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
 		var player = MotionSmoothingHandler.Instance.Player;
 
-		return self == player
+		bool isCandidate = self == player
 			|| player?.Holding?.Entity == self // A currently-held holdable
 			|| self is Strawberry { Golden: true } strawberry && strawberry.Follower.Leader != null; // A golden attacked to the player
+		if (!isCandidate)
+			return false;
+
+		// RenderEntityAtSubpixelPosition dereferences the smoothing state (the player's for the
+		// player/holdable case, the berry's own for a golden). If it isn't registered, don't
+		// intercept — fall through to a normal Render instead of NRE'ing. This happens when
+		// another mod triggers a re-entrant gameplay render outside our smoothing setup, e.g.
+		// Mapping Utils' Profiling tab rendering the level through ImGuiHelper.
+		var stateSource = self is Strawberry ? self : player;
+		return MotionSmoothingHandler.Instance.GetState(stateSource) is IPositionSmoothingState;
 	}
 
-	private static void RenderEntityAtSubpixelPosition(Entity self)
+	// State carried from the pre delegate (BeginSubpixelEntityRender) to the matching post
+	// delegate (EndSubpixelEntityRender). Only one interception is ever active at a time — the
+	// intercepted entities (player/holdable/golden berry) don't recursively render the entity
+	// list — so plain statics suffice; the per-call-site `didIntercept` bool keeps the pre/post
+	// pair matched. Non-intercepted entities leave these untouched.
+	private static Vector2 _subpixelRenderOffset;
+	private static Vector2 _subpixelRenderSpriteOffset;
+	private static Entity _subpixelRenderEntity;
+
+	// Pre: if this entity should render at a subpixel-precise position, flush everything drawn so
+	// far into the large buffer and start a fresh gameplay buffer, so the upcoming
+	// `callvirt Entity::Render` draws this entity alone. Returns true if it set that up, so the
+	// post delegate knows to finish the job.
+	private static bool BeginSubpixelEntityRender(Entity self)
 	{
 		if (HiresRenderer.Instance is not { } renderer)
 		{
-			return;
+			return false;
+		}
+
+		if (!ShouldInterceptEntityRender(self))
+		{
+			return false;
 		}
 
         Vector2 offset;
@@ -1167,6 +1200,10 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 			offset = Vector2.Zero;
 		}
 
+		_subpixelRenderOffset = offset;
+		_subpixelRenderSpriteOffset = spriteOffset;
+		_subpixelRenderEntity = self;
+
 		// Render the things below this entity.
 		GameplayRenderer.End();
 
@@ -1186,34 +1223,49 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
 		GameplayRenderer.Begin();
 
-		// Now render just this entity and copy it in at subpixel-precise position
-		self.Render();
+		// The original callvirt now renders just this entity into the cleared gameplay buffer.
+		return true;
+	}
+
+	// Post: copy the lone entity (now sitting in the gameplay buffer) into the large buffer at
+	// its subpixel-precise position, then start another fresh gameplay buffer so the entity-list
+	// loop can keep going. No-op unless the matching pre delegate set up an interception.
+	private static void EndSubpixelEntityRender(bool didIntercept)
+	{
+		if (!didIntercept)
+		{
+			return;
+		}
+
+		if (HiresRenderer.Instance is not { } renderer)
+		{
+			return;
+		}
 
 		GameplayRenderer.End();
 
-
-
 		// If we messed with a strawberry, put it back
-		if (self is Strawberry strawberry2)
+		if (_subpixelRenderEntity is Strawberry strawberry2)
 		{
-			strawberry2.sprite.X = spriteOffset.X;
-			strawberry2.sprite.Y = spriteOffset.Y;
+			strawberry2.sprite.X = _subpixelRenderSpriteOffset.X;
+			strawberry2.sprite.Y = _subpixelRenderSpriteOffset.Y;
 		}
-		
 
 		Engine.Instance.GraphicsDevice.SetRenderTarget(renderer.LargeGameplayBuffer);
 
 		Strategies.PushSpriteSmoother.TemporarilyDisablePushSpriteSmoothing = true;
 		Draw.SpriteBatch.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend, SamplerState.PointClamp, DepthStencilState.None, RasterizerState.CullNone, null, Matrix.Identity);
-		Draw.SpriteBatch.Draw(GameplayBuffers.Gameplay, offset, Color.White);
+		Draw.SpriteBatch.Draw(GameplayBuffers.Gameplay, _subpixelRenderOffset, Color.White);
 		Draw.SpriteBatch.End();
 		Strategies.PushSpriteSmoother.TemporarilyDisablePushSpriteSmoothing = false;
-		
+
 		Engine.Instance.GraphicsDevice.SetRenderTarget(GameplayBuffers.Gameplay);
 		Engine.Instance.GraphicsDevice.Clear(Color.Transparent);
 
 		// Keep going for things above this entity
 		GameplayRenderer.Begin();
+
+		_subpixelRenderEntity = null;
 	}
 
     private static void Player_Render(On.Celeste.Player.orig_Render orig, Player self)
