@@ -16,6 +16,8 @@ public class PushSpriteSmoother : SmoothingStrategy<PushSpriteSmoother>
 
     private readonly Stack<object> _currentObjects = new();
 
+    private Texture _currentRenderTarget;
+
     public void SmoothObject(object obj, IPositionSmoothingState state)
     {
         base.SmoothObject(obj, state);
@@ -27,6 +29,12 @@ public class PushSpriteSmoother : SmoothingStrategy<PushSpriteSmoother>
 
         AddHook(new Hook(typeof(SpriteBatch).GetMethod("PushSprite", MotionSmoothingModule.AllFlags)!,
             PushSpriteHook));
+
+        // Track the current render target so we can suppress smoothing while an entity draws
+        // into its own scratch buffer. The singular GraphicsDevice.SetRenderTarget routes
+        // through this same overload in FNA.
+        AddHook(new Hook(typeof(GraphicsDevice).GetMethod("SetRenderTargets",
+            [typeof(RenderTargetBinding[])])!, SetRenderTargetsHook));
 
         // These catch renders that might happen outside a ComponentList
         HookComponentRender<Component>();
@@ -57,6 +65,51 @@ public class PushSpriteSmoother : SmoothingStrategy<PushSpriteSmoother>
         IL.Monocle.EntityList.RenderExcept -= EntityListRenderHook;
     }
 
+    private delegate void orig_SetRenderTargets(GraphicsDevice self, RenderTargetBinding[] renderTargets);
+
+    private static void SetRenderTargetsHook(orig_SetRenderTargets orig, GraphicsDevice self,
+        RenderTargetBinding[] renderTargetBindings)
+    {
+        Instance._currentRenderTarget = renderTargetBindings is { Length: > 0 }
+            ? renderTargetBindings[0].RenderTarget
+            : null;
+        orig(self, renderTargetBindings);
+    }
+
+    // True when the current render target isn't one of the gameplay/level buffers — i.e. an
+    // entity has redirected rendering into its own scratch VirtualRenderTarget (e.g.
+    // ScugHelper's DreamCrystal renders the crystal interior into a 32x32 buffer before
+    // compositing it back). The whole Render() runs under our _currentObjects push, so without
+    // this guard the scratch-internal draws get the smoothing offset baked in, then get it
+    // applied *again* on composite — double-shifting the content and leaving the cleared
+    // background color showing as a 1-2px square outline.
+    //
+    // Both the vanilla buffers and their Fancy-mode large equivalents are recognized, so this
+    // works regardless of camera mode and regardless of whether HiresCameraSmoother has
+    // swapped the binding to a large buffer.
+    private bool IsRenderingToForeignTarget()
+    {
+        var target = _currentRenderTarget;
+        if (target == null) return false; // backbuffer/screen — not a scratch target
+
+        if (target == GameplayBuffers.Gameplay?.Target) return false;
+        if (target == GameplayBuffers.Level?.Target) return false;
+        if (target == GameplayBuffers.TempA?.Target) return false;
+        if (target == GameplayBuffers.TempB?.Target) return false;
+
+        if (Targets.HiresRenderer.Instance is { } renderer)
+        {
+            if (target == renderer.LargeGameplayBuffer?.Target) return false;
+            if (target == renderer.LargeLevelBuffer?.Target) return false;
+            if (target == renderer.LargeTempABuffer?.Target) return false;
+            if (target == renderer.LargeTempBBuffer?.Target) return false;
+            if (target == renderer.SmallBuffer?.Target) return false;
+            if (target == renderer.GaussianBlurTempBuffer?.Target) return false;
+        }
+
+        return true;
+    }
+
     private static void PreObjectRender(object obj)
     {
         Instance._currentObjects.Push(obj);
@@ -71,6 +124,7 @@ public class PushSpriteSmoother : SmoothingStrategy<PushSpriteSmoother>
     {
         if (DebugRenderFix.IsDebugRendering) return position;
         if (_currentObjects.Count == 0) return position;
+        if (IsRenderingToForeignTarget()) return position;
 
         var obj = _currentObjects.Peek();
         position += obj switch
