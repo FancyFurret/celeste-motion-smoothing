@@ -1,6 +1,7 @@
 ﻿// ReSharper disable UnusedMember.Global
 
 using System;
+using Celeste.Mod.MotionSmoothing.Smoothing;
 using Microsoft.Xna.Framework;
 using Monocle;
 using MonoMod.ModInterop;
@@ -51,5 +52,23 @@ public static class MotionSmoothingExports
 	public static void ReloadLargeTextures()
 	{
 		MotionSmoothingModule.ReloadLargeTextures();
+	}
+
+	// [1.5.4+]
+	// Disables all object smoothing (position interpolation and push-sprite offsets)
+	// for the given entity. Useful for entities whose rendering doesn't interpolate
+	// cleanly. Idempotent — safe to call every frame. Pair with ReenableInterpolation
+	// to restore smoothing.
+	public static void DisableInterpolation(Entity entity)
+	{
+		if (entity.Get<NoInterpolateComponent>() is null)
+			entity.Add(new NoInterpolateComponent());
+	}
+
+	// [1.5.4+]
+	// Re-enables object smoothing for an entity previously passed to DisableInterpolation.
+	public static void ReenableInterpolation(Entity entity)
+	{
+		entity.Components.RemoveAll<NoInterpolateComponent>();
 	}
 }

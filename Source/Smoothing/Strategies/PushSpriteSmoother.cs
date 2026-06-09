@@ -127,6 +127,8 @@ public class PushSpriteSmoother : SmoothingStrategy<PushSpriteSmoother>
         if (IsRenderingToForeignTarget()) return position;
 
         var obj = _currentObjects.Peek();
+        if (NoInterpolate.IsDisabled(obj)) return position;
+
         position += obj switch
         {
             GraphicsComponent graphicsComponent => GetOffset(graphicsComponent) + GetOffset(graphicsComponent.Entity),
