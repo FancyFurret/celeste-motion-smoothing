@@ -59,15 +59,15 @@ public static class MotionSmoothingExports
 	// for the given entity. Useful for entities whose rendering doesn't interpolate
 	// cleanly. Idempotent — safe to call every frame. Pair with ReenableInterpolation
 	// to restore smoothing.
-	public static void DisableInterpolation(Entity entity)
+	public static void DisableObjectSmoothing(Entity entity)
 	{
 		if (entity.Get<NoInterpolateComponent>() is null)
 			entity.Add(new NoInterpolateComponent());
 	}
 
 	// [1.5.4+]
-	// Re-enables object smoothing for an entity previously passed to DisableInterpolation.
-	public static void ReenableInterpolation(Entity entity)
+	// Re-enables object smoothing for an entity previously passed to DisableObjectSmoothing.
+	public static void ReenableObjectSmoothing(Entity entity)
 	{
 		entity.Components.RemoveAll<NoInterpolateComponent>();
 	}
