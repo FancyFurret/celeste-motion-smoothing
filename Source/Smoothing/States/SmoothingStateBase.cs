@@ -155,7 +155,7 @@ public abstract class PositionSmoothingState<T> : IPositionSmoothingState
         // through ValueSmoother → SetPosition rather than through PushSpriteSmoother) renders
         // at 1/6-px precision under the 6x composite. SetOriginal restores PreSmoothedPosition
         // after the draw, so physics is unaffected.
-        SetPosition(obj, MotionSmoothingModule.Settings.SillyMode
+        SetPosition(obj, MotionSmoothingModule.Instance.CurrentNastyMode
             ? SmoothedRealPosition
             : SmoothedRealPosition.Round());
     }

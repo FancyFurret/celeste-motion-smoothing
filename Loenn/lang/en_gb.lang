@@ -1,0 +1,17 @@
+mods.MotionSmoothing.name=Motion Smoothing
+
+# Triggers
+
+triggers.MotionSmoothing/SetSessionMotionSmoothingSettings.placements.name.set_session_motion_smoothing_settings=Set Session Motion Smoothing Settings
+triggers.MotionSmoothing/SetSessionMotionSmoothingSettings.placements.description.set_session_motion_smoothing_settings=On enter, temporarily replaces some or all of the players current Motion Smoothing settings with those set by the mapper,\n\nOnly applies to the current map.
+
+triggers.MotionSmoothing/SetSessionMotionSmoothingSettings.attributes.description.enabled=Changes whether or not Motion Smoothing is enabled for the player in the maps current session,\n\n"Ignore" doesn't change anything and leaves this setting as it currently is.
+triggers.MotionSmoothing/SetSessionMotionSmoothingSettings.attributes.description.framerate=Changes the players Framerate for the maps current session,\n\n"Ignore" doesn't change anything and leaves this setting as it currently is.
+triggers.MotionSmoothing/SetSessionMotionSmoothingSettings.attributes.description.smoothCamera=Changes the players camera smoothing strategy for the maps current session,\n\n"Ignore" doesn't change anything and leaves this setting as it currently is.
+triggers.MotionSmoothing/SetSessionMotionSmoothingSettings.attributes.description.renderMadelineWithSubpixelPrecision=Changes whether or not Madeline is rendered with subpixel precision for the maps current session,\n\n"Ignore" doesn't change anything and leaves this setting as it currently is.
+triggers.MotionSmoothing/SetSessionMotionSmoothingSettings.attributes.description.smoothBackground=Changes whether or not the games Background is smoothed for the maps current session,\n\n"Ignore" doesn't change anything and leaves this setting as it currently is.
+triggers.MotionSmoothing/SetSessionMotionSmoothingSettings.attributes.description.smoothForeground=Changes whether or not the games Foreground is smoothed for the maps current session,\n\n"Ignore" doesn't change anything and leaves this setting as it currently is.
+triggers.MotionSmoothing/SetSessionMotionSmoothingSettings.attributes.description.hideStretchedLevelEdges=Changes whether or not to hide stretched level edges for the maps current session,\n\n"Ignore" doesn't change anything and leaves this setting as it currently is.
+triggers.MotionSmoothing/SetSessionMotionSmoothingSettings.attributes.description.objectSmoothing=Changes the players object smoothing mode for the maps current session,\n\n"Ignore" doesn't change anything and leaves this setting as it currently is.
+triggers.MotionSmoothing/SetSessionMotionSmoothingSettings.attributes.description.framerateIncreaseMethod=Changes the players framerate increase method for the maps current session,\n\n"Ignore" doesn't change anything and leaves this setting as it currently is.
+triggers.MotionSmoothing/SetSessionMotionSmoothingSettings.attributes.description.nastyMode=Changes whether or not Nasty Mode is enabled for the maps current session,\n\n"Ignore" doesn't change anything and leaves this setting as it currently is.

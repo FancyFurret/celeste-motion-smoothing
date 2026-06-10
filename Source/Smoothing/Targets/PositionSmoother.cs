@@ -15,7 +15,7 @@ public static class PositionSmoother
         // SillyMode: cancellations and subpixel-ignores still snap *back*, but to the
         // unrounded OriginalRealPosition so we don't introduce 1-px grid snaps on a
         // pipeline that's otherwise rendering at 1/6-px under the 6x composite.
-        var sillyMode = MotionSmoothingModule.Settings.SillyMode;
+        var sillyMode = MotionSmoothingModule.Instance.CurrentNastyMode;
 
         if (mode == SmoothingMode.Off)
         {

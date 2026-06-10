@@ -90,7 +90,7 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
     {
         var offset = GetCameraOffset() * HiresPixelSize;
 
-        if (!MotionSmoothingModule.Settings.HideStretchedEdges)
+        if (!MotionSmoothingModule.Instance.CurrentHideStretchedEdges)
             offset += new Vector2(BorderOffset, BorderOffset);
 
         return Matrix.CreateTranslation(offset.X, offset.Y, 0);
@@ -118,7 +118,7 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
         const int textureWidth = 320;
         const int textureHeight = 180;
 
-        if (MotionSmoothingModule.Settings.HideStretchedEdges)
+        if (MotionSmoothingModule.Instance.CurrentHideStretchedEdges)
             return;
         if (((Level)Engine.Scene).ScreenPadding > 0)
             return;
