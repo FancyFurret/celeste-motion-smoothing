@@ -109,9 +109,16 @@ public static class PositionSmoother
             if (obj == player)
                 return PlayerSmoother.Smooth(player, entityState, elapsedSeconds, mode);
 
-            if (obj == player.Holding?.Entity)
+            // PlayerState is a separate lookup from `player`: `player` comes from a
+            // WeakReference that isn't cleared when the player entity is removed, while
+            // PlayerState reads the ValueSmoother state table, which *is* cleared on
+            // removal. So during the frame a held entity outlives its holder (death /
+            // respawn / transition while carrying a heavy holdable), `player` can be
+            // non-null while PlayerState is null. Fall through to normal smoothing in
+            // that case rather than dereferencing it.
+            if (obj == player.Holding?.Entity &&
+                MotionSmoothingHandler.Instance.PlayerState is { } playerState)
             {
-                var playerState = MotionSmoothingHandler.Instance.PlayerState;
                 return entityState.GetLastDrawPosition(mode) + playerState.GetSmoothedOffset(mode);
             }
         }
