@@ -36,13 +36,9 @@ There are a small collection of methods to help avoid jitter in drawing situatio
 
 - `void ReloadLargeTextures()`: Recreates the large texture data. This is necessary if you've called VirtualRenderTarget.Reload() on the Gameplay, Level, TempA, or TempB buffers. Available in v1.3.2+.
 
-- `VirtualRenderTarget GetResizableBuffer(VirtualRenderTarget largeRenderTarget)`: When passed a VirtualRenderTarget to one of our internal large buffers, returns the corresponding small large render target which can safely be resized (or the input if none exists). Available in v1.3.2+.
+- `void DisableObjectSmoothing(Entity entity)`: Disables all object smoothing (position extrapolation / interpolation) for the given entity. Useful for entities whose position is frequently updated manually. Available in v1.5.4+.
 
-- `void ReloadLargeTextures()`: Recreates the large texture data. This is necessary if you've called VirtualRenderTarget.Reload() on the Gameplay, Level, TempA, or TempB buffers. Available in v1.3.2+.
-
-- `void DisableObjectSmothing(Entity entity)`: Disables all object smoothing (position extrapolation / interpolation) for the given entity. Useful for entities whose position is frequently updated manually. Available in v1.5.4+.
-
-- `void EnableObjectSmothing(Entity entity)`: Re-enables object smoothing for an entity previously passed to DisableObjectSmothing. Available in v1.5.4+.
+- `void ReenableObjectSmoothing(Entity entity)`: Re-enables object smoothing for an entity previously passed to DisableObjectSmothing. Available in v1.5.4+.
 
 ### Recommendations for Mod Authors
 
