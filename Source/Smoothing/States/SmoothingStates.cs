@@ -156,10 +156,71 @@ public class CameraSmoothingState : PositionSmoothingState<Camera>
         else
         {
             SmoothedRealPosition = PositionSmoother.Smooth(this, obj, elapsedSeconds, mode);
+
+            // Stabilize the camera onto integer pixels while Madeline is offscreen (see below).
+            // Done before caching so a pause taken while offscreen holds the snapped position.
+            ApplyOffscreenSnap(obj);
+
             _lastSmoothedBeforePause = SmoothedRealPosition;
             _lastSmoothedStrategy = currentStrategy;
             _hasLastSmoothedBeforePause = true;
         }
+    }
+
+    // Disables camera smoothing when Madeline is completely offscreen to prevent
+	// setups that use very short taps from being possible with Motion Smoothing
+	// that otherwise wouldn't be
+
+    private void ApplyOffscreenSnap(Camera camera)
+    {
+        var player = MotionSmoothingHandler.Instance?.Player;
+        if (player == null)
+            return;
+
+        if (IsPlayerOffscreen(camera, RealPositionHistory[0], player))
+            SmoothedRealPosition = Calc.Round(SmoothedRealPosition);
+    }
+
+    // Madeline counts as offscreen only when her drawn sprite's bounding box lies entirely outside
+    // the camera view. The box is reconstructed the exact way MTexture.Draw lays the sprite down:
+    // the trimmed ClipRect, placed at DrawOffset inside the logical frame, anchored at Origin and
+    // multiplied by the (possibly flipped) Scale. Using the logical Width/Height instead would leave
+    // the frame's transparent padding in the box, keeping her "onscreen" several pixels too long
+    // (most visibly above her head, where the player frame has the most empty space).
+    private static bool IsPlayerOffscreen(Camera camera, Vector2 cameraPosition, Player player)
+    {
+        var sprite = player.Sprite;
+        if (sprite?.Texture is not { } texture)
+            return false;
+
+        var renderPos = player.Position + sprite.Position;
+        var scale = sprite.Scale;
+        var origin = sprite.Origin;
+
+        // Drawn pixels in sprite-local space (before scale): the ClipRect, shifted by DrawOffset and
+        // anchored at Origin — matching SpriteBatch's `origin - DrawOffset` inside MTexture.Draw.
+        float localLeft = texture.DrawOffset.X - origin.X;
+        float localTop = texture.DrawOffset.Y - origin.Y;
+        float w = texture.ClipRect.Width;
+        float h = texture.ClipRect.Height;
+
+        // min/max over the two opposite corners handles a negative (flipped) scale.
+        float cornerAx = localLeft * scale.X;
+        float cornerBx = (localLeft + w) * scale.X;
+        float cornerAy = localTop * scale.Y;
+        float cornerBy = (localTop + h) * scale.Y;
+
+        float left = renderPos.X + Math.Min(cornerAx, cornerBx);
+        float right = renderPos.X + Math.Max(cornerAx, cornerBx);
+        float top = renderPos.Y + Math.Min(cornerAy, cornerBy);
+        float bottom = renderPos.Y + Math.Max(cornerAy, cornerBy);
+
+        float viewLeft = cameraPosition.X;
+        float viewTop = cameraPosition.Y;
+        float viewRight = cameraPosition.X + camera.Viewport.Width;
+        float viewBottom = cameraPosition.Y + camera.Viewport.Height;
+
+        return right < viewLeft || left > viewRight || bottom < viewTop || top > viewBottom;;
     }
 }
 
