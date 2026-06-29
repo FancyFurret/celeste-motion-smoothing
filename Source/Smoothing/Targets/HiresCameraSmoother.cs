@@ -102,8 +102,6 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
     private static Vector2 _lastPlayerOffset;
 
-    private readonly HashSet<Hook> _hooks = new();
-
     public override void Load()
     {
         base.Load();
@@ -157,11 +155,19 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
 	public static void DestroyExternalLargeTextures()
 	{
-        foreach (var (smallTexture, largeTarget) in _largeExternalTextureMap)
+        // Dispose every large target and clear the map in one shot. Removing entries
+        // while iterating the dictionary directly throws InvalidOperationException, and
+        // the MAX_EXTERNAL_BUFFERS guard path calls this with a guaranteed-non-empty map.
+        // We also drop the disposed targets from _largeTextures here, since this method
+        // is reachable (via PrepareLevelRender) without a following _largeTextures.Clear().
+        foreach (var largeTarget in _largeExternalTextureMap.Values)
         {
-            largeTarget.Dispose();
-            _largeExternalTextureMap.Remove(smallTexture);
+            if (largeTarget?.Target != null)
+                _largeTextures.Remove(largeTarget.Target);
+            largeTarget?.Dispose();
         }
+
+        _largeExternalTextureMap.Clear();
 
         Logger.Log(LogLevel.Verbose, "MotionSmoothingModule", "Disposed all large external buffers.");
 	}
@@ -311,9 +317,6 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 		On.Celeste.GameplayBuffers.Create -= GameplayBuffers_Create;
         On.Monocle.Scene.Begin -= Scene_Begin;
         On.Celeste.Level.End -= Level_End;
-
-        foreach (var hook in _hooks)
-            hook.Dispose();
 
         HiresRenderer.Destroy();
 		DisableHiresDistort();
@@ -536,7 +539,9 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
         int index = 0;
         Engine.Instance.GraphicsDevice.SetRenderTarget(null);
 
-        foreach (var (smallTexture, largeTarget) in _largeExternalTextureMap)
+        // Iterate a snapshot: the body removes stale entries, which would otherwise
+        // invalidate the dictionary enumerator mid-loop.
+        foreach (var (smallTexture, largeTarget) in new List<KeyValuePair<Texture, VirtualRenderTarget>>(_largeExternalTextureMap))
         {
             if (largeTarget == null)
             {
@@ -2397,6 +2402,9 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
                 Logger.Log(LogLevel.Verbose, "MotionSmoothingModule", new StackTrace(true).ToString());
                 Logger.Log(LogLevel.Verbose, "MotionSmoothingModule", $"Disposed a {texture2D.Width}x{texture2D.Height} hot-created buffer. Total left: {_largeExternalTextureMap.Count}");
 
+                // Keep _largeTextures in sync so it doesn't retain references to disposed
+                // textures for the rest of the level (it's only bulk-cleared on level reinit).
+                _largeTextures.Remove(texture2D);
                 largeRenderTarget?.Dispose();
             }
         }

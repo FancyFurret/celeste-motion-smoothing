@@ -254,15 +254,29 @@ public class PushSpriteSmoother : SmoothingStrategy<PushSpriteSmoother>
     private static void EntityRenderHook(On.Monocle.Entity.orig_Render orig, Entity self)
     {
         PreObjectRender(self);
-        orig(self);
-        PostObjectRender();
+        try
+        {
+            orig(self);
+        }
+        finally
+        {
+            // Keep the stack balanced even if a render throws and is swallowed upstream;
+            // otherwise every subsequent sprite would be offset against the wrong object.
+            PostObjectRender();
+        }
     }
 
     private static void ComponentRenderHook(On.Monocle.Component.orig_Render orig, Component self)
     {
         PreObjectRender(self);
-        orig(self);
-        PostObjectRender();
+        try
+        {
+            orig(self);
+        }
+        finally
+        {
+            PostObjectRender();
+        }
     }
 
     private static void BorderRenderHook(On.Monocle.Entity.orig_Render orig, Entity self)

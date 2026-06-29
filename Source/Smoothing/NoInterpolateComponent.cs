@@ -8,26 +8,68 @@ namespace Celeste.Mod.MotionSmoothing.Smoothing;
 // its presence and skip the entity.
 internal class NoInterpolateComponent : Component
 {
-    // Live count of NoInterpolateComponents currently attached to entities.
-    // IsDisabled runs once per PushSprite (every glyph/sprite drawn), so when
-    // nothing has opted out — the common case, since this feature is opt-in via
-    // interop — we use this to skip the per-call entity/component lookup entirely.
+    // Live count of NoInterpolateComponents attached to entities that are currently in
+    // a scene. IsDisabled runs once per PushSprite (every glyph/sprite drawn), so when
+    // nothing has opted out — the common case, since this feature is opt-in via interop —
+    // we use this to skip the per-call entity/component lookup entirely.
     internal static int Count { get; private set; }
+
+    // Whether this instance is currently contributing to Count. Counting must track
+    // "attached to an in-scene entity," but the relevant transitions arrive through five
+    // different callbacks (component added to / removed from an entity, entity added to /
+    // removed from a scene, and scene end on a level transition — see Monocle's
+    // Entity/Scene source). A monotonic Count++/Count-- in Added/Removed alone leaks
+    // upward, because an entity removed from the scene fires EntityRemoved/SceneEnd, not
+    // Removed — permanently defeating the fast path. This bool makes every transition
+    // idempotent so the count stays accurate no matter the order or which path fires.
+    private bool _counted;
 
     public NoInterpolateComponent() : base(false, false)
     {
     }
 
+    private void SetCounted(bool value)
+    {
+        if (value == _counted) return;
+        _counted = value;
+        Count += value ? 1 : -1;
+    }
+
+    // Added to an entity: count immediately if that entity is already in a scene
+    // (DisableObjectSmoothing is normally called on a live gameplay entity).
     public override void Added(Entity entity)
     {
         base.Added(entity);
-        Count++;
+        SetCounted(Scene != null);
     }
 
+    // Removed from the entity (e.g. ReenableObjectSmoothing). base.Removed nulls Entity.
     public override void Removed(Entity entity)
     {
         base.Removed(entity);
-        Count--;
+        SetCounted(false);
+    }
+
+    // The owning entity entered a scene while this component was already attached.
+    public override void EntityAdded(Scene scene)
+    {
+        base.EntityAdded(scene);
+        SetCounted(true);
+    }
+
+    // The owning entity was removed from its scene.
+    public override void EntityRemoved(Scene scene)
+    {
+        base.EntityRemoved(scene);
+        SetCounted(false);
+    }
+
+    // The scene ended (level transition): entities are not individually Removed, so this
+    // is the only signal that the component is no longer live.
+    public override void SceneEnd(Scene scene)
+    {
+        base.SceneEnd(scene);
+        SetCounted(false);
     }
 }
 

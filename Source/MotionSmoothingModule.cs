@@ -108,10 +108,12 @@ public class MotionSmoothingModule : EverestModule
     public override void Unload()
     {
         UpdateEveryNTicks.Unload();
+        DecoupledGameTick.Unload();
         MotionSmoothing.Unload();
         UnlockedCameraSmoother.Unload();
         HiresCameraSmoother.Unload();
         ActorPushTracker.Unload();
+        CrystalSpinnerFillerTracker.Unload();
         UpdateAtDraw.Unload();
         InputHandler.Unload();
         DebugRenderFix.Unload();
@@ -158,6 +160,7 @@ public class MotionSmoothingModule : EverestModule
             UnlockedCameraSmoother.Disable();
             HiresCameraSmoother.Disable();
             ActorPushTracker.Disable();
+            CrystalSpinnerFillerTracker.Disable();
             UpdateAtDraw.Disable();
             DebugRenderFix.Disable();
             DeltaTimeFix.Disable();
@@ -188,6 +191,8 @@ public class MotionSmoothingModule : EverestModule
             UpdateAtDraw.Disable();
             UnlockedCameraSmoother.Disable();
             HiresCameraSmoother.Disable();
+            DebugRenderFix.Disable();
+            DeltaTimeFix.Disable();
             return;
         }
 

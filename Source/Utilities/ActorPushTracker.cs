@@ -143,6 +143,16 @@ public class ActorPushTracker : ToggleableFeature<ActorPushTracker>
         {
             foreach (Solid solid in self.scene.Tracker.GetEntities<Solid>())
             {
+                // Skip the per-actor IsRiding scan for pushers that didn't move last tick.
+                // GetPusherOffset already ignores non-Changed pushers (and IsPlayerRiding*
+                // is only consulted when an offset was actually applied), so a stationary
+                // solid contributes nothing but the O(actors) cost of scanning it. Most
+                // solids in a room never move, so this is the bulk of the savings. Trade-off:
+                // a ridden platform's first moving frame lags one update tick, because
+                // registration keys off the previous tick's Changed state.
+                if (MotionSmoothingHandler.Instance.GetState(solid) is not { Changed: true })
+                    continue;
+
                 foreach (Actor actor in actors)
                 {
                     if (actor.IsRiding(solid))
@@ -163,6 +173,10 @@ public class ActorPushTracker : ToggleableFeature<ActorPushTracker>
 
             foreach (JumpThru jumpThru in self.scene.Tracker.GetEntities<JumpThru>())
             {
+                // Same stationary-pusher skip as the Solid loop above.
+                if (MotionSmoothingHandler.Instance.GetState(jumpThru) is not { Changed: true })
+                    continue;
+
                 foreach (Actor actor in actors)
                 {
                     if (actor.IsRiding(jumpThru))

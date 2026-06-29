@@ -87,12 +87,17 @@ public class MotionSmoothingSettings : EverestModuleSettings
         get => _frameRate;
         set
         {
+            // Always persist the value. This setter also runs during settings
+            // deserialization, which can happen while Enabled is false (e.g. the mod was
+            // saved disabled); returning early there would discard the saved framerate and
+            // revert to the default. Only the live re-apply is gated on Enabled.
+            _frameRate = value;
+
             if (!Enabled)
             {
                 return;
             }
 
-            _frameRate = value;
             MotionSmoothingModule.Instance.ApplySettings();
         }
     }
