@@ -57,8 +57,7 @@ public static class MotionSmoothingExports
 	// [1.5.4+]
 	// Disables all object smoothing (position interpolation and push-sprite offsets)
 	// for the given entity. Useful for entities whose rendering doesn't interpolate
-	// cleanly. Idempotent — safe to call every frame. Pair with ReenableInterpolation
-	// to restore smoothing.
+	// cleanly.
 	public static void DisableObjectSmoothing(Entity entity)
 	{
 		if (entity.Get<NoInterpolateComponent>() is null)
@@ -82,5 +81,22 @@ public static class MotionSmoothingExports
 	public static float GetCurrentRenderTargetScale()
 	{
 		return MotionSmoothingModule.GetCurrentRenderTargetScale();
+	}
+
+	// [1.5.6+]
+	// Ties a component's rendering to Madeline's smoothed position, so any attachment that anchors
+	// itself to her (e.g. a hat, extra jump indicators) stays glued to her under both object smoothing
+	// and subpixel rendering. Call this once when the component is created; the tie is dropped
+	// automatically when the component is collected or manually with UntieFromPlayer.
+	public static void TieToPlayer(Component component)
+	{
+		Smoothing.Strategies.PushSpriteSmoother.Instance?.TieToPlayer(component);
+	}
+
+	// [1.5.6+]
+	// Removes a tie previously created with TieToPlayer.
+	public static void UntieFromPlayer(Component component)
+	{
+		Smoothing.Strategies.PushSpriteSmoother.Instance?.UntieFromPlayer(component);
 	}
 }

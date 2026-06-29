@@ -1,4 +1,5 @@
 ﻿using System.Collections.Generic;
+using System.Runtime.CompilerServices;
 using Celeste.Mod.MotionSmoothing.Smoothing.States;
 using Celeste.Mod.MotionSmoothing.Utilities;
 using Microsoft.Xna.Framework;
@@ -18,9 +19,39 @@ public class PushSpriteSmoother : SmoothingStrategy<PushSpriteSmoother>
 
     private Texture _currentRenderTarget;
 
+    // Components whose rendering should follow Madeline's smoothed position (e.g. a Hateline hat
+    // that anchors itself to PlayerHair.Nodes). Registered through the MotionSmoothing interop.
+    // A ConditionalWeakTable so a tie disappears on its own once the component is collected;
+    // _hasPlayerTies keeps the per-PushSprite check free in the common (nobody-tied) case.
+    private readonly ConditionalWeakTable<Component, object> _playerTiedComponents = new();
+    private bool _hasPlayerTies;
+    private static readonly object PlayerTieMarker = new();
+
     public void SmoothObject(object obj, IPositionSmoothingState state)
     {
         base.SmoothObject(obj, state);
+    }
+
+    // Idempotent: a component can be tied once and forgotten. The owning mod never has to pass
+    // positions or re-register — GetSpritePosition applies Madeline's render offset on its behalf.
+    public void TieToPlayer(Component component)
+    {
+        if (component == null || _playerTiedComponents.TryGetValue(component, out _))
+            return;
+
+        _playerTiedComponents.Add(component, PlayerTieMarker);
+        _hasPlayerTies = true;
+    }
+
+    public void UntieFromPlayer(Component component)
+    {
+        if (component != null)
+            _playerTiedComponents.Remove(component);
+    }
+
+    private bool IsTiedToPlayer(Component component)
+    {
+        return _hasPlayerTies && _playerTiedComponents.TryGetValue(component, out _);
     }
 
     protected override void Hook()
@@ -129,6 +160,14 @@ public class PushSpriteSmoother : SmoothingStrategy<PushSpriteSmoother>
         var obj = _currentObjects.Peek();
         if (NoInterpolate.IsDisabled(obj)) return position;
 
+        // Player-tied attachments follow Madeline's exact render offset. Checked before the
+        // GraphicsComponent branch below, which would otherwise hand the component its entity's
+        // offset — and for a component parented to the Player that's zero, since the Player has no
+        // PushSprite state (her body is moved via ValueSmoother, her hair via GetHairOffset),
+        // leaving the attachment pinned to the unsmoothed position while she slides away.
+        if (_hasPlayerTies && obj is Component tied && IsTiedToPlayer(tied))
+            return position + GetPlayerAttachmentOffset();
+
         position += obj switch
         {
             GraphicsComponent graphicsComponent => GetOffset(graphicsComponent) + GetOffset(graphicsComponent.Entity),
@@ -138,6 +177,27 @@ public class PushSpriteSmoother : SmoothingStrategy<PushSpriteSmoother>
         };
 
         return position;
+    }
+
+    // The offset a player-tied attachment needs to stay glued to Madeline. It's the same shift her
+    // hair receives (see GetHairOffset), which is exactly right: the hat anchors itself to the hair
+    // nodes and is captured in the same isolated buffer during subpixel rendering, so matching the
+    // hair makes it track her in object-smoothing, subpixel, and SillyMode alike.
+    private Vector2 GetPlayerAttachmentOffset()
+    {
+        return MotionSmoothingHandler.Instance.PlayerState is { } playerState
+            ? SmoothedDrawOffset(playerState)
+            : Vector2.Zero;
+    }
+
+    // Net render-space shift for a state this frame: its rounded (or, in SillyMode, unrounded)
+    // smoothed position minus where it was actually drawn.
+    private static Vector2 SmoothedDrawOffset(IPositionSmoothingState state)
+    {
+        var targetPos = MotionSmoothingModule.Settings.SillyMode
+            ? state.SmoothedRealPosition
+            : state.SmoothedRealPosition.Round();
+        return targetPos - state.OriginalDrawPosition;
     }
 
     private Vector2 GetHairOffset(PlayerHair hair)
@@ -164,10 +224,7 @@ public class PushSpriteSmoother : SmoothingStrategy<PushSpriteSmoother>
         // 1/6-px hair motion instead of a 6-px grid snap. Anchor stays OriginalDrawPosition
         // (integer) so the offset still lands the head at SmoothedRealPosition and shifts
         // Nodes[1..N] by the same delta.
-        var targetPos = MotionSmoothingModule.Settings.SillyMode
-            ? playerState.SmoothedRealPosition
-            : playerState.SmoothedRealPosition.Round();
-        return targetPos - playerState.OriginalDrawPosition;
+        return SmoothedDrawOffset(playerState);
     }
 
     private Vector2 GetOffset(object obj)
