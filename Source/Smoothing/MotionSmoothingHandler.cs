@@ -145,7 +145,7 @@ public class MotionSmoothingHandler : ToggleableFeature<MotionSmoothingHandler>
         {
             DeltaTimeFix.UpdateFixedDeltaTimeMultiplier();
 
-            var mode = MotionSmoothingModule.Settings.ObjectSmoothing;
+            var mode = MotionSmoothingModule.Instance.CurrentObjectSmoothing;
             var elapsedTicks = Instance._timer.ElapsedTicks - Instance._lastTicks;
             var elapsedSeconds = (double)elapsedTicks / Stopwatch.Frequency;
 

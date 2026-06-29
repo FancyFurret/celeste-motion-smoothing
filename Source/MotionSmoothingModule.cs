@@ -24,6 +24,9 @@ public class MotionSmoothingModule : EverestModule
 
     public override Type SettingsType => typeof(MotionSmoothingSettings);
     public static MotionSmoothingSettings Settings => (MotionSmoothingSettings)Instance._Settings;
+    
+    public override Type SessionType => typeof(MotionSmoothingSession);
+    public static MotionSmoothingSession Session => (MotionSmoothingSession)Instance._Session;
 
     public bool InLevel => Engine.Scene is Level || Engine.Scene is LevelLoader ||
                            Engine.Scene is LevelExit || Engine.Scene is Emulator;
@@ -41,10 +44,65 @@ public class MotionSmoothingModule : EverestModule
         Logger.SetLogLevel(nameof(MotionSmoothingModule), LogLevel.Info);
 #endif
     }
+    
+    public bool HasForcedSetSettings => Settings.AllowMapChanges && Session?.MapWantsToForceSetSettings != null;
+
+    public bool CurrentEnabled
+    {
+	    get => HasForcedSetSettings ? Session.MapSetEnabled : Settings.Enabled;
+	    set
+	    {
+		    if (HasForcedSetSettings)
+		    {
+			    Session.MapSetEnabled = value;
+		    }
+		    else
+		    {
+			    Settings.Enabled = value;
+		    }
+	    }
+    }
+    public int CurrentFrameRate => HasForcedSetSettings ? Session.MapSetFrameRate : Settings.FrameRate;
+    public UnlockCameraStrategy CurrentUnlockCameraStrategy
+    {
+	    get => HasForcedSetSettings ? Session.MapSetUnlockCameraStrategy : Settings.UnlockCameraStrategy;
+	    set
+	    {
+		    if (HasForcedSetSettings)
+		    {
+			    Session.MapSetUnlockCameraStrategy = value;
+		    }
+		    else
+		    {
+			    Settings.UnlockCameraStrategy = value;
+		    }
+	    }
+    }
+    public bool CurrentRenderMadelineWithSubpixels => HasForcedSetSettings ? Session.MapSetRenderMadelineWithSubpixels : Settings.RenderMadelineWithSubpixels;
+    public bool CurrentRenderBackgroundHires => HasForcedSetSettings ? Session.MapSetRenderBackgroundHires : Settings.RenderBackgroundHires;
+    public bool CurrentRenderForegroundHires => HasForcedSetSettings ? Session.MapSetRenderForegroundHires : Settings.RenderForegroundHires;
+    public bool CurrentHideStretchedEdges => HasForcedSetSettings ? Session.MapSetHideStretchedEdges : Settings.HideStretchedEdges;
+    public SmoothingMode CurrentObjectSmoothing => HasForcedSetSettings ? Session.MapSetObjectSmoothing : Settings.ObjectSmoothing;
+    public UpdateMode CurrentFramerateIncreaseMethod => HasForcedSetSettings ? Session.MapSetFramerateIncreaseMethod : Settings.FramerateIncreaseMethod;
+    public bool CurrentNastyMode
+    {
+	    get => HasForcedSetSettings ? Session.MapSetNastyMode : Settings.NastyMode;
+	    set
+	    {
+		    if (HasForcedSetSettings)
+		    {
+			    Session.MapSetNastyMode = value;
+		    }
+		    else
+		    {
+			    Settings.NastyMode = value;
+		    }
+	    }
+    }
 
     public List<Action<bool>> EnabledActions { get; } = new();
 
-    public IFrameUncapStrategy FrameUncapStrategy => Settings.FramerateIncreaseMethod switch
+    public IFrameUncapStrategy FrameUncapStrategy => CurrentFramerateIncreaseMethod switch
     {
         UpdateMode.Interval => UpdateEveryNTicks,
         UpdateMode.Dynamic => DecoupledGameTick,
@@ -130,7 +188,7 @@ public class MotionSmoothingModule : EverestModule
 	{
         CelesteTasInterop.Load();
 
-		Settings.SillyMode = false;
+		CurrentNastyMode = false;
 
 		ApplySettings();
 	}
@@ -147,7 +205,7 @@ public class MotionSmoothingModule : EverestModule
     {
         if (MotionSmoothing == null) return;
 
-        if (!Settings.Enabled)
+        if (!CurrentEnabled)
         {
             UpdateEveryNTicks.Disable();
             DecoupledGameTick.Disable();
@@ -170,7 +228,7 @@ public class MotionSmoothingModule : EverestModule
 
 
         // If the game speed is modified, then we have to use dynamic mode
-        if (Settings.FramerateIncreaseMethod == UpdateMode.Dynamic || Settings.GameSpeedModified)
+        if (CurrentFramerateIncreaseMethod == UpdateMode.Dynamic || Settings.GameSpeedModified)
         {
             UpdateEveryNTicks.Disable();
             DecoupledGameTick.Enable();
@@ -203,7 +261,7 @@ public class MotionSmoothingModule : EverestModule
         DebugRenderFix.Enable();
         DeltaTimeFix.Enable();
 
-        if (Settings.UnlockCameraStrategy == UnlockCameraStrategy.Hires)
+        if (CurrentUnlockCameraStrategy == UnlockCameraStrategy.Hires)
         {
             UnlockedCameraSmoother.Disable();
             HiresCameraSmoother.Enable();
@@ -214,10 +272,10 @@ public class MotionSmoothingModule : EverestModule
             // deal with that than to start over with them.
             HiresCameraSmoother.InitializeLargeTextures();
 
-			HiresCameraSmoother.ZoomScale = Settings.HideStretchedEdges ? 181f / 180f : 1;
+			HiresCameraSmoother.ZoomScale = CurrentHideStretchedEdges ? 181f / 180f : 1;
 			HiresCameraSmoother.ZoomMatrix = Matrix.CreateScale(HiresCameraSmoother.ZoomScale);
 
-			if (Settings.RenderMadelineWithSubpixels && !Settings.SillyMode)
+			if (CurrentRenderMadelineWithSubpixels && !CurrentNastyMode)
 			{
 				HiresCameraSmoother.EnableHiresDistort();
 			}
@@ -227,18 +285,18 @@ public class MotionSmoothingModule : EverestModule
 				HiresCameraSmoother.DisableHiresDistort();
 			}
 
-			if (!Settings.RenderMadelineWithSubpixels && !Settings.SillyMode)
+			if (!CurrentRenderMadelineWithSubpixels && !CurrentNastyMode)
 			{
 				HiresCameraSmoother.DisableLargeGameplayBuffer();
 			}
         }
 
-        else if (Settings.UnlockCameraStrategy == UnlockCameraStrategy.Unlock)
+        else if (CurrentUnlockCameraStrategy == UnlockCameraStrategy.Unlock)
         {
             HiresCameraSmoother.Disable();
             UnlockedCameraSmoother.Enable();
 
-			UnlockedCameraSmoother.ZoomScale = Settings.HideStretchedEdges ? 181f / 180f : 1;
+			UnlockedCameraSmoother.ZoomScale = CurrentHideStretchedEdges ? 181f / 180f : 1;
 			UnlockedCameraSmoother.ZoomMatrix = Matrix.CreateScale(UnlockedCameraSmoother.ZoomScale);
         }
         
@@ -251,7 +309,7 @@ public class MotionSmoothingModule : EverestModule
 
     private void ApplyFramerate()
     {
-        int framerate = Settings.Enabled ? Settings.FrameRate : 60;
+        int framerate = CurrentEnabled ? CurrentFrameRate : 60;
 
         var updateFps = 60.0;
         
@@ -329,7 +387,7 @@ public class MotionSmoothingModule : EverestModule
 
     private static void VsyncHook(On.Monocle.Commands.orig_Vsync orig, bool enabled)
     {
-        if (!Settings.Enabled)
+        if (!Instance.CurrentEnabled)
         {
             orig(enabled);
             return;
@@ -340,7 +398,7 @@ public class MotionSmoothingModule : EverestModule
 
     private static void SetVSyncHook(On.Celeste.MenuOptions.orig_SetVSync orig, bool on)
     {
-        if (!Settings.Enabled)
+        if (!Instance.CurrentEnabled)
         {
             orig(on);
             return;
@@ -367,13 +425,13 @@ public class MotionSmoothingModule : EverestModule
 
 	private void SpeedrunToolBeforeLoadState(Level level)
     {
-		_wasEnabled = Settings.Enabled;
-		Settings.Enabled = false;
+		_wasEnabled = CurrentEnabled;
+		CurrentEnabled = false;
     }
 
     private void SpeedrunToolAfterLoadState(Dictionary<Type, Dictionary<string, object>> savedValues, Level level)
     {
-		Settings.Enabled = _wasEnabled;
+		CurrentEnabled = _wasEnabled;
         MotionSmoothing.SmoothAllObjects();
     }
 
@@ -381,7 +439,7 @@ public class MotionSmoothingModule : EverestModule
 
 	public static Vector2 GetCameraOffset()
     {
-        switch (Settings.UnlockCameraStrategy)
+        switch (Instance.CurrentUnlockCameraStrategy)
         {
             case UnlockCameraStrategy.Hires:
                 return HiresCameraSmoother.GetCameraOffset();
@@ -398,7 +456,7 @@ public class MotionSmoothingModule : EverestModule
 
 	public static Matrix GetLevelZoomMatrix()
 	{
-		switch (Settings.UnlockCameraStrategy)
+		switch (Instance.CurrentUnlockCameraStrategy)
 		{
 			case UnlockCameraStrategy.Hires:
 				return HiresCameraSmoother.ZoomMatrix;
@@ -447,7 +505,7 @@ public class MotionSmoothingModule : EverestModule
 
 	public static void ReloadLargeTextures()
 	{
-		if (Settings.UnlockCameraStrategy == UnlockCameraStrategy.Hires && GameplayBuffers.Gameplay is VirtualRenderTarget)
+		if (Instance.CurrentUnlockCameraStrategy == UnlockCameraStrategy.Hires && GameplayBuffers.Gameplay is VirtualRenderTarget)
 		{
 			HiresCameraSmoother.InitializeLargeTextures();
 		}

@@ -143,7 +143,7 @@ public class CameraSmoothingState : PositionSmoothingState<Camera>
         if (mode == SmoothingMode.Off)
             mode = SmoothingMode.Extrapolate;
 
-        var currentStrategy = MotionSmoothingModule.Settings.UnlockCameraStrategy;
+        var currentStrategy = MotionSmoothingModule.Instance.CurrentUnlockCameraStrategy;
         if (_hasLastSmoothedBeforePause && _lastSmoothedStrategy != currentStrategy)
             _hasLastSmoothedBeforePause = false;
 

@@ -43,6 +43,10 @@
          HiresCameraSmoother.AddSpirialisHelperHooks), so no compile-time reference is
          needed. Referencing the cached DLL directly broke builds on machines without it. -->
 
+    <ItemGroup>
+        <Folder Include="Triggers\" />
+    </ItemGroup>
+
     <Target Name="CopyFiles" AfterTargets="Build" Inputs="$(OutputPath)\$(AssemblyName).dll;$(OutputPath)\$(AssemblyName).pdb" Outputs="..\bin\$(AssemblyName).dll;..\bin\$(AssemblyName).pdb">
         <Copy SourceFiles="$(OutputPath)\$(AssemblyName).dll" DestinationFolder="..\bin" />
         <Copy SourceFiles="$(OutputPath)\$(AssemblyName).pdb" DestinationFolder="..\bin" />

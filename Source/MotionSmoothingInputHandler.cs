@@ -43,11 +43,11 @@ public class MotionSmoothingInputHandler : ToggleableFeature<MotionSmoothingInpu
             if (MotionSmoothingModule.Settings.ButtonToggleMotionSmoothingEnabled.Pressed)
             {
                 Logger.Log(LogLevel.Info, "MotionSmoothingInputHandler", "Toggling motion smoothing");
-                MotionSmoothingModule.Settings.Enabled = !MotionSmoothingModule.Settings.Enabled;
+                MotionSmoothingModule.Instance.CurrentEnabled = !MotionSmoothingModule.Instance.CurrentEnabled;
 
                 MotionSmoothingMessage.Show(
                     "motion_smoothing_enabled",
-                    MotionSmoothingModule.Settings.Enabled ? "Motion Smoothing Enabled" : "Motion Smoothing Disabled",
+                    MotionSmoothingModule.Instance.CurrentEnabled ? "Motion Smoothing Enabled" : "Motion Smoothing Disabled",
                     y: 980f
                 );
             }
@@ -56,31 +56,31 @@ public class MotionSmoothingInputHandler : ToggleableFeature<MotionSmoothingInpu
 
             else if (MotionSmoothingModule.Settings.ButtonChangeCameraSmoothingMode.Pressed)
             {
-                if (!MotionSmoothingModule.Settings.Enabled)
+                if (!MotionSmoothingModule.Instance.CurrentEnabled)
                 {
                     return;
                 }
 
                 Logger.Log(LogLevel.Info, "MotionSmoothingInputHandler", "Toggling unlock strategy");
 
-                if (MotionSmoothingModule.Settings.UnlockCameraStrategy == UnlockCameraStrategy.Hires)
+                if (MotionSmoothingModule.Instance.CurrentUnlockCameraStrategy == UnlockCameraStrategy.Hires)
                 {
-                    MotionSmoothingModule.Settings.UnlockCameraStrategy = UnlockCameraStrategy.Unlock;
+                    MotionSmoothingModule.Instance.CurrentUnlockCameraStrategy = UnlockCameraStrategy.Unlock;
                 }
 
-                else if (MotionSmoothingModule.Settings.UnlockCameraStrategy == UnlockCameraStrategy.Unlock)
+                else if (MotionSmoothingModule.Instance.CurrentUnlockCameraStrategy == UnlockCameraStrategy.Unlock)
                 {
-                    MotionSmoothingModule.Settings.UnlockCameraStrategy = UnlockCameraStrategy.Off;
+                    MotionSmoothingModule.Instance.CurrentUnlockCameraStrategy = UnlockCameraStrategy.Off;
                 }
 
                 else
                 {
-                    MotionSmoothingModule.Settings.UnlockCameraStrategy = UnlockCameraStrategy.Hires;
+                    MotionSmoothingModule.Instance.CurrentUnlockCameraStrategy = UnlockCameraStrategy.Hires;
                 }
 
-				var strategyString = MotionSmoothingModule.Settings.UnlockCameraStrategy == UnlockCameraStrategy.Hires
+				var strategyString = MotionSmoothingModule.Instance.CurrentUnlockCameraStrategy == UnlockCameraStrategy.Hires
 					? "Fancy"
-					: MotionSmoothingModule.Settings.UnlockCameraStrategy == UnlockCameraStrategy.Unlock
+					: MotionSmoothingModule.Instance.CurrentUnlockCameraStrategy == UnlockCameraStrategy.Unlock
 						? "Fast"
 						: "Off";
 

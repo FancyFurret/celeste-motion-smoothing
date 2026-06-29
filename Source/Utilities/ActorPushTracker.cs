@@ -55,7 +55,7 @@ public class ActorPushTracker : ToggleableFeature<ActorPushTracker>
         // SillyMode: base against the unrounded historical position so a pusher-carried
         // actor on e.g. a diagonal moveblock doesn't snap to the 1-px grid while the rest
         // of the pipeline renders at 1/6-px under the 6x composite.
-        var basePos = MotionSmoothingModule.Settings.SillyMode
+        var basePos = MotionSmoothingModule.Instance.CurrentNastyMode
             ? posState.GetLastRealPosition(mode)
             : posState.GetLastDrawPosition(mode);
         pushed = basePos + offset;
@@ -100,7 +100,7 @@ public class ActorPushTracker : ToggleableFeature<ActorPushTracker>
 
     public Vector2 GetSolidOffset(ISmoothingState state, object obj, double elapsedSeconds, out Vector2 velocity)
     {
-        var mode = MotionSmoothingModule.Settings.ObjectSmoothing;
+        var mode = MotionSmoothingModule.Instance.CurrentObjectSmoothing;
         var interp = mode == SmoothingMode.Interpolate;
         velocity = Vector2.Zero;
 

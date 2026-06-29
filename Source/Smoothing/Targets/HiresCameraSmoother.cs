@@ -271,8 +271,8 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
         AddHook(new Hook(typeof(Calc).GetMethod(nameof(Calc.Round), [typeof(Vector2)])!, RoundHook));
 
 		if (
-			MotionSmoothingModule.Settings.RenderMadelineWithSubpixels
-			&& !MotionSmoothingModule.Settings.SillyMode
+			MotionSmoothingModule.Instance.CurrentRenderMadelineWithSubpixels
+			&& !MotionSmoothingModule.Instance.CurrentNastyMode
 		) {
 			EnableHiresDistort();
 		}
@@ -585,13 +585,13 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
         ComputeSmoothedCameraData(level);
 
-        _enableLargeLevelBuffer = MotionSmoothingModule.Settings.RenderBackgroundHires;
+        _enableLargeLevelBuffer = MotionSmoothingModule.Instance.CurrentRenderBackgroundHires;
 		_enableLargeGameplayBuffer = false;
     }
 
     private static void AfterLevelClear(Level level)
     {
-        if (MotionSmoothingModule.Settings.RenderBackgroundHires)
+        if (MotionSmoothingModule.Instance.CurrentRenderBackgroundHires)
         {
             _disableFloorFunctions = DisableFloorFunctionsMode.Rational;
         }
@@ -728,7 +728,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
         _offsetWhenDrawnTo.Clear();
         _inverseOffsetWhenDrawnFrom.Clear();
 
-        if (!MotionSmoothingModule.Settings.HideStretchedEdges)
+        if (!MotionSmoothingModule.Instance.CurrentHideStretchedEdges)
         {
             // We only do this a second time here because we're covering up the gap where the bloom was left
             // which will be completely hidden by the zoom, unlike the blooming edges from before.
@@ -809,8 +809,8 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
         }
 
         if (
-            _currentlyRenderingBackground && MotionSmoothingModule.Settings.RenderBackgroundHires
-            || !_currentlyRenderingBackground && MotionSmoothingModule.Settings.RenderForegroundHires
+            _currentlyRenderingBackground && MotionSmoothingModule.Instance.CurrentRenderBackgroundHires
+            || !_currentlyRenderingBackground && MotionSmoothingModule.Instance.CurrentRenderForegroundHires
         ) {
             _disableFloorFunctions = DisableFloorFunctionsMode.Rational;
             orig(self, scene);
@@ -922,7 +922,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 	private static bool ShouldRenderBackdrop(Backdrop self)
 	{
 		if (
-			MotionSmoothingModule.Settings.RenderBackgroundHires
+			MotionSmoothingModule.Instance.CurrentRenderBackgroundHires
 			|| !_currentlyRenderingBackground
 		) {
 			return true;
@@ -1031,8 +1031,8 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
     {
 		if (
 			HiresRenderer.Instance is not { } renderer
-			|| !MotionSmoothingModule.Settings.RenderMadelineWithSubpixels
-			|| MotionSmoothingModule.Settings.SillyMode
+			|| !MotionSmoothingModule.Instance.CurrentRenderMadelineWithSubpixels
+			|| MotionSmoothingModule.Instance.CurrentNastyMode
 		) {
 			orig(self, scene);
 			return;
@@ -1111,7 +1111,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 	{
 		if (
 			!_currentlyRenderingGameplay
-			|| !MotionSmoothingModule.Settings.RenderMadelineWithSubpixels
+			|| !MotionSmoothingModule.Instance.CurrentRenderMadelineWithSubpixels
 		) {
 			return false;
 		}
@@ -1275,7 +1275,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
     private static void Player_Render(On.Celeste.Player.orig_Render orig, Player self)
     {
-		if (MotionSmoothingModule.Settings.SillyMode)
+		if (MotionSmoothingModule.Instance.CurrentNastyMode)
 		{
 			_disableFloorFunctions = DisableFloorFunctionsMode.Continuous;
 			orig(self);
@@ -1313,7 +1313,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 		Draw.SpriteBatch.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend, SamplerState.PointClamp, DepthStencilState.None, RasterizerState.CullNone, null, Matrix.Identity);
 		Draw.SpriteBatch.Draw(
             renderer.SmallBuffer,
-            MotionSmoothingModule.Settings.RenderMadelineWithSubpixels ? _lastPlayerOffset : Vector2.Zero,
+            MotionSmoothingModule.Instance.CurrentRenderMadelineWithSubpixels ? _lastPlayerOffset : Vector2.Zero,
             Color.White
         );
 		Draw.SpriteBatch.End();
@@ -1345,7 +1345,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
 
 
-		if (MotionSmoothingModule.Settings.SillyMode)
+		if (MotionSmoothingModule.Instance.CurrentNastyMode)
 		{
 			Engine.Instance.GraphicsDevice.SetRenderTarget(GameplayBuffers.Gameplay);
 
@@ -1370,7 +1370,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
 
 
-		if (!MotionSmoothingModule.Settings.RenderMadelineWithSubpixels)
+		if (!MotionSmoothingModule.Instance.CurrentRenderMadelineWithSubpixels)
 		{
 			// If we're not doing subpixel rendering, then we don't need to do that much.
 			Engine.Instance.GraphicsDevice.SetRenderTarget(renderer.SmallBuffer);
@@ -1748,7 +1748,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
         // Never fall through to _largeExternalTextureMap for these, as other
         // mods swapping buffer targets could bypass the flag checks.
         if (texture == GameplayBuffers.Gameplay.Target)
-            return _enableLargeGameplayBuffer || MotionSmoothingModule.Settings.SillyMode
+            return _enableLargeGameplayBuffer || MotionSmoothingModule.Instance.CurrentNastyMode
 				? renderer.LargeGameplayBuffer
 				: null;
 
@@ -1792,7 +1792,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
         // Gameplay and Level: enable flags always take absolute precedence.
         if (texture == GameplayBuffers.Gameplay.Target)
-            return _enableLargeGameplayBuffer || MotionSmoothingModule.Settings.SillyMode
+            return _enableLargeGameplayBuffer || MotionSmoothingModule.Instance.CurrentNastyMode
 				? renderer.LargeGameplayBuffer
 				: texture;
 
@@ -2454,8 +2454,8 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
     private static void FloorVerticesIfNeeded<T>(T[] vertices, int vertexCount) where T : struct, IVertexType
     {
         if (
-            _currentlyRenderingBackground && MotionSmoothingModule.Settings.RenderBackgroundHires
-            || !_currentlyRenderingBackground && MotionSmoothingModule.Settings.RenderForegroundHires
+            _currentlyRenderingBackground && MotionSmoothingModule.Instance.CurrentRenderBackgroundHires
+            || !_currentlyRenderingBackground && MotionSmoothingModule.Instance.CurrentRenderForegroundHires
         ) {
             return;
         }
@@ -2499,7 +2499,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
     private static bool TryDrawPixelated<T>(Matrix matrix, T[] vertices, int vertexCount) where T : struct, IVertexType
     {
-        if (_inPixelatedDraw || vertexCount > 100 || MotionSmoothingModule.Settings.SillyMode)
+        if (_inPixelatedDraw || vertexCount > 100 || MotionSmoothingModule.Instance.CurrentNastyMode)
         {
             return false;
         }

@@ -42,8 +42,9 @@ public class MotionSmoothingSettings : EverestModuleSettings
 	private bool _hideStretchedEdges = true;
     private SmoothingMode _smoothingMode = SmoothingMode.Extrapolate;
     private UpdateMode _updateMode = UpdateMode.Interval;
+    private bool _allowMapChanges = true;
 
-	private bool _sillyMode = false;
+	private bool _nastyMode = false;
 
     // Used for compatibility with Viv's game speed mod
     private double _gameSpeed = 60;
@@ -56,7 +57,7 @@ public class MotionSmoothingSettings : EverestModuleSettings
     private TextMenu.Item _renderForegroundHiresItem;
 	private TextMenu.Item _hideStretchedEdgesItem;
 
-	private TextMenu.Item _sillyModeItem;
+	private TextMenu.Item _nastyModeItem;
 
     public bool Enabled
     {
@@ -191,8 +192,8 @@ public class MotionSmoothingSettings : EverestModuleSettings
             _hideStretchedEdgesItem.Disabled = shouldDisableHideStretchedEdges;
             _hideStretchedEdgesItem.Selectable = !shouldDisableHideStretchedEdges;
 
-			_sillyModeItem.Disabled = shouldDisableRenderBackgroundHires;
-            _sillyModeItem.Selectable = !shouldDisableRenderBackgroundHires;
+			_nastyModeItem.Disabled = shouldDisableRenderBackgroundHires;
+            _nastyModeItem.Selectable = !shouldDisableRenderBackgroundHires;
         });
 
         menu.Add(strategySlider);
@@ -461,6 +462,19 @@ public class MotionSmoothingSettings : EverestModuleSettings
             MotionSmoothingModule.Instance.ApplySettings();
         }
     }
+    
+    [SettingSubText(
+        "Allows maps to *temporarily* change your Motion Smoothing settings for the current maps session.\n" +
+        "Disabling this forces your current settings and won't allow maps to change them.")]
+    public bool AllowMapChanges
+    {
+        get => _allowMapChanges;
+        set
+        {
+            _allowMapChanges = value;
+            MotionSmoothingModule.Instance.ApplySettings();
+        }
+    }
 
     [SettingSubText(
         "*** This does not affect gameplay in levels! ***\n" +
@@ -506,36 +520,36 @@ public class MotionSmoothingSettings : EverestModuleSettings
 
 
 
-	public bool SillyMode
+	public bool NastyMode
     {
-        get => _sillyMode;
+        get => _nastyMode;
         set
         {
-            _sillyMode = value;
+            _nastyMode = value;
             MotionSmoothingModule.Instance.ApplySettings();
         }
     }
 
-    public void CreateSillyModeEntry(TextMenu menu, bool inGame)
+    public void CreateNastyModeEntry(TextMenu menu, bool inGame)
     {
-        _sillyModeItem = new TextMenu.OnOff(
+        _nastyModeItem = new TextMenu.OnOff(
             "Nasty Mode",
-            _sillyMode
+            _nastyMode
         );
 
-        (_sillyModeItem as TextMenu.OnOff).Change(value =>
+        (_nastyModeItem as TextMenu.OnOff).Change(value =>
         {
-            SillyMode = value;
+            NastyMode = value;
         });
 
         // Set initial state based on UnlockCameraStrategy
         bool shouldDisable = UnlockCameraStrategy != UnlockCameraStrategy.Hires;
-        _sillyModeItem.Disabled = shouldDisable;
-        _sillyModeItem.Selectable = !shouldDisable;
+        _nastyModeItem.Disabled = shouldDisable;
+        _nastyModeItem.Selectable = !shouldDisable;
 
-        menu.Add(_sillyModeItem);
+        menu.Add(_nastyModeItem);
 
-        _sillyModeItem.AddDescription(
+        _nastyModeItem.AddDescription(
             menu,
             "Smoothing too close to the sun (:\n\n" +
             "This setting is just for fun because it's technically possible; not\n" +
