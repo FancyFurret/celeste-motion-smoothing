@@ -452,4 +452,9 @@ public class MotionSmoothingModule : EverestModule
 			HiresCameraSmoother.InitializeLargeTextures();
 		}
 	}
+
+	public static float GetCurrentRenderTargetScale()
+	{
+		return HiresCameraSmoother.GetCurrentRenderTargetScale();
+	}
 }

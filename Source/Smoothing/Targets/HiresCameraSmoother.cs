@@ -2974,4 +2974,17 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 			AddHook(new ILHook(m_Update, GodraysUpdateHook));
 		}
 	}
+
+
+
+	// Returns the scale (typically 6) of the upscaled buffer we're currently drawing into,
+	// or 1 when the current render target isn't one of our large buffers. Exposed through
+	// interop (MotionSmoothing.GetCurrentRenderTargetScale) so mods that draw through a custom
+	// shader with their own projection matrix -- which bypasses the SpriteBatch transform we
+	// scale by -- can divide the viewport they feed into that projection by this value, so their
+	// quad fills the whole large target instead of a 1/scale corner.
+	public static float GetCurrentRenderTargetScale()
+	{
+		return _largeTextures.Contains(_currentRenderTarget) ? Scale : 1f;
+	}
 }

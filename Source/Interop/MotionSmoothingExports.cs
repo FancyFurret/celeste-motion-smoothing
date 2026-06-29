@@ -71,4 +71,16 @@ public static class MotionSmoothingExports
 	{
 		entity.Components.RemoveAll<NoInterpolateComponent>();
 	}
+
+	// [1.5.6+]
+	// Returns the scale factor of the current render target, relative to its vanilla size:
+	// 1 normally, or the hires scale, usually 6, when a backdrop or effect is being rendered
+	// into an upscaled buffer. Mods that draw through a custom shader with their own projection
+	// matrix, which bypasses the SpriteBatch transform that Motion Smoothing automatically scales,
+	// should divide the viewport dimensions they feed into that projection by this value, so that
+	// their quad fills the whole upscaled target instead of a 1/scale corner.
+	public static float GetCurrentRenderTargetScale()
+	{
+		return MotionSmoothingModule.GetCurrentRenderTargetScale();
+	}
 }
