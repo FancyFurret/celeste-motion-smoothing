@@ -50,13 +50,56 @@ public class MotionSmoothingSettings : EverestModuleSettings
     private bool _gameSpeedInLevelOnly = true;
 
     private FrameRateTextMenuItem _frameRateMenuItem;
-    
+
+    private TextMenu.Item _cameraStrategyItem;
     private TextMenu.Item _renderMadelineWithSubpixelsItem;
     private TextMenu.Item _renderBackgroundHiresItem;
     private TextMenu.Item _renderForegroundHiresItem;
 	private TextMenu.Item _hideStretchedEdgesItem;
+    private TextMenu.Item _objectSmoothingItem;
+    private TextMenu.Item _framerateIncreaseMethodItem;
+    private TextMenu.Item _tasModeItem;
 
 	private TextMenu.Item _sillyModeItem;
+
+    private static void SetItemState(TextMenu.Item item, bool shouldDisable)
+    {
+        if (item == null)
+        {
+            return;
+        }
+
+        item.Disabled = shouldDisable;
+        item.Selectable = !shouldDisable;
+    }
+
+    // Centralizes the "non-interactive based on other settings" logic. While the mod is
+    // disabled, every other setting is forced off; while it's enabled, items fall back to
+    // their dependency on the camera smoothing strategy. Safe to call before every item
+    // exists: SetItemState ignores nulls, so the Create*Entry methods can call this as
+    // they're built up.
+    private void RefreshMenuItemStates()
+    {
+        bool masterDisabled = !_enabled;
+
+        // These only depend on the master Enabled toggle.
+        SetItemState(_frameRateMenuItem, masterDisabled);
+        SetItemState(_cameraStrategyItem, masterDisabled);
+        SetItemState(_objectSmoothingItem, masterDisabled);
+        SetItemState(_framerateIncreaseMethodItem, masterDisabled);
+        SetItemState(_tasModeItem, masterDisabled);
+
+        // These additionally require the Fancy camera smoothing strategy.
+        bool cameraNotFancy = UnlockCameraStrategy != UnlockCameraStrategy.Hires;
+        SetItemState(_renderMadelineWithSubpixelsItem, masterDisabled || cameraNotFancy);
+        SetItemState(_renderBackgroundHiresItem, masterDisabled || cameraNotFancy);
+        SetItemState(_renderForegroundHiresItem, masterDisabled || cameraNotFancy);
+        SetItemState(_sillyModeItem, masterDisabled || cameraNotFancy);
+
+        // This is disabled only when camera smoothing is fully Off.
+        bool cameraOff = UnlockCameraStrategy == UnlockCameraStrategy.Off;
+        SetItemState(_hideStretchedEdgesItem, masterDisabled || cameraOff);
+    }
 
     public bool Enabled
     {
@@ -65,11 +108,7 @@ public class MotionSmoothingSettings : EverestModuleSettings
         {
             _enabled = value;
 
-            if (_frameRateMenuItem != null)
-            {
-                _frameRateMenuItem.Disabled = !_enabled;
-                _frameRateMenuItem.Selectable = _enabled;
-            }
+            RefreshMenuItemStates();
 
             MotionSmoothingModule.Instance.ApplySettings();
             MotionSmoothingModule.Instance.EnabledActions.ForEach(action => action(value));
@@ -107,14 +146,10 @@ public class MotionSmoothingSettings : EverestModuleSettings
     {
         _frameRateMenuItem = new FrameRateTextMenuItem("Framerate", 60, 480, FrameRate);
         _frameRateMenuItem.Change(fps => FrameRate = fps);
-       
-        if (!_enabled)
-        {
-            _frameRateMenuItem.Disabled = true;
-            _frameRateMenuItem.Selectable = false;
-        }
 
         menu.Add(_frameRateMenuItem);
+
+        RefreshMenuItemStates();
     }
 
     public UnlockCameraStrategy UnlockCameraStrategy
@@ -176,26 +211,14 @@ public class MotionSmoothingSettings : EverestModuleSettings
         {
             UnlockCameraStrategy = (UnlockCameraStrategy)index;
 
-			bool shouldDisableRenderBackgroundHires = UnlockCameraStrategy != UnlockCameraStrategy.Hires;
-
-            _renderMadelineWithSubpixelsItem.Disabled = shouldDisableRenderBackgroundHires;
-			_renderMadelineWithSubpixelsItem.Selectable = !shouldDisableRenderBackgroundHires;
-
-            _renderBackgroundHiresItem.Disabled = shouldDisableRenderBackgroundHires;
-            _renderBackgroundHiresItem.Selectable = !shouldDisableRenderBackgroundHires;
-
-             _renderForegroundHiresItem.Disabled = shouldDisableRenderBackgroundHires;
-            _renderForegroundHiresItem.Selectable = !shouldDisableRenderBackgroundHires;
-
-			bool shouldDisableHideStretchedEdges = UnlockCameraStrategy == UnlockCameraStrategy.Off;
-            _hideStretchedEdgesItem.Disabled = shouldDisableHideStretchedEdges;
-            _hideStretchedEdgesItem.Selectable = !shouldDisableHideStretchedEdges;
-
-			_sillyModeItem.Disabled = shouldDisableRenderBackgroundHires;
-            _sillyModeItem.Selectable = !shouldDisableRenderBackgroundHires;
+            RefreshMenuItemStates();
         });
 
+        _cameraStrategyItem = strategySlider;
+
         menu.Add(strategySlider);
+
+        RefreshMenuItemStates();
 
         if (auspiciousHelperLoaded)
         {
@@ -240,12 +263,9 @@ public class MotionSmoothingSettings : EverestModuleSettings
             RenderMadelineWithSubpixels = value;
         });
 
-        // Set initial state based on UnlockCameraStrategy
-        bool shouldDisable = UnlockCameraStrategy != UnlockCameraStrategy.Hires;
-        _renderMadelineWithSubpixelsItem.Disabled = shouldDisable;
-        _renderMadelineWithSubpixelsItem.Selectable = !shouldDisable;
-
         menu.Add(_renderMadelineWithSubpixelsItem);
+
+        RefreshMenuItemStates();
 
         _renderMadelineWithSubpixelsItem.AddDescription(
             menu,
@@ -333,12 +353,9 @@ public class MotionSmoothingSettings : EverestModuleSettings
             RenderBackgroundHires = value;
         });
 
-        // Set initial state based on UnlockCameraStrategy
-        bool shouldDisable = UnlockCameraStrategy != UnlockCameraStrategy.Hires;
-        _renderBackgroundHiresItem.Disabled = shouldDisable;
-        _renderBackgroundHiresItem.Selectable = !shouldDisable;
-
         menu.Add(_renderBackgroundHiresItem);
+
+        RefreshMenuItemStates();
 
         _renderBackgroundHiresItem.AddDescription(
             menu,
@@ -373,12 +390,9 @@ public class MotionSmoothingSettings : EverestModuleSettings
             RenderForegroundHires = value;
         });
 
-        // Set initial state based on UnlockCameraStrategy
-        bool shouldDisable = UnlockCameraStrategy != UnlockCameraStrategy.Hires;
-        _renderForegroundHiresItem.Disabled = shouldDisable;
-        _renderForegroundHiresItem.Selectable = !shouldDisable;
-
         menu.Add(_renderForegroundHiresItem);
+
+        RefreshMenuItemStates();
 
         _renderForegroundHiresItem.AddDescription(
             menu,
@@ -413,12 +427,9 @@ public class MotionSmoothingSettings : EverestModuleSettings
             HideStretchedEdges = value;
         });
 
-        // Set initial state based on UnlockCameraStrategy
-        bool shouldDisable = UnlockCameraStrategy == UnlockCameraStrategy.Off;
-        _hideStretchedEdgesItem.Disabled = shouldDisable;
-        _hideStretchedEdgesItem.Selectable = !shouldDisable;
-
         menu.Add(_hideStretchedEdgesItem);
+
+        RefreshMenuItemStates();
 
         _hideStretchedEdgesItem.AddDescription(
             menu,
@@ -433,23 +444,46 @@ public class MotionSmoothingSettings : EverestModuleSettings
 
 
 
-    [SettingSubText(
-        "Extrapolate: [Recommended] Predicts object positions in between physics frames\n" +
-        "based on their velocities.\n\n" +
-        "Interpolate: Uses the last two physics frames to compute the exact positions\n" +
-        "in between. This is more technically correct, but it adds 1-2 frames of input delay.\n\n" +
-        "Off: Disables smoothing entirely. Objects render only at their exact physics positions.")]
     public SmoothingMode ObjectSmoothing
     {
         get => _smoothingMode;
         set => _smoothingMode = value;
     }
 
-    [SettingSubText(
-        "Interval: [Recommended] Has the best compatibility, but restricts the FPS\n" +
-        "to multiples of 60.\n" +
-        "Dynamic: Allows any FPS, but may rarely break other mods (e.g. TAS Recorder)."
-    )]
+    public void CreateObjectSmoothingEntry(TextMenu menu, bool inGame)
+    {
+        _objectSmoothingItem = new TextMenu.Slider(
+            "Object Smoothing",
+            index => ((SmoothingMode)index) switch
+            {
+                SmoothingMode.Extrapolate => "Extrapolate",
+                SmoothingMode.Interpolate => "Interpolate",
+                _ => "Off"
+            },
+            0,
+            Enum.GetValues(typeof(SmoothingMode)).Length - 1,
+            (int)_smoothingMode
+        );
+
+        (_objectSmoothingItem as TextMenu.Slider).Change(index =>
+        {
+            ObjectSmoothing = (SmoothingMode)index;
+        });
+
+        menu.Add(_objectSmoothingItem);
+
+        RefreshMenuItemStates();
+
+        _objectSmoothingItem.AddDescription(
+            menu,
+            "Extrapolate: [Recommended] Predicts object positions in between physics frames\n" +
+            "based on their velocities.\n\n" +
+            "Interpolate: Uses the last two physics frames to compute the exact positions\n" +
+            "in between. This is more technically correct, but it adds 1-2 frames of input delay.\n\n" +
+            "Off: Disables smoothing entirely. Objects render only at their exact physics positions."
+        );
+    }
+
     public UpdateMode FramerateIncreaseMethod
     {
         get => _updateMode;
@@ -462,12 +496,33 @@ public class MotionSmoothingSettings : EverestModuleSettings
         }
     }
 
-    [SettingSubText(
-        "*** This does not affect gameplay in levels! ***\n" +
-        "By default, the overworld is updated at the full\n" +
-        "framerate since accuracy there is not as important.\n" +
-        "Turning this on locks the overworld update at 60 FPS\n" +
-        "so that TASes function properly.")]
+    public void CreateFramerateIncreaseMethodEntry(TextMenu menu, bool inGame)
+    {
+        _framerateIncreaseMethodItem = new TextMenu.Slider(
+            "Framerate Increase Method",
+            index => ((UpdateMode)index) == UpdateMode.Interval ? "Interval" : "Dynamic",
+            0,
+            Enum.GetValues(typeof(UpdateMode)).Length - 1,
+            (int)_updateMode
+        );
+
+        (_framerateIncreaseMethodItem as TextMenu.Slider).Change(index =>
+        {
+            FramerateIncreaseMethod = (UpdateMode)index;
+        });
+
+        menu.Add(_framerateIncreaseMethodItem);
+
+        RefreshMenuItemStates();
+
+        _framerateIncreaseMethodItem.AddDescription(
+            menu,
+            "Interval: [Recommended] Has the best compatibility, but restricts the FPS\n" +
+            "to multiples of 60.\n" +
+            "Dynamic: Allows any FPS, but may rarely break other mods (e.g. TAS Recorder)."
+        );
+    }
+
     public bool TasMode
     {
         get => _tasMode;
@@ -476,6 +531,32 @@ public class MotionSmoothingSettings : EverestModuleSettings
             _tasMode = value;
             MotionSmoothingModule.Instance.ApplySettings();
         }
+    }
+
+    public void CreateTasModeEntry(TextMenu menu, bool inGame)
+    {
+        _tasModeItem = new TextMenu.OnOff(
+            "TAS Mode",
+            _tasMode
+        );
+
+        (_tasModeItem as TextMenu.OnOff).Change(value =>
+        {
+            TasMode = value;
+        });
+
+        menu.Add(_tasModeItem);
+
+        RefreshMenuItemStates();
+
+        _tasModeItem.AddDescription(
+            menu,
+            "*** This does not affect gameplay in levels! ***\n" +
+            "By default, the overworld is updated at the full\n" +
+            "framerate since accuracy there is not as important.\n" +
+            "Turning this on locks the overworld update at 60 FPS\n" +
+            "so that TASes function properly."
+        );
     }
 
     [SettingIgnore]
@@ -528,12 +609,9 @@ public class MotionSmoothingSettings : EverestModuleSettings
             SillyMode = value;
         });
 
-        // Set initial state based on UnlockCameraStrategy
-        bool shouldDisable = UnlockCameraStrategy != UnlockCameraStrategy.Hires;
-        _sillyModeItem.Disabled = shouldDisable;
-        _sillyModeItem.Selectable = !shouldDisable;
-
         menu.Add(_sillyModeItem);
+
+        RefreshMenuItemStates();
 
         _sillyModeItem.AddDescription(
             menu,
