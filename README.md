@@ -40,6 +40,12 @@ There are a small collection of methods to help avoid jitter in drawing situatio
 
 - `void ReenableObjectSmoothing(Entity entity)`: Re-enables object smoothing for an entity previously passed to DisableObjectSmothing. Available in v1.5.4+.
 
+- `float GetCurrentRenderTargetScale()`:  Returns the scale factor of the current render target, relative to its vanilla size — 1 normally, or the hires scale, usually 6, when a backdrop or effect is being rendered into an upscaled buffer. This function is almost never necessary to call, but if a mod draws through a custom shader with its own projection matrix, it will bypass the SpriteBatch transform that Motion Smoothing automatically scales. To compensate, it should divide the viewport dimensions it gives the projection by this value. Available in v1.5.6+.
+
+- `void TieToPlayer(T object)`: Ties an object's rendering to Madeline's smoothed and potentially subpixel-precise position; for example, Hateline's hats or Extended Variant Mode's jump indicators. The type `T` of `object` may be either `Component` or `Entity`. Available in v1.5.6+.
+
+- `void UntieFromPlayer(T object)`: Removes a tie previously created with `TieToPlayer`. Available in v1.5.6+.
+
 ### Recommendations for Mod Authors
 
 While most mods should be compatible with Motion Smoothing out of the box, please take care when casting level buffer coordinates to ints. The vanilla `Godrays` class does this, and so code that copies it is often the same. Instead of `new Vector2((int) num1, (int) num2)`, please use `Calc.Floor(new Vector2(num1, num2))`. This will produce identical results when Motion Smoothing is disabled, but allow it to work correctly in Fancy mode. It's likely more correct anyway, since casting to an int rounds toward zero, which would double-up pixels near one of edge of the screen (probably not visible, but regardless).

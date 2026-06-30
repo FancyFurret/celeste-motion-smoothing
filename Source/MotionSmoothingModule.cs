@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Reflection;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using Celeste.Mod.MotionSmoothing.FrameUncap;
 using Celeste.Mod.MotionSmoothing.Interop;
@@ -12,6 +13,7 @@ using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using Monocle;
 using MonoMod.ModInterop;
+using MonoMod.RuntimeDetour;
 
 namespace Celeste.Mod.MotionSmoothing;
 
@@ -29,6 +31,11 @@ public class MotionSmoothingModule : EverestModule
                            Engine.Scene is LevelExit || Engine.Scene is Emulator;
 
 	private bool _wasEnabled = false;
+
+	// Hooks into unmaintained mods that don't have native MotionSmoothing support, disposed on
+	// Unload. These live here (rather than inside HiresCameraSmoother) so they apply regardless of
+	// the camera-smoothing setting -- see HookUnmaintainedMods.
+	private readonly List<Hook> _unmaintainedModHooks = new();
 
     public MotionSmoothingModule()
     {
@@ -66,6 +73,8 @@ public class MotionSmoothingModule : EverestModule
     public override void Load()
     {
 		typeof(MotionSmoothingExports).ModInterop();
+
+		HookUnmaintainedMods();
 
 
 		// Normally we'd do this in Initialize, but SpeedrunTool
@@ -122,6 +131,10 @@ public class MotionSmoothingModule : EverestModule
         On.Monocle.Scene.Begin -= SceneBeginHook;
         Everest.Events.Level.OnPause -= LevelPause;
         Everest.Events.Level.OnUnpause -= LevelUnpause;
+
+        foreach (var hook in _unmaintainedModHooks)
+            hook.Dispose();
+        _unmaintainedModHooks.Clear();
 
         EnableMacOSVSync();
     }
@@ -362,6 +375,74 @@ public class MotionSmoothingModule : EverestModule
         On.Monocle.Commands.Vsync -= VsyncHook;
         On.Celeste.MenuOptions.SetVSync -= SetVSyncHook;
     }
+
+
+
+	// Mirrors HiresCameraSmoother.HookUnmaintainedMods (exact-version dependency checks so a hook
+	// drops away once the mod ships its own support), but lives on the module itself rather than the
+	// camera smoother. That means these hooks apply regardless of the camera-smoothing setting --
+	// e.g. tying Hateline's hat to Madeline still matters under plain object smoothing with no
+	// hires camera.
+	private void HookUnmaintainedMods()
+	{
+		Version hatelineVersion = new Version(0, 2, 2);
+
+		EverestModuleMetadata hateline = new() {
+			Name = "Hateline",
+			Version = hatelineVersion
+		};
+
+		// Check for exact version so we don't double-tie once Hateline ties the hat itself through
+		// the MotionSmoothing interop (0.2.3+).
+		if (Everest.Loader.TryGetDependency(hateline, out var hatelineModule))
+		{
+			if (hatelineModule.Metadata.Version.Equals(hatelineVersion))
+			{
+				AddHatelineHook();
+			}
+		}
+	}
+
+
+
+	private static Type _t_HatComponent;
+
+	private delegate void orig_HatelineResetHat(Player self);
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	private void AddHatelineHook()
+	{
+		Type t_HatelineModule = Type.GetType("Celeste.Mod.Hateline.HatelineModule, Hateline");
+		MethodInfo m_ResetHat = t_HatelineModule?.GetMethod(
+			"ResetHat",
+			BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic
+		);
+
+		_t_HatComponent = Type.GetType("Celeste.Mod.Hateline.HatComponent, Hateline");
+
+		if (m_ResetHat != null && _t_HatComponent != null)
+		{
+			_unmaintainedModHooks.Add(new Hook(m_ResetHat, HatelineResetHatHook));
+		}
+	}
+
+	private static void HatelineResetHatHook(orig_HatelineResetHat orig, Player self)
+	{
+		orig(self);
+
+		// Tie the freshly-(re)added hat to Madeline's smoothed position, mirroring what Hateline
+		// 0.2.3+ does itself via MotionSmoothingExports.TieToPlayer. The tie is idempotent and
+		// drops automatically when the component is collected, so re-running on every ResetHat is
+		// safe.
+		foreach (Component component in self.Components)
+		{
+			if (_t_HatComponent.IsInstanceOfType(component))
+			{
+				MotionSmoothingExports.TieToPlayer(component);
+				break;
+			}
+		}
+	}
 
 
 
