@@ -1120,7 +1120,8 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
 		bool isCandidate = self == player
 			|| player?.Holding?.Entity == self // A currently-held holdable
-			|| self is Strawberry { Golden: true } strawberry && strawberry.Follower.Leader != null; // A golden attacked to the player
+			|| self is Strawberry { Golden: true } strawberry && strawberry.Follower.Leader != null // A golden attacked to the player
+			|| (Strategies.PushSpriteSmoother.Instance?.IsTiedToPlayer(self) ?? false); // A standalone entity tied to the player via interop (e.g. extra-jump dots)
 		if (!isCandidate)
 			return false;
 

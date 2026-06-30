@@ -94,9 +94,22 @@ public static class MotionSmoothingExports
 	}
 
 	// [1.5.6+]
+	// Entity overload, for a standalone entity that draws itself relative to Madeline (e.g.
+	// extra-jump dots above her head) rather than a component parented to her.
+	public static void TieToPlayer(Entity entity)
+	{
+		Smoothing.Strategies.PushSpriteSmoother.Instance?.TieToPlayer(entity);
+	}
+
+	// [1.5.6+]
 	// Removes a tie previously created with TieToPlayer.
 	public static void UntieFromPlayer(Component component)
 	{
 		Smoothing.Strategies.PushSpriteSmoother.Instance?.UntieFromPlayer(component);
+	}
+
+	public static void UntieFromPlayer(Entity entity)
+	{
+		Smoothing.Strategies.PushSpriteSmoother.Instance?.UntieFromPlayer(entity);
 	}
 }

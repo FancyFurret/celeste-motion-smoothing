@@ -19,11 +19,12 @@ public class PushSpriteSmoother : SmoothingStrategy<PushSpriteSmoother>
 
     private Texture _currentRenderTarget;
 
-    // Components whose rendering should follow Madeline's smoothed position (e.g. a Hateline hat
-    // that anchors itself to PlayerHair.Nodes). Registered through the MotionSmoothing interop.
-    // A ConditionalWeakTable so a tie disappears on its own once the component is collected;
-    // _hasPlayerTies keeps the per-PushSprite check free in the common (nobody-tied) case.
-    private readonly ConditionalWeakTable<Component, object> _playerTiedComponents = new();
+    // Components and entities whose rendering should follow Madeline's smoothed position — a hat
+    // component parented to her, or a standalone entity like the extra-jump dots. Registered
+    // through the MotionSmoothing interop. A ConditionalWeakTable so a tie disappears on its own
+    // once the object is collected; _hasPlayerTies keeps the per-PushSprite check free in the
+    // common (nobody-tied) case. Keyed by object so it holds either a Component or an Entity.
+    private readonly ConditionalWeakTable<object, object> _playerTied = new();
     private bool _hasPlayerTies;
     private static readonly object PlayerTieMarker = new();
 
@@ -32,26 +33,53 @@ public class PushSpriteSmoother : SmoothingStrategy<PushSpriteSmoother>
         base.SmoothObject(obj, state);
     }
 
-    // Idempotent: a component can be tied once and forgotten. The owning mod never has to pass
+    // Idempotent: an object can be tied once and forgotten. The owning mod never has to pass
     // positions or re-register — GetSpritePosition applies Madeline's render offset on its behalf.
-    public void TieToPlayer(Component component)
+    public void TieToPlayer(Component component) => AddPlayerTie(component);
+    public void TieToPlayer(Entity entity) => AddPlayerTie(entity);
+
+    public void UntieFromPlayer(Component component) => RemovePlayerTie(component);
+    public void UntieFromPlayer(Entity entity) => RemovePlayerTie(entity);
+
+    private void AddPlayerTie(object obj)
     {
-        if (component == null || _playerTiedComponents.TryGetValue(component, out _))
+        if (obj == null || _playerTied.TryGetValue(obj, out _))
             return;
 
-        _playerTiedComponents.Add(component, PlayerTieMarker);
+        _playerTied.Add(obj, PlayerTieMarker);
         _hasPlayerTies = true;
     }
 
-    public void UntieFromPlayer(Component component)
+    private void RemovePlayerTie(object obj)
     {
-        if (component != null)
-            _playerTiedComponents.Remove(component);
+        if (obj != null)
+            _playerTied.Remove(obj);
     }
 
-    private bool IsTiedToPlayer(Component component)
+    // Resolves the entity a player-tie applies to for the object currently being rendered, or null
+    // if it isn't tied. A tied component reports its owning entity; a tied entity (or a component of
+    // one) reports that entity. The owner determines which offset GetPlayerAttachmentOffset uses.
+    private Entity GetTiedOwnerOrNull(object obj)
     {
-        return _hasPlayerTies && _playerTiedComponents.TryGetValue(component, out _);
+        if (obj is Entity entity)
+            return _playerTied.TryGetValue(entity, out _) ? entity : null;
+
+        if (obj is Component component)
+        {
+            if (_playerTied.TryGetValue(component, out _))
+                return component.Entity;
+            if (component.Entity is { } owner && _playerTied.TryGetValue(owner, out _))
+                return owner;
+        }
+
+        return null;
+    }
+
+    // Whether a standalone entity has been tied to the player. Lets HiresCameraSmoother make tied
+    // entities eligible for subpixel rendering alongside the player and held holdables.
+    public bool IsTiedToPlayer(Entity entity)
+    {
+        return _hasPlayerTies && entity != null && _playerTied.TryGetValue(entity, out _);
     }
 
     protected override void Hook()
@@ -160,13 +188,13 @@ public class PushSpriteSmoother : SmoothingStrategy<PushSpriteSmoother>
         var obj = _currentObjects.Peek();
         if (NoInterpolate.IsDisabled(obj)) return position;
 
-        // Player-tied attachments follow Madeline's exact render offset. Checked before the
-        // GraphicsComponent branch below, which would otherwise hand the component its entity's
+        // Player-tied attachments follow Madeline's render offset. Checked before the
+        // GraphicsComponent branch below, which would otherwise hand the object its entity's
         // offset — and for a component parented to the Player that's zero, since the Player has no
         // PushSprite state (her body is moved via ValueSmoother, her hair via GetHairOffset),
         // leaving the attachment pinned to the unsmoothed position while she slides away.
-        if (_hasPlayerTies && obj is Component tied && IsTiedToPlayer(tied))
-            return position + GetPlayerAttachmentOffset();
+        if (_hasPlayerTies && GetTiedOwnerOrNull(obj) is { } tiedOwner)
+            return position + GetPlayerAttachmentOffset(tiedOwner);
 
         position += obj switch
         {
@@ -179,15 +207,31 @@ public class PushSpriteSmoother : SmoothingStrategy<PushSpriteSmoother>
         return position;
     }
 
-    // The offset a player-tied attachment needs to stay glued to Madeline. It's the same shift her
-    // hair receives (see GetHairOffset), which is exactly right: the hat anchors itself to the hair
-    // nodes and is captured in the same isolated buffer during subpixel rendering, so matching the
-    // hair makes it track her in object-smoothing, subpixel, and SillyMode alike.
-    private Vector2 GetPlayerAttachmentOffset()
+    // The offset a player-tied attachment needs to stay glued to Madeline. It depends on what the
+    // attachment draws relative to, which differs by whether it's parented to her or standalone.
+    private Vector2 GetPlayerAttachmentOffset(Entity owner)
     {
-        return MotionSmoothingHandler.Instance.PlayerState is { } playerState
-            ? SmoothedDrawOffset(playerState)
-            : Vector2.Zero;
+        if (MotionSmoothingHandler.Instance.PlayerState is not { } playerState)
+            return Vector2.Zero;
+
+        // Parented to the Player (e.g. a hat): it renders from her cached, update-time anchor
+        // (hair nodes) inside her isolated subpixel buffer. Shift it by the same rounded offset her
+        // hair gets — the hires composite then supplies the fractional part. Matches GetHairOffset.
+        if (owner == MotionSmoothingHandler.Instance.Player)
+            return SmoothedDrawOffset(playerState);
+
+        // Standalone tied entity (e.g. the extra-jump dots): at render time it reads her smoothed
+        // Position, which ValueSmoother already placed on the rounded subpixel grid, so it's
+        // integer-aligned for free. Its sub-pixel motion is handled the same way held holdables' is
+        // — HiresCameraSmoother renders it into her isolated buffer and composites at her subpixel
+        // offset (see ShouldInterceptEntityRender) — so the subpixel path needs nothing here, and
+        // adding a fractional shift to the small-buffer draw would only jitter it under point
+        // sampling. SillyMode is the exception: it has no isolated buffer and draws her from the
+        // unrounded position, so hand the entity that fractional shift directly.
+        if (MotionSmoothingModule.Settings.SillyMode)
+            return playerState.SmoothedRealPosition - playerState.SmoothedRealPosition.Round();
+
+        return Vector2.Zero;
     }
 
     // Net render-space shift for a state this frame: its rounded (or, in SillyMode, unrounded)
