@@ -1,4 +1,5 @@
-﻿using System.Collections.Generic;
+﻿using System;
+using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using Celeste.Mod.MotionSmoothing.Smoothing.States;
 using Celeste.Mod.MotionSmoothing.Utilities;
@@ -193,8 +194,8 @@ public class PushSpriteSmoother : SmoothingStrategy<PushSpriteSmoother>
         // offset — and for a component parented to the Player that's zero, since the Player has no
         // PushSprite state (her body is moved via ValueSmoother, her hair via GetHairOffset),
         // leaving the attachment pinned to the unsmoothed position while she slides away.
-        if (_hasPlayerTies && GetTiedOwnerOrNull(obj) is { } tiedOwner)
-            return position + GetPlayerAttachmentOffset(tiedOwner);
+        if (_hasPlayerTies && GetTiedOwnerOrNull(obj) is not null)
+            return position + GetPlayerAttachmentOffset();
 
         position += obj switch
         {
@@ -207,31 +208,22 @@ public class PushSpriteSmoother : SmoothingStrategy<PushSpriteSmoother>
         return position;
     }
 
-    // The offset a player-tied attachment needs to stay glued to Madeline. It depends on what the
-    // attachment draws relative to, which differs by whether it's parented to her or standalone.
-    private Vector2 GetPlayerAttachmentOffset(Entity owner)
+    // The offset a player-tied attachment needs to stay glued to Madeline. Both kinds of tie are
+    // anchored to her *update-time* position and so want the same shift:
+    //   - A Component parented to her (e.g. a hat) renders from her cached update-time hair anchor.
+    //   - A standalone tied entity that caches her position during its own Update (the VioletHelper
+    //     NRCB/juggle indicators read Player.TopCenter in Update and draw at that cached point).
+    // SmoothedDrawOffset supplies the rounded whole-pixel part (object smoothing); the hires composite
+    // adds the fractional part when the tied object is rendered into her isolated buffer, and in
+    // SillyMode it collapses to the full unrounded offset. (A standalone entity that instead read her
+    // *smoothed* Position at render time would want Vector2.Zero here, but nothing does that today, and
+    // returning Zero for the update-time cachers leaves them a whole pixel behind her as she moves.)
+    private Vector2 GetPlayerAttachmentOffset()
     {
         if (MotionSmoothingHandler.Instance.PlayerState is not { } playerState)
             return Vector2.Zero;
 
-        // Parented to the Player (e.g. a hat): it renders from her cached, update-time anchor
-        // (hair nodes) inside her isolated subpixel buffer. Shift it by the same rounded offset her
-        // hair gets — the hires composite then supplies the fractional part. Matches GetHairOffset.
-        if (owner == MotionSmoothingHandler.Instance.Player)
-            return SmoothedDrawOffset(playerState);
-
-        // Standalone tied entity (e.g. the extra-jump dots): at render time it reads her smoothed
-        // Position, which ValueSmoother already placed on the rounded subpixel grid, so it's
-        // integer-aligned for free. Its sub-pixel motion is handled the same way held holdables' is
-        // — HiresCameraSmoother renders it into her isolated buffer and composites at her subpixel
-        // offset (see ShouldInterceptEntityRender) — so the subpixel path needs nothing here, and
-        // adding a fractional shift to the small-buffer draw would only jitter it under point
-        // sampling. SillyMode is the exception: it has no isolated buffer and draws her from the
-        // unrounded position, so hand the entity that fractional shift directly.
-        if (MotionSmoothingModule.Settings.SillyMode)
-            return playerState.SmoothedRealPosition - playerState.SmoothedRealPosition.Round();
-
-        return Vector2.Zero;
+        return SmoothedDrawOffset(playerState);
     }
 
     // Net render-space shift for a state this frame: its rounded (or, in SillyMode, unrounded)

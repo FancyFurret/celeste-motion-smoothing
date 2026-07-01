@@ -401,6 +401,22 @@ public class MotionSmoothingModule : EverestModule
 				AddHatelineHook();
 			}
 		}
+
+		// VioletHelper's NRCB and Theo/jelly juggle indicators are standalone entities that draw a
+		// marker above Madeline each frame from her position, so under motion smoothing they lag
+		// behind her. Tie both to her smoothed position (the same "extra-jump dots" case the
+		// PushSpriteSmoother tie path is built for). Gated on a minimum version -- a plain version
+		// compare rather than TryGetDependency, since the latter also requires a matching major and
+		// this is meant to keep applying as VioletHelper's major version climbs.
+		Version violetHelperMinVersion = new Version(0, 1, 11);
+		foreach (EverestModule module in Everest.Modules)
+		{
+			if (module.Metadata?.Name == "VioletHelper" && module.Metadata.Version >= violetHelperMinVersion)
+			{
+				AddVioletHelperHooks();
+				break;
+			}
+		}
 	}
 
 
@@ -442,6 +458,45 @@ public class MotionSmoothingModule : EverestModule
 				break;
 			}
 		}
+	}
+
+
+
+	private delegate void orig_IndicatorUpdate(Entity self);
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	private void AddVioletHelperHooks()
+	{
+		AddIndicatorTieHook(Type.GetType("Celeste.Mod.VioletHelper.Entities.NRCBIndicatorController, VioletHelper"));
+		AddIndicatorTieHook(Type.GetType("Celeste.Mod.VioletHelper.TheoJellyJuggleIndicator, VioletHelper"));
+	}
+
+	private void AddIndicatorTieHook(Type indicatorType)
+	{
+		// The indicators override Update, so GetMethod resolves the override declared on the
+		// indicator type -- hooking it fires only for that entity, not every Entity.Update.
+		MethodInfo m_update = indicatorType?.GetMethod(
+			"Update",
+			BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic,
+			null,
+			Type.EmptyTypes,
+			null
+		);
+
+		if (m_update != null)
+		{
+			_unmaintainedModHooks.Add(new Hook(m_update, IndicatorTieUpdateHook));
+		}
+	}
+
+	private static void IndicatorTieUpdateHook(orig_IndicatorUpdate orig, Entity self)
+	{
+		orig(self);
+
+		// Idempotent -- the tie is registered once and re-checked cheaply each frame, and drops
+		// automatically when the entity is collected. Re-running every Update keeps it correct
+		// across room reloads and whether the indicator was placed by a map or by VioletHelper.
+		MotionSmoothingExports.TieToPlayer(self);
 	}
 
 
