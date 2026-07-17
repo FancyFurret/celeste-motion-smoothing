@@ -144,7 +144,7 @@ public class MotionSmoothingSettings : EverestModuleSettings
     // ReSharper disable once UnusedMember.Global
     public void CreateFrameRateEntry(TextMenu menu, bool _)
     {
-        _frameRateMenuItem = new FrameRateTextMenuItem("Framerate", 60, 480, FrameRate);
+        _frameRateMenuItem = new FrameRateTextMenuItem("Framerate", 60, int.MaxValue, FrameRate);
         _frameRateMenuItem.Change(fps => FrameRate = fps);
 
         menu.Add(_frameRateMenuItem);

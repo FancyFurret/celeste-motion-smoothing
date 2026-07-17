@@ -43,6 +43,14 @@ public class FrameRateTextMenuItem : TextMenuExt.IntSlider
             OnValueChange?.Invoke(Index);
     }
 
+    // The base implementation sizes the value column to fit the max, which would reserve
+    // room for ten digits now that there's effectively no cap. Size it to the current
+    // value instead, with enough room for a four-digit framerate.
+    public override float RightWidth()
+    {
+        return Math.Max(ActiveFont.Measure("8888").X, ActiveFont.Measure(Index.ToString()).X) + 120f;
+    }
+
     public override void LeftPressed()
     {
         if (UpdateMode == UpdateMode.Dynamic)
