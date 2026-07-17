@@ -16,6 +16,15 @@ public class PushSpriteSmoother : SmoothingStrategy<PushSpriteSmoother>
 {
 	public static bool TemporarilyDisablePushSpriteSmoothing = false;
 
+	// Normally we skip smoothing while an object renders into its own scratch buffer (see
+	// IsRenderingToForeignTarget). HiresCameraSmoother sets this while SpirialisHelper re-renders
+	// the gameplay entities into its own full-screen "timestop" layer buffers, which it then
+	// composites 1:1 over the level. Those buffers aren't recognized gameplay/level targets, so
+	// without this the second copy of the player -- most visibly her hair -- would stay pinned to
+	// her raw position while the main copy slides to its smoothed one. The layers get no per-object
+	// offset re-applied at composite time, so smoothing into them is correct.
+	public static bool TreatForeignTargetAsGameplay = false;
+
     private readonly Stack<object> _currentObjects = new();
 
     private Texture _currentRenderTarget;
@@ -149,6 +158,10 @@ public class PushSpriteSmoother : SmoothingStrategy<PushSpriteSmoother>
     // swapped the binding to a large buffer.
     private bool IsRenderingToForeignTarget()
     {
+        // SpirialisHelper's timestop layers are foreign targets that nonetheless get composited
+        // 1:1, so HiresCameraSmoother opts them into smoothing for the duration of that re-render.
+        if (TreatForeignTargetAsGameplay) return false;
+
         var target = _currentRenderTarget;
         if (target == null) return false; // backbuffer/screen — not a scratch target
 
