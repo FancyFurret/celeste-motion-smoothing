@@ -12,6 +12,7 @@ public class DeltaTimeFix : ToggleableFeature<DeltaTimeFix>
     protected override void Hook()
     {
         base.Hook();
+        MotionSmoothingModule.DisableInlining(typeof(Starfield), "UpdateStar");
         IL.Celeste.Starfield.UpdateStar += StarfieldUpdateHook;
     }
 

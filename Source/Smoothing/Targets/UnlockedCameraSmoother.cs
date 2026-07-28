@@ -26,6 +26,15 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
     {
         base.Hook();
 
+        MotionSmoothingModule.DisableInlining(typeof(Level), "Render");
+        // Celeste.HiresRenderer, not this namespace's own HiresRenderer.
+        MotionSmoothingModule.DisableInlining(typeof(global::Celeste.HiresRenderer), "BeginRender");
+        MotionSmoothingModule.DisableInlining(typeof(TalkComponent.TalkComponentUI), "Render");
+        // Lookout.Hud is a private nested type, so resolve it reflectively rather than via typeof.
+        MotionSmoothingModule.DisableInlining(typeof(Lookout).GetNestedType("Hud", MotionSmoothingModule.AllFlags), "Render");
+        MotionSmoothingModule.DisableInlining(typeof(Camera), "CameraToScreen");
+        MotionSmoothingModule.DisableInlining(typeof(HudRenderer), "RenderContent");
+
         IL.Celeste.Level.Render += LevelRenderHook;
         IL.Celeste.HiresRenderer.BeginRender += HiresRendererBeginRenderHook;
         IL.Celeste.TalkComponent.TalkComponentUI.Render += TalkComponentUiRenderHook;
@@ -34,9 +43,9 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
 
         On.Celeste.HudRenderer.RenderContent += HudRenderer_RenderContent;
 
-        AddHook(new Hook(typeof(Calc).GetMethod(nameof(Calc.Floor), new[] { typeof(Vector2) })!, FloorHook));
-        AddHook(new Hook(typeof(Calc).GetMethod(nameof(Calc.Ceiling), new[] { typeof(Vector2) })!, CeilingHook));
-        AddHook(new Hook(typeof(Calc).GetMethod(nameof(Calc.Round), new[] { typeof(Vector2) })!, RoundHook));
+        AddHook(typeof(Calc).GetMethod(nameof(Calc.Floor), new[] { typeof(Vector2) })!, FloorHook);
+        AddHook(typeof(Calc).GetMethod(nameof(Calc.Ceiling), new[] { typeof(Vector2) })!, CeilingHook);
+        AddHook(typeof(Calc).GetMethod(nameof(Calc.Round), new[] { typeof(Vector2) })!, RoundHook);
     }
 
     protected override void Unhook()

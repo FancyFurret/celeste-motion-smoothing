@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using Celeste.Mod.Helpers;
 using Celeste.Mod.MotionSmoothing.FrameUncap;
 using Celeste.Mod.MotionSmoothing.Interop;
 using Celeste.Mod.MotionSmoothing.Smoothing;
@@ -107,6 +108,7 @@ public class MotionSmoothingModule : EverestModule
 
         InputHandler.Enable();
 
+        DisableInlining(typeof(Scene), "Begin");
         On.Monocle.Scene.Begin += SceneBeginHook;
         Everest.Events.Level.OnPause += LevelPause;
         Everest.Events.Level.OnUnpause += LevelUnpause;
@@ -311,20 +313,106 @@ public class MotionSmoothingModule : EverestModule
 
 
     // A fix for Madeline's hair being glitchy;
-    // from Wartori's Mountain Tweaks, with permission. Thank you!
+    // originally from Wartori's Mountain Tweaks, with permission. Thank you!
+    // Now routed through TryDisableInlining (see below) rather than a raw PlatformTriple call,
+    // so PushSprite lands in Everest's shared InliningDisabledMethods set like every other hook.
     private static void DisableInliningPushSprite()
     {
-        Type t_SpriteBatch = typeof(SpriteBatch);
-
-        MethodInfo m_PushSprite = t_SpriteBatch.GetMethod("PushSprite", BindingFlags.Instance | BindingFlags.NonPublic);
-        if (m_PushSprite == null)
-        {
-            Logger.Log(LogLevel.Error, nameof(MotionSmoothingModule), $"Could not find method PushSprite in {nameof(SpriteBatch)}!");
-            return;
-        }
-
-        MonoMod.Core.Platforms.PlatformTriple.Current.TryDisableInlining(m_PushSprite);
+        DisableInlining(typeof(SpriteBatch), "PushSprite");
     }
+
+	// From ExtendedVariantMode's code. Prefer this over calling PlatformTriple.TryDisableInlining
+	// directly (as DisableInliningPushSprite used to): HookUtils records the method in Everest's
+	// shared InliningDisabledMethods set -- the exact set Everest's EnsureLegalHook consults -- so
+	// this both keeps the JIT from inlining the target (which would make hooks silently not fire for
+	// some users) and suppresses Everest's "hooking a method which does not have inlining disabled"
+	// warnings. It's also idempotent and null-safe, which the raw call was not.
+	public static void TryDisableInlining(MethodBase method)
+	{
+		if (method == null)
+		{
+			Logger.Log(LogLevel.Warn, nameof(MotionSmoothingModule), "Attempted to call TryDisableInlining on null");
+			return;
+		}
+		if (!HookUtils.TryDisableInlining(method))
+		{
+			Logger.Log(LogLevel.Warn, nameof(MotionSmoothingModule), $"Could not disable inlining on method {method.DeclaringType?.FullName}.{method.Name}");
+		}
+	}
+
+	// Resolves a uniquely-named method declared on `type` and disables inlining on it. Used for the
+	// On./IL. HookGen hooks, where -- unlike new Hook(...)/new ILHook(...), which go through
+	// ToggleableFeature.AddHook -- we don't otherwise have the target MethodInfo in hand.
+	// DeclaredOnly avoids matching inherited methods of the same name.
+	public static void DisableInlining(Type type, string name)
+	{
+		if (type == null)
+		{
+			Logger.Log(LogLevel.Warn, nameof(MotionSmoothingModule), $"Cannot disable inlining on {name}: declaring type not found");
+			return;
+		}
+
+		MethodInfo method;
+		try
+		{
+			method = type.GetMethod(name, AllFlags | BindingFlags.DeclaredOnly);
+		}
+		catch (AmbiguousMatchException)
+		{
+			Logger.Log(LogLevel.Warn, nameof(MotionSmoothingModule), $"{type.FullName}.{name} is overloaded; pass parameter types to disable inlining");
+			return;
+		}
+
+		if (method == null)
+		{
+			Logger.Log(LogLevel.Warn, nameof(MotionSmoothingModule), $"Could not find method {type.FullName}.{name} to disable inlining");
+			return;
+		}
+
+		TryDisableInlining(method);
+	}
+
+	// Overload for a specific signature, to disambiguate overloaded methods (e.g. GameplayBuffers.Create).
+	public static void DisableInlining(Type type, string name, params Type[] parameterTypes)
+	{
+		if (type == null)
+		{
+			Logger.Log(LogLevel.Warn, nameof(MotionSmoothingModule), $"Cannot disable inlining on {name}: declaring type not found");
+			return;
+		}
+
+		MethodInfo method = type.GetMethod(name, AllFlags | BindingFlags.DeclaredOnly, null, parameterTypes, null);
+		if (method == null)
+		{
+			Logger.Log(LogLevel.Warn, nameof(MotionSmoothingModule), $"Could not find method {type.FullName}.{name} with the given signature to disable inlining");
+			return;
+		}
+
+		TryDisableInlining(method);
+	}
+
+	// Disables inlining on a hooked constructor (Level, Camera, ScreenWipe, ...).
+	public static void DisableInliningConstructor(Type type, params Type[] parameterTypes)
+	{
+		if (type == null)
+		{
+			Logger.Log(LogLevel.Warn, nameof(MotionSmoothingModule), "Cannot disable inlining on constructor: declaring type not found");
+			return;
+		}
+
+		// Instance-only flags: including BindingFlags.Static would also match the type's static
+		// constructor (.cctor, likewise parameterless), making a parameterless ctor lookup ambiguous.
+		ConstructorInfo ctor = type.GetConstructor(
+			BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance,
+			null, parameterTypes, null);
+		if (ctor == null)
+		{
+			Logger.Log(LogLevel.Warn, nameof(MotionSmoothingModule), $"Could not find a matching constructor on {type.FullName} to disable inlining");
+			return;
+		}
+
+		TryDisableInlining(ctor);
+	}
 
     private static void DisableMacOSVSync()
     {
@@ -336,6 +424,8 @@ public class MotionSmoothingModule : EverestModule
         Engine.Graphics.SynchronizeWithVerticalRetrace = false;
         Engine.Graphics.ApplyChanges();
 
+        DisableInlining(typeof(Commands), "Vsync");
+        DisableInlining(typeof(MenuOptions), "SetVSync");
         On.Monocle.Commands.Vsync += VsyncHook;
         On.Celeste.MenuOptions.SetVSync += SetVSyncHook;
     }
@@ -438,6 +528,7 @@ public class MotionSmoothingModule : EverestModule
 
 		if (m_ResetHat != null && _t_HatComponent != null)
 		{
+			TryDisableInlining(m_ResetHat);
 			_unmaintainedModHooks.Add(new Hook(m_ResetHat, HatelineResetHatHook));
 		}
 	}
@@ -485,6 +576,7 @@ public class MotionSmoothingModule : EverestModule
 
 		if (m_update != null)
 		{
+			TryDisableInlining(m_update);
 			_unmaintainedModHooks.Add(new Hook(m_update, IndicatorTieUpdateHook));
 		}
 	}

@@ -96,14 +96,14 @@ public class PushSpriteSmoother : SmoothingStrategy<PushSpriteSmoother>
     {
         base.Hook();
 
-        AddHook(new Hook(typeof(SpriteBatch).GetMethod("PushSprite", MotionSmoothingModule.AllFlags)!,
-            PushSpriteHook));
+        AddHook(typeof(SpriteBatch).GetMethod("PushSprite", MotionSmoothingModule.AllFlags)!,
+            PushSpriteHook);
 
         // Track the current render target so we can suppress smoothing while an entity draws
         // into its own scratch buffer. The singular GraphicsDevice.SetRenderTarget routes
         // through this same overload in FNA.
-        AddHook(new Hook(typeof(GraphicsDevice).GetMethod("SetRenderTargets",
-            [typeof(RenderTargetBinding[])])!, SetRenderTargetsHook));
+        AddHook(typeof(GraphicsDevice).GetMethod("SetRenderTargets",
+            [typeof(RenderTargetBinding[])])!, SetRenderTargetsHook);
 
         // These catch renders that might happen outside a ComponentList
         HookComponentRender<Component>();
@@ -114,7 +114,13 @@ public class PushSpriteSmoother : SmoothingStrategy<PushSpriteSmoother>
 
         // MoveBlock.Border uses Draw.Rect with Parent's position, which bypasses PushSprite;
         // temporarily swap Parent.Position to its smoothed value during Border.Render
-        AddHook(new Hook(typeof(MoveBlock.Border).GetMethod("Render")!, BorderRenderHook));
+        AddHook(typeof(MoveBlock.Border).GetMethod("Render")!, BorderRenderHook);
+
+        MotionSmoothingModule.DisableInlining(typeof(ComponentList), "Render");
+        MotionSmoothingModule.DisableInlining(typeof(EntityList), "Render");
+        MotionSmoothingModule.DisableInlining(typeof(EntityList), "RenderOnly");
+        MotionSmoothingModule.DisableInlining(typeof(EntityList), "RenderOnlyFullMatch");
+        MotionSmoothingModule.DisableInlining(typeof(EntityList), "RenderExcept");
 
         IL.Monocle.ComponentList.Render += ComponentListRenderHook;
         IL.Monocle.EntityList.Render += EntityListRenderHook;
@@ -325,12 +331,12 @@ public class PushSpriteSmoother : SmoothingStrategy<PushSpriteSmoother>
 
     private void HookComponentRender<T>() where T : Component
     {
-        AddHook(new Hook(typeof(T).GetMethod("Render")!, ComponentRenderHook));
+        AddHook(typeof(T).GetMethod("Render")!, ComponentRenderHook);
     }
 
     private void HookEntityRender<T>() where T : Entity
     {
-        AddHook(new Hook(typeof(T).GetMethod("Render")!, EntityRenderHook));
+        AddHook(typeof(T).GetMethod("Render")!, EntityRenderHook);
     }
 
     private static void ComponentListRenderHook(ILContext il)

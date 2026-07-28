@@ -106,6 +106,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
     {
         base.Load();
 
+		MotionSmoothingModule.DisableInlining(typeof(GFX), "LoadEffects");
 		On.Celeste.GFX.LoadEffects += GfxLoadEffectsHook;
     }
 
@@ -199,6 +200,35 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
     {
         base.Hook();
 
+        // Disable inlining on every method hooked below, so the detours actually fire even when
+        // the JIT would otherwise inline these into their callers. new Hook(...)/new ILHook(...)
+        // cases are handled centrally in ToggleableFeature.AddHook; these are the On./IL. HookGen
+        // hooks, whose target MethodInfo we don't otherwise have in hand.
+        MotionSmoothingModule.DisableInlining(typeof(Level), "Render");
+        MotionSmoothingModule.DisableInlining(typeof(BloomRenderer), "Apply");
+        MotionSmoothingModule.DisableInlining(typeof(GaussianBlur), "Blur");
+        MotionSmoothingModule.DisableInlining(typeof(BackdropRenderer), "Update");
+        MotionSmoothingModule.DisableInlining(typeof(BackdropRenderer), "Render");
+        MotionSmoothingModule.DisableInlining(typeof(GameplayRenderer), "Render");
+        MotionSmoothingModule.DisableInlining(typeof(EntityList), "Render");
+        MotionSmoothingModule.DisableInlining(typeof(EntityList), "RenderOnly");
+        MotionSmoothingModule.DisableInlining(typeof(EntityList), "RenderOnlyFullMatch");
+        MotionSmoothingModule.DisableInlining(typeof(EntityList), "RenderExcept");
+        MotionSmoothingModule.DisableInlining(typeof(Player), "Render");
+        MotionSmoothingModule.DisableInlining(typeof(Distort), "Render");
+        MotionSmoothingModule.DisableInlining(typeof(Glitch), "Apply");
+        MotionSmoothingModule.DisableInlining(typeof(SeekerBarrierRenderer), "OnRenderBloom");
+        MotionSmoothingModule.DisableInlining(typeof(Godrays), "Update");
+        MotionSmoothingModule.DisableInlining(typeof(HudRenderer), "RenderContent");
+        // Celeste.HiresRenderer, not this namespace's own HiresRenderer.
+        MotionSmoothingModule.DisableInlining(typeof(global::Celeste.HiresRenderer), "BeginRender");
+        // Lookout.Hud is a private nested type, so resolve it reflectively rather than via typeof.
+        MotionSmoothingModule.DisableInlining(typeof(Lookout).GetNestedType("Hud", MotionSmoothingModule.AllFlags), "Render");
+        // GameplayBuffers.Create is overloaded (there's also Create(int, int)); target the parameterless one.
+        MotionSmoothingModule.DisableInlining(typeof(GameplayBuffers), "Create", Type.EmptyTypes);
+        MotionSmoothingModule.DisableInlining(typeof(Scene), "Begin");
+        MotionSmoothingModule.DisableInlining(typeof(Level), "End");
+
         IL.Celeste.Level.Render += LevelRenderHook;
 
         On.Celeste.BloomRenderer.Apply += BloomRenderer_Apply;
@@ -238,37 +268,37 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
             InitializeLargeTextures();
         }
 
-        AddHook(new Hook(typeof(SpriteBatch).GetMethod("Begin",
+        AddHook(typeof(SpriteBatch).GetMethod("Begin",
             [
                 typeof(SpriteSortMode), typeof(BlendState), typeof(SamplerState),
                 typeof(DepthStencilState), typeof(RasterizerState), typeof(Effect), typeof(Matrix)
-            ])!, SpriteBatch_Begin));
+            ])!, SpriteBatch_Begin);
 
         HookSpriteBatchDraw();
 
-		AddHook(new Hook(typeof(SpriteBatch).GetMethod("PushSprite", MotionSmoothingModule.AllFlags)!,
-            PushSpriteHook));
+		AddHook(typeof(SpriteBatch).GetMethod("PushSprite", MotionSmoothingModule.AllFlags)!,
+            PushSpriteHook);
 
-		AddHook(new Hook(typeof(SpriteBatch).GetMethod("End", Type.EmptyTypes)!, SpriteBatch_End));
+		AddHook(typeof(SpriteBatch).GetMethod("End", Type.EmptyTypes)!, SpriteBatch_End);
 
-        AddHook(new Hook(typeof(GraphicsDevice).GetMethod("SetRenderTargets",
+        AddHook(typeof(GraphicsDevice).GetMethod("SetRenderTargets",
             [ typeof(RenderTargetBinding[])
-        ])!, GraphicsDevice_SetRenderTargets));
+        ])!, GraphicsDevice_SetRenderTargets);
 
-        AddHook(new Hook(
+        AddHook(
             typeof(TextureCollection).GetProperty("Item").GetSetMethod(),
             TextureCollection_SetItem
-        ));
+        );
 
-        AddHook(new Hook(typeof(VirtualRenderTarget).GetMethod("Dispose", Type.EmptyTypes)!, VirtualRenderTarget_Dispose));
+        AddHook(typeof(VirtualRenderTarget).GetMethod("Dispose", Type.EmptyTypes)!, VirtualRenderTarget_Dispose);
 
         HookDrawVertices<VertexPositionColor>();
         HookDrawVertices<VertexPositionColorTexture>();
         HookDrawVertices<LightingRenderer.VertexPositionColorMaskTexture>();
 
-        AddHook(new Hook(typeof(Calc).GetMethod(nameof(Calc.Floor), [typeof(Vector2)])!, FloorHook));
-        AddHook(new Hook(typeof(Calc).GetMethod(nameof(Calc.Ceiling), [typeof(Vector2)])!, CeilingHook));
-        AddHook(new Hook(typeof(Calc).GetMethod(nameof(Calc.Round), [typeof(Vector2)])!, RoundHook));
+        AddHook(typeof(Calc).GetMethod(nameof(Calc.Floor), [typeof(Vector2)])!, FloorHook);
+        AddHook(typeof(Calc).GetMethod(nameof(Calc.Ceiling), [typeof(Vector2)])!, CeilingHook);
+        AddHook(typeof(Calc).GetMethod(nameof(Calc.Round), [typeof(Vector2)])!, RoundHook);
 
 		if (
 			MotionSmoothingModule.Settings.RenderMadelineWithSubpixels
@@ -1975,15 +2005,15 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
     {
 		// The bizarre numbering is just the order these overloads appear in the SpriteBatch class.
 
-        AddHook(new Hook(typeof(SpriteBatch).GetMethod("Draw", [typeof(Texture2D), typeof(Vector2), typeof(Rectangle?), typeof(Color)])!, SpriteBatch_Draw2));
+        AddHook(typeof(SpriteBatch).GetMethod("Draw", [typeof(Texture2D), typeof(Vector2), typeof(Rectangle?), typeof(Color)])!, SpriteBatch_Draw2);
 
-        AddHook(new Hook(typeof(SpriteBatch).GetMethod("Draw", [typeof(Texture2D), typeof(Vector2), typeof(Rectangle?), typeof(Color), typeof(float), typeof(Vector2), typeof(float), typeof(SpriteEffects), typeof(float)])!, SpriteBatch_Draw3));
+        AddHook(typeof(SpriteBatch).GetMethod("Draw", [typeof(Texture2D), typeof(Vector2), typeof(Rectangle?), typeof(Color), typeof(float), typeof(Vector2), typeof(float), typeof(SpriteEffects), typeof(float)])!, SpriteBatch_Draw3);
 
-        AddHook(new Hook(typeof(SpriteBatch).GetMethod("Draw", [typeof(Texture2D), typeof(Vector2), typeof(Rectangle?), typeof(Color), typeof(float), typeof(Vector2), typeof(Vector2), typeof(SpriteEffects), typeof(float)])!, SpriteBatch_Draw4));
+        AddHook(typeof(SpriteBatch).GetMethod("Draw", [typeof(Texture2D), typeof(Vector2), typeof(Rectangle?), typeof(Color), typeof(float), typeof(Vector2), typeof(Vector2), typeof(SpriteEffects), typeof(float)])!, SpriteBatch_Draw4);
 
-        AddHook(new Hook(typeof(SpriteBatch).GetMethod("Draw", [typeof(Texture2D), typeof(Rectangle), typeof(Rectangle?), typeof(Color)])!, SpriteBatch_Draw6));
+        AddHook(typeof(SpriteBatch).GetMethod("Draw", [typeof(Texture2D), typeof(Rectangle), typeof(Rectangle?), typeof(Color)])!, SpriteBatch_Draw6);
 
-        AddHook(new Hook(typeof(SpriteBatch).GetMethod("Draw", [typeof(Texture2D), typeof(Rectangle), typeof(Rectangle?), typeof(Color), typeof(float), typeof(Vector2), typeof(SpriteEffects), typeof(float)])!, SpriteBatch_Draw7));
+        AddHook(typeof(SpriteBatch).GetMethod("Draw", [typeof(Texture2D), typeof(Rectangle), typeof(Rectangle?), typeof(Color), typeof(float), typeof(Vector2), typeof(SpriteEffects), typeof(float)])!, SpriteBatch_Draw7);
     }
 
     private static void SpriteBatch_Draw2(Action<SpriteBatch, Texture2D, Vector2, Rectangle?, Color> orig, SpriteBatch self, Texture2D texture, Vector2 position, Rectangle? sourceRectangle, Color color)
@@ -2444,8 +2474,8 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
         var drawVerticesMethod = typeof(GFX).GetMethod(nameof(GFX.DrawVertices))!.MakeGenericMethod(typeof(T));
         var drawIndexedVerticesMethod = typeof(GFX).GetMethod(nameof(GFX.DrawIndexedVertices))!.MakeGenericMethod(typeof(T));
 
-        AddHook(new ILHook(drawVerticesMethod, DrawVerticesILHook<T>));
-        AddHook(new ILHook(drawIndexedVerticesMethod, DrawIndexedVerticesILHook<T>));
+        AddILHook(drawVerticesMethod, DrawVerticesILHook<T>);
+        AddILHook(drawIndexedVerticesMethod, DrawIndexedVerticesILHook<T>);
     }
 
 
@@ -2761,7 +2791,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
 		if (m_DrawTimeStopEntities != null)
 		{
-			AddHook(new Hook(m_DrawTimeStopEntities, DrawTimeStopEntitiesHook));
+			AddHook(m_DrawTimeStopEntities, DrawTimeStopEntitiesHook);
 		}
 
 		MethodInfo m_RenderTimestopEntities = t_TimeController?.GetMethod(
@@ -2771,7 +2801,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
 		if (m_RenderTimestopEntities != null)
 		{
-			AddHook(new Hook(m_RenderTimestopEntities, RenderTimestopEntitiesHook));
+			AddHook(m_RenderTimestopEntities, RenderTimestopEntitiesHook);
 		}
 	}
 
@@ -2819,7 +2849,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
 		if (m_OnRenderBloom != null)
 		{
-			AddHook(new ILHook(m_OnRenderBloom, SeekerBarrierRendererRenderHook));
+			AddILHook(m_OnRenderBloom, SeekerBarrierRendererRenderHook);
 		}
 	}
 
@@ -2836,7 +2866,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
 		if (m_OnRenderBloom != null)
 		{
-			AddHook(new ILHook(m_OnRenderBloom, SeekerBarrierRendererRenderHook));
+			AddILHook(m_OnRenderBloom, SeekerBarrierRendererRenderHook);
 		}
 	}
 
@@ -2853,7 +2883,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
 		if (m_OnRenderBloom != null)
 		{
-			AddHook(new ILHook(m_OnRenderBloom, SeekerBarrierRendererRenderHook));
+			AddILHook(m_OnRenderBloom, SeekerBarrierRendererRenderHook);
 		}
 	}
 
@@ -2871,7 +2901,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
 		if (m_ResizeVanillaBuffers != null)
 		{
-			AddHook(new Hook(m_ResizeVanillaBuffers, ResizeVanillaBuffersHook));
+			AddHook(m_ResizeVanillaBuffers, ResizeVanillaBuffersHook);
 		}
 
 		MethodInfo m_ResizeBufferToZoom = t_CameraZoomHooks?.GetMethod(
@@ -2881,7 +2911,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
 		if (m_ResizeBufferToZoom != null)
 		{
-			AddHook(new Hook(m_ResizeBufferToZoom, ResizeBufferToZoomHook));
+			AddHook(m_ResizeBufferToZoom, ResizeBufferToZoomHook);
 		}
 	}
 
@@ -2913,7 +2943,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
 		if (m_EnsureVanillaBuffers != null)
 		{
-			AddHook(new Hook(m_EnsureVanillaBuffers, EnsureVanillaBuffersHook));
+			AddHook(m_EnsureVanillaBuffers, EnsureVanillaBuffersHook);
 		}
 
 		MethodInfo m_EnsureBufferDimensions = t_FunctionalZoomOutModule?.GetMethod(
@@ -2923,7 +2953,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
 		if (m_EnsureBufferDimensions != null)
 		{
-			AddHook(new Hook(m_EnsureBufferDimensions, EnsureBufferDimensionsHook));
+			AddHook(m_EnsureBufferDimensions, EnsureBufferDimensionsHook);
 		}
 	}
 
@@ -2972,7 +3002,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
 		if (m_Update != null)
 		{
-			AddHook(new ILHook(m_Update, GodraysUpdateHook));
+			AddILHook(m_Update, GodraysUpdateHook);
 		}
 	}
 
@@ -2989,7 +3019,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
 		if (m_Update != null)
 		{
-			AddHook(new ILHook(m_Update, GodraysUpdateHook));
+			AddILHook(m_Update, GodraysUpdateHook);
 		}
 	}
 

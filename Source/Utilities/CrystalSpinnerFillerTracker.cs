@@ -58,6 +58,7 @@ public class CrystalSpinnerFillerTracker : ToggleableFeature<CrystalSpinnerFille
     protected override void Hook()
     {
         base.Hook();
+        MotionSmoothingModule.DisableInlining(typeof(CrystalStaticSpinner), "AddSprite");
         On.Celeste.CrystalStaticSpinner.AddSprite += AddSpriteHook;
     }
 

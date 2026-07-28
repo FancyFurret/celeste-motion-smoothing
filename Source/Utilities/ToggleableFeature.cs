@@ -1,4 +1,7 @@
+using System;
 using System.Collections.Generic;
+using System.Reflection;
+using MonoMod.Cil;
 using MonoMod.RuntimeDetour;
 
 namespace Celeste.Mod.MotionSmoothing.Utilities;
@@ -64,13 +67,42 @@ public abstract class ToggleableFeature<T> where T : class
         _ilHooks.Clear();
     }
 
+    // Prefer the (MethodBase, Delegate) overload below. This one disables inlining *after* the
+    // Hook has already been constructed -- and the constructor applies the detour, at which point
+    // Everest's EnsureLegalHook has already checked (and warned about) the not-yet-disabled method.
+    // Kept as a backstop for any caller that still hands us a pre-built Hook.
     protected void AddHook(Hook hook)
     {
+        MotionSmoothingModule.TryDisableInlining(hook.Source);
         _hooks.Add(hook);
     }
 
+    // Disables inlining on the target *before* constructing the Hook. The Hook constructor applies
+    // the detour immediately, and Everest's EnsureLegalHook checks its inlining-disabled set at that
+    // moment -- so registering the method first both keeps the JIT from inlining the target (which
+    // is why hooks silently failed for some users) and avoids Everest's "does not have inlining
+    // disabled" warning. Idempotent, so double-covering a method handled elsewhere is harmless.
+    protected Hook AddHook(MethodBase source, Delegate detour)
+    {
+        MotionSmoothingModule.TryDisableInlining(source);
+        var hook = new Hook(source, detour);
+        _hooks.Add(hook);
+        return hook;
+    }
+
+    // Backstop; see the note on AddHook(Hook).
     protected void AddHook(ILHook ilHook)
     {
+        MotionSmoothingModule.TryDisableInlining(ilHook.Method);
         _ilHooks.Add(ilHook);
+    }
+
+    // IL-hook counterpart of AddHook(MethodBase, Delegate) -- disables inlining before applying.
+    protected ILHook AddILHook(MethodBase source, ILContext.Manipulator manipulator)
+    {
+        MotionSmoothingModule.TryDisableInlining(source);
+        var ilHook = new ILHook(source, manipulator);
+        _ilHooks.Add(ilHook);
+        return ilHook;
     }
 }

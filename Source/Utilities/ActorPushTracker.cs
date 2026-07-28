@@ -21,6 +21,9 @@ public class ActorPushTracker : ToggleableFeature<ActorPushTracker>
     protected override void Hook()
     {
         base.Hook();
+        MotionSmoothingModule.DisableInlining(typeof(Engine), "Update");
+        MotionSmoothingModule.DisableInlining(typeof(Actor), "MoveHExact");
+        MotionSmoothingModule.DisableInlining(typeof(Actor), "MoveVExact");
         On.Monocle.Engine.Update += EngineUpdateHook;
         On.Celeste.Actor.MoveHExact += ActorMoveHExactHook;
         On.Celeste.Actor.MoveVExact += ActorMoveVExactHook;

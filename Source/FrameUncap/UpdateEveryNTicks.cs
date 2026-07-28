@@ -28,6 +28,10 @@ public class UpdateEveryNTicks : ToggleableFeature<UpdateEveryNTicks>, IFrameUnc
                        int.MaxValue
                    )).Use())
             {
+                MotionSmoothingModule.DisableInlining(typeof(Engine), "Update");
+                MotionSmoothingModule.DisableInlining(typeof(Engine), "Draw");
+                MotionSmoothingModule.DisableInlining(typeof(Input), "UpdateGrab");
+
                 On.Monocle.Engine.Update += EngineUpdateHook;
                 On.Monocle.Engine.Draw += EngineDrawHook;
 

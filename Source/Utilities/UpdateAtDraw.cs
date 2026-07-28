@@ -32,10 +32,12 @@ public class UpdateAtDraw : ToggleableFeature<UpdateAtDraw>
     {
         base.Hook();
         foreach (var rendererType in RendererTypesToUpdate)
-            AddHook(new Hook(rendererType.GetMethod("Update", MotionSmoothingModule.AllFlags)!, RendererUpdateHook));
+            AddHook(rendererType.GetMethod("Update", MotionSmoothingModule.AllFlags)!, RendererUpdateHook);
         foreach (var entityType in EntityTypesToUpdate)
-            AddHook(new Hook(entityType.GetMethod("Update", MotionSmoothingModule.AllFlags)!, EntityUpdateHook));
+            AddHook(entityType.GetMethod("Update", MotionSmoothingModule.AllFlags)!, EntityUpdateHook);
 
+        MotionSmoothingModule.DisableInlining(typeof(Engine), "Update");
+        MotionSmoothingModule.DisableInlining(typeof(Engine), "Draw");
         On.Monocle.Engine.Update += EngineUpdateHook;
         On.Monocle.Engine.Draw += EngineDrawHook;
     }

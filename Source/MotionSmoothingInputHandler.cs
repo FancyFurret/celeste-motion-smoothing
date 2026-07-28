@@ -8,6 +8,7 @@ public class MotionSmoothingInputHandler : ToggleableFeature<MotionSmoothingInpu
     public override void Load()
     {
         base.Load();
+        MotionSmoothingModule.DisableInlining(typeof(Scene), "Begin");
         On.Monocle.Scene.Begin += SceneBeginHook;
     }
 

@@ -10,6 +10,7 @@ public class DebugRenderFix : ToggleableFeature<DebugRenderFix>
     protected override void Hook()
     {
         base.Hook();
+        MotionSmoothingModule.DisableInlining(typeof(EntityList), "DebugRender");
         On.Monocle.EntityList.DebugRender += EntityListDebugRenderHook;
     }
 

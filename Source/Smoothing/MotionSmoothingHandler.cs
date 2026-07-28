@@ -58,6 +58,18 @@ public class MotionSmoothingHandler : ToggleableFeature<MotionSmoothingHandler>
     {
         base.Hook();
 
+        MotionSmoothingModule.DisableInlining(typeof(Scene), "AfterUpdate");
+        MotionSmoothingModule.DisableInlining(typeof(Engine), "Update");
+        MotionSmoothingModule.DisableInlining(typeof(Engine), "Draw");
+        MotionSmoothingModule.DisableInlining(typeof(Tracker), "EntityAdded");
+        MotionSmoothingModule.DisableInlining(typeof(Tracker), "EntityRemoved");
+        MotionSmoothingModule.DisableInlining(typeof(Tracker), "ComponentAdded");
+        MotionSmoothingModule.DisableInlining(typeof(Tracker), "ComponentRemoved");
+        MotionSmoothingModule.DisableInliningConstructor(typeof(Level));
+        MotionSmoothingModule.DisableInliningConstructor(typeof(Camera));
+        MotionSmoothingModule.DisableInliningConstructor(typeof(Camera), typeof(int), typeof(int));
+        MotionSmoothingModule.DisableInliningConstructor(typeof(ScreenWipe), typeof(Scene), typeof(bool), typeof(Action));
+
         On.Monocle.Scene.AfterUpdate += SceneAfterUpdateHook;
         On.Monocle.Engine.Update += EngineUpdateHook;
         On.Monocle.Engine.Draw += EngineDrawHook;

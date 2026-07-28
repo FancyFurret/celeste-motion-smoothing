@@ -31,7 +31,7 @@ public class DecoupledGameTick : ToggleableFeature<DecoupledGameTick>, IFrameUnc
     {
         base.Hook();
 
-        AddHook(new Hook(typeof(Game).GetMethod(nameof(Game.Tick))!, GameTickHook));
+        AddHook(typeof(Game).GetMethod(nameof(Game.Tick))!, GameTickHook);
 
         MainThreadHelper.Schedule(() =>
         {
@@ -40,6 +40,7 @@ public class DecoupledGameTick : ToggleableFeature<DecoupledGameTick>, IFrameUnc
                        after: new List<string> { "SpeedMod" }
                    )).Use())
             {
+                MotionSmoothingModule.DisableInlining(typeof(Level), "UpdateTime");
                 IL.Celeste.Level.UpdateTime += LevelUpdateTimeHook;
             }
         });
