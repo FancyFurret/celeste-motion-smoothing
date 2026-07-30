@@ -2363,11 +2363,12 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
     private static bool HotCreateLargeBuffer(Texture2D smallTexture)
     {
-        // Cap against the actual texture size limit. This used to be a flat "> 640", which was
-        // a 4096/6 proxy from when Scale was always 6. With a zoomed-out camera (ExCameraDynamics,
-        // ZoomOutHelper) Scale drops as the vanilla buffers grow -- at a canvas scale of 3 they're
-        // 960x540 with Scale 2 -- so that proxy silently stopped promoting buffers that fit fine,
-        // making hi-res promotion behave differently either side of a camera-scale boundary.
+        // Hard cap: whatever we create is smallTexture * Scale, and that has to fit in a texture.
+        // This used to be a flat "> 640", a 4096/6 proxy from back when Scale was always 6. With a
+        // zoomed-out camera (ExCameraDynamics, ZoomOutHelper) Scale shrinks as the vanilla buffers
+        // grow -- at ZoomOutHelper's canvas scale 3 they're 960x540 with Scale 2 -- so that proxy
+        // silently stopped promoting buffers that fit fine, and hi-res promotion ended up behaving
+        // differently either side of a camera-scale boundary.
         if (smallTexture.Width * Scale > MAX_TEXTURE_SIZE || smallTexture.Height * Scale > MAX_TEXTURE_SIZE)
         {
 			// Ah well. Despite not being able to create a large buffer, this code path
@@ -2375,6 +2376,38 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 			// what's drawn to the screen (ahem CelesteNet), in which case we will still
 			// be ditching the scale above where this is called -- which is exactly correct
 			// in that case!
+            return false;
+        }
+
+        // That size cap alone no longer separates game-space buffers from screen-space ones: a big
+        // enough canvas scale drags the vanilla buffers up towards screen size while Scale falls,
+        // so buffers that are already at final resolution start slipping under it. Two more guards.
+
+        // First: anything already at (or past) the size of our own large buffers isn't a small
+        // buffer awaiting promotion, it's something that already holds internal-resolution pixels
+        // -- our own GaussianBlurTempBuffer, or a screen-sized capture target. Doubling it again
+        // would leave its content in a corner of a buffer twice the size it should be.
+        if (HiresRenderer.Instance is { } renderer
+            && (smallTexture.Width >= renderer.LargeLevelBuffer.Width
+                || smallTexture.Height >= renderer.LargeLevelBuffer.Height))
+        {
+            return false;
+        }
+
+        // Second: a screen-sized target can still be smaller than our large buffers once the canvas
+        // scale is high enough. The tell there is the batch transform -- rasterizing game-space
+        // content up to display space uses a large scaling matrix (Level.Render's final composite is
+        // 6x * ScreenMatrix), and CelesteNet redirects precisely that composite into its own
+        // screen-sized FakeRT so it can blur it behind its UI. Promoting that is meaningless, and it
+        // drags CelesteNet's whole blur/UI chain up with it. Same "drawing with scale, so the target
+        // isn't really large" heuristic the fall-through path below already uses.
+        bool couldBeScreenSized = smallTexture.Width > GameplayBuffers.Gameplay.Width
+            || smallTexture.Height > GameplayBuffers.Gameplay.Height;
+
+        if (couldBeScreenSized
+            && _lastSpriteBatchBeginParams is (_, _, _, _, _, _, var beginMatrix)
+            && MatrixHasSignificantScaling(beginMatrix))
+        {
             return false;
         }
 
