@@ -805,9 +805,22 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
 		if (texture.Width != temp.Width || texture.Height != temp.Height)
 		{
-			renderer.GaussianBlurTempBuffer.Width = texture.Width;
-			renderer.GaussianBlurTempBuffer.Height = texture.Height;
-			renderer.GaussianBlurTempBuffer.Reload();
+			// Only actually reallocate when our scratch buffer is the wrong size. The condition
+			// above compares against the *caller's* temp buffer, which for the bloom blur is the
+			// vanilla-sized TempA and so never matches -- reloading unconditionally meant
+			// disposing and recreating a full-size render target on every single blur, and
+			// leaking the disposed target into _largeTextures (which PushSpriteHook adds it to)
+			// once per frame, forever.
+			if (renderer.GaussianBlurTempBuffer.Width != texture.Width
+			    || renderer.GaussianBlurTempBuffer.Height != texture.Height)
+			{
+				_largeTextures.Remove(renderer.GaussianBlurTempBuffer.Target);
+
+				renderer.GaussianBlurTempBuffer.Width = texture.Width;
+				renderer.GaussianBlurTempBuffer.Height = texture.Height;
+				renderer.GaussianBlurTempBuffer.Reload();
+			}
+
 			temp = renderer.GaussianBlurTempBuffer;
 		}
 
@@ -2344,11 +2357,18 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
 
 
+    // The largest texture the graphics device will give us. Everything we hot-create is
+    // smallTexture * Scale, so that's what has to fit.
+    private const int MAX_TEXTURE_SIZE = 4096;
+
     private static bool HotCreateLargeBuffer(Texture2D smallTexture)
     {
-        // We cap the dimensions here since the maximum allowable texture is
-        // 4096x4096 (and this is close to that at 6x)
-        if (smallTexture.Width > 640 || smallTexture.Height > 640)
+        // Cap against the actual texture size limit. This used to be a flat "> 640", which was
+        // a 4096/6 proxy from when Scale was always 6. With a zoomed-out camera (ExCameraDynamics,
+        // ZoomOutHelper) Scale drops as the vanilla buffers grow -- at a canvas scale of 3 they're
+        // 960x540 with Scale 2 -- so that proxy silently stopped promoting buffers that fit fine,
+        // making hi-res promotion behave differently either side of a camera-scale boundary.
+        if (smallTexture.Width * Scale > MAX_TEXTURE_SIZE || smallTexture.Height * Scale > MAX_TEXTURE_SIZE)
         {
 			// Ah well. Despite not being able to create a large buffer, this code path
 			// is still useful: a common reason to want a buffer this big is to capture
