@@ -6,6 +6,7 @@ using Celeste.Mod.UI;
 using Microsoft.Xna.Framework.Input;
 using YamlDotNet.Serialization;
 using Monocle;
+using Celeste.Mod.MotionSmoothing.Interop;
 
 namespace Celeste.Mod.MotionSmoothing;
 
@@ -321,13 +322,7 @@ public class MotionSmoothingSettings : EverestModuleSettings
     {
         get
         {
-            var layersField = GetAuspiciousMaterialPipeLayersField();
-            if (layersField == null)
-            {
-                return false;
-            }
-
-            return layersField.GetValue(null) is ICollection layers && layers.Count > 0;
+			return AuspicioushelperImports.hasActiveLayer?.Invoke() ?? false;
         }
     }
 

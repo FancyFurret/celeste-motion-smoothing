@@ -145,6 +145,17 @@ public class MotionSmoothingModule : EverestModule
 	{
         CelesteTasInterop.Load();
 
+		EverestModuleMetadata auspicioushelper = new() {
+			Name = "auspicioushelper",
+			Version = new Version(0, 4, 6, 2)
+		};
+
+		if (Everest.Loader.DependencyLoaded(auspicioushelper))
+		{
+			typeof(AuspicioushelperImports).ModInterop();
+			Console.WriteLine("################ success");
+		}
+
 		Settings.SillyMode = false;
 
 		ApplySettings();
