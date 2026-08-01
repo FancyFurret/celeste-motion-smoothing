@@ -196,7 +196,7 @@ public static class MapSmoothingSuggestions
 
     // --- Reading the map ----------------------------------------------------------------------
 
-    // Reads what the map's controllers ask for.
+    // Reads what the map's controllers ask for, minus anything that couldn't do anything.
     public static MapSmoothingSuggestion Read(Session session)
     {
         var suggestion = new MapSmoothingSuggestion();
@@ -223,7 +223,26 @@ public static class MapSmoothingSuggestions
             }
         }
 
+        DropInapplicable(suggestion);
         return suggestion;
+    }
+
+    // Turns requests that couldn't have any effect back into "no preference": with Motion
+    // Smoothing requested off nothing else does anything, and the three Fancy-only options do
+    // nothing under Fast or Off camera smoothing. Holding overrides that quietly don't apply is
+    // what would let the postcard's list and the settings actually in force drift apart, since the
+    // postcard already declines to mention them.
+    private static void DropInapplicable(MapSmoothingSuggestion suggestion)
+    {
+        if (suggestion.Enabled == false)
+        {
+            suggestion.Clear(MapSmoothingOption.CameraSmoothingMode);
+            foreach (var option in FancyOnlyOptions) suggestion.Clear(option);
+            return;
+        }
+
+        if (suggestion.CameraSmoothingMode is UnlockCameraStrategy.Unlock or UnlockCameraStrategy.Off)
+            foreach (var option in FancyOnlyOptions) suggestion.Clear(option);
     }
 
     // Anything that isn't explicitly On or Off -- including the "NoPreference" the editors write,
