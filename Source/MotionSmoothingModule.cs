@@ -113,6 +113,7 @@ public class MotionSmoothingModule : EverestModule
         On.Monocle.Scene.Begin += SceneBeginHook;
         Everest.Events.Level.OnPause += LevelPause;
         Everest.Events.Level.OnUnpause += LevelUnpause;
+        Everest.Events.Level.OnLoadLevel += LevelLoadLevel;
 
         DisableMacOSVSync();
     }
@@ -136,6 +137,7 @@ public class MotionSmoothingModule : EverestModule
         On.Monocle.Scene.Begin -= SceneBeginHook;
         Everest.Events.Level.OnPause -= LevelPause;
         Everest.Events.Level.OnUnpause -= LevelUnpause;
+        Everest.Events.Level.OnLoadLevel -= LevelLoadLevel;
 
         foreach (var hook in _unmaintainedModHooks)
             hook.Dispose();
@@ -331,6 +333,23 @@ public class MotionSmoothingModule : EverestModule
     {
         Instance.ApplyFramerate();
     }
+
+	// Whether auspicioushelper had a layer active as of the last room we looked at.
+	private bool _auspiciousHelperActive;
+
+	// auspicioushelper's layers come and go from room to room, and Fancy camera smoothing is
+	// incompatible with them -- see MotionSmoothingSettings.IsAuspiciousHelperLoaded, whose
+	// fallback to Fast the UnlockCameraStrategy getter already reports live. Nothing re-applies
+	// that on its own, though, so watch for the flip on every room load (transitions, respawns,
+	// teleports) and swap the camera smoother over when it happens.
+	private static void LevelLoadLevel(Level level, Player.IntroTypes playerIntro, bool isFromLoader)
+	{
+		var active = MotionSmoothingSettings.IsAuspiciousHelperLoaded;
+		if (active == Instance._auspiciousHelperActive) return;
+
+		Instance._auspiciousHelperActive = active;
+		Instance.ApplySettings();
+	}
 
 
     // A fix for Madeline's hair being glitchy;

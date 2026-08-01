@@ -105,10 +105,20 @@ public static class MapSmoothingSuggestions
     // player has since overridden by hand.
     private static string _appliedSid;
 
-    // The SID the player turned a map's settings down for on the postcard, so that a "no" isn't
-    // undone the moment the level actually loads. Rewritten every time the postcard asks, so
-    // there's nothing to expire -- another map's SID simply won't match.
-    private static string _declinedSid;
+    // The answer the player gave on the postcard, and the SID they gave it for. Static rather than
+    // per-Session so that a chapter restart -- which builds a fresh Session out of Session.Restart
+    // and never passes back through LevelEnter -- keeps it. Rewritten every time the postcard asks,
+    // so there's nothing to expire: another map's SID simply won't match.
+    private static string _answeredSid;
+    private static bool _accepted;
+
+    // Where the answer is stashed so it survives quitting the game. Vanilla serializes
+    // Session.Flags into the save file, and a Session started fresh from the chapter select has
+    // none of them -- which is exactly when the player should be asked again. Two flags rather
+    // than one so that "never asked" is distinguishable from "asked, and said no": a session saved
+    // before the map grew a controller (or before this mod had one) still gets the prompt.
+    private const string AnsweredFlag = "MotionSmoothing/SuggestionAnswered";
+    private const string AnswerFlag = "MotionSmoothing/UseSuggestedSettings";
 
     private static MapSmoothingSuggestion _active = new();
 
@@ -273,12 +283,20 @@ public static class MapSmoothingSuggestions
         if (sid != null && sid == _appliedSid) return;
 
         var wasEnabled = MotionSmoothingModule.Settings.Enabled;
-        var declined = sid != null && sid == _declinedSid;
+        var answered = sid != null && sid == _answeredSid;
 
         Reset();
         _appliedSid = sid;
 
-        if (!declined) _active = Read(session);
+        // Apply unless the player turned this map's settings down. Paths that never show a
+        // postcard -- the console `load` command, mainly -- have no answer and fall through to
+        // applying.
+        if (!answered || _accepted) _active = Read(session);
+
+        // Re-stamp the answer: a chapter restart hands us a brand new Session, and Session.Restart
+        // doesn't carry flags across, so without this a save-and-quit after a restart would forget
+        // what the player said.
+        if (answered) RememberAnswer(session, _accepted);
 
         Refresh(wasEnabled);
     }
@@ -290,6 +308,14 @@ public static class MapSmoothingSuggestions
         Reset();
 
         Refresh(wasEnabled);
+    }
+
+    // AnsweredFlag is what tells a session that was asked apart from one that never was, so it goes
+    // on unconditionally; only AnswerFlag carries the answer itself.
+    private static void RememberAnswer(Session session, bool accepted)
+    {
+        session.SetFlag(AnsweredFlag);
+        session.SetFlag(AnswerFlag, accepted);
     }
 
     private static void Reset()
@@ -313,6 +339,17 @@ public static class MapSmoothingSuggestions
     {
         // Vanilla diverts to an error postcard in these cases; don't stack ours on top of it.
         if (LevelEnter.ErrorMessage != null || AreaData.Get(self.session) == null) return orig(self);
+
+        // Continuing a saved session the player has already answered for: pick that answer back up
+        // instead of asking again. Save and quit is the only way here -- every other route to a map
+        // builds a fresh Session, which has no flags and so gets asked. A saved session that was
+        // never asked (one from before the map or the mod had a controller) falls through and is.
+        if (self.fromSaveData && self.session.GetFlag(AnsweredFlag))
+        {
+            _answeredSid = self.session.Area.GetSID();
+            _accepted = self.session.GetFlag(AnswerFlag);
+            return orig(self);
+        }
 
         var message = GetPostcardMessage(Read(self.session));
         return message == null ? orig(self) : PostcardRoutine(orig, self, message);
@@ -350,10 +387,12 @@ public static class MapSmoothingSuggestions
 
         yield return postcard.PromptRoutine();
 
-        // ApplyFor runs next, from the LevelLoader constructor, and checks this. Recorded either
-        // way, so accepting after a previous "no" clears the old answer -- and so a "no" survives
-        // a chapter restart, which reloads the level without asking again.
-        _declinedSid = postcard.Accepted ? null : self.session.Area.GetSID();
+        // ApplyFor runs next, from the LevelLoader constructor, and reads both of these. The flags
+        // ride along in the session so that saving and quitting, then continuing, doesn't ask
+        // again -- see the fromSaveData branch in LevelEnterRoutineHook.
+        _answeredSid = self.session.Area.GetSID();
+        _accepted = postcard.Accepted;
+        RememberAnswer(self.session, _accepted);
 
         // Hand off to the vanilla routine, which shows the map's own postcard (if it has one) and
         // then starts the LevelLoader.
