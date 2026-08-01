@@ -6,6 +6,7 @@ using System.Runtime.InteropServices;
 using Celeste.Mod.Helpers;
 using Celeste.Mod.MotionSmoothing.FrameUncap;
 using Celeste.Mod.MotionSmoothing.Interop;
+using Celeste.Mod.MotionSmoothing.Maps;
 using Celeste.Mod.MotionSmoothing.Smoothing;
 using Celeste.Mod.MotionSmoothing.Smoothing.Targets;
 using Celeste.Mod.MotionSmoothing.Utilities;
@@ -30,8 +31,6 @@ public class MotionSmoothingModule : EverestModule
 
     public bool InLevel => Engine.Scene is Level || Engine.Scene is LevelLoader ||
                            Engine.Scene is LevelExit || Engine.Scene is Emulator;
-
-	private bool _wasEnabled = false;
 
 	// Hooks into unmaintained mods that don't have native MotionSmoothing support, disposed on
 	// Unload. These live here (rather than inside HiresCameraSmoother) so they apply regardless of
@@ -108,6 +107,8 @@ public class MotionSmoothingModule : EverestModule
 
         InputHandler.Enable();
 
+        MapSmoothingSuggestions.Load();
+
         DisableInlining(typeof(Scene), "Begin");
         On.Monocle.Scene.Begin += SceneBeginHook;
         Everest.Events.Level.OnPause += LevelPause;
@@ -129,6 +130,8 @@ public class MotionSmoothingModule : EverestModule
         InputHandler.Unload();
         DebugRenderFix.Unload();
         DeltaTimeFix.Unload();
+
+        MapSmoothingSuggestions.Unload();
 
         On.Monocle.Scene.Begin -= SceneBeginHook;
         Everest.Events.Level.OnPause -= LevelPause;
@@ -162,6 +165,14 @@ public class MotionSmoothingModule : EverestModule
 	}
 
 
+
+	// Everest serializes the settings straight off the property getters, which report a map's
+	// suggested values while we're inside that map (see MapSmoothingSuggestions). Step the
+	// override aside for the write so a map's suggestion never lands in the player's settings file.
+	public override void SaveSettings()
+	{
+		MapSmoothingSuggestions.WithUserSettings(base.SaveSettings);
+	}
 
     public override void LoadContent(bool firstLoad)
     {
@@ -604,15 +615,17 @@ public class MotionSmoothingModule : EverestModule
 
 
 
+	// Everything has to be unhooked while SpeedrunTool restores a state. This goes through
+	// ForceDisabled rather than Settings.Enabled so that neither the player's saved setting nor a
+	// map's suggestion is disturbed on the way back out.
 	private void SpeedrunToolBeforeLoadState(Level level)
     {
-		_wasEnabled = Settings.Enabled;
-		Settings.Enabled = false;
+		Settings.ForceDisabled = true;
     }
 
     private void SpeedrunToolAfterLoadState(Dictionary<Type, Dictionary<string, object>> savedValues, Level level)
     {
-		Settings.Enabled = _wasEnabled;
+		Settings.ForceDisabled = false;
         MotionSmoothing.SmoothAllObjects();
     }
 

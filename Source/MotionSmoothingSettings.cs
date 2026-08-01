@@ -1,6 +1,7 @@
 using System;
 using System.Collections;
 using System.Reflection;
+using Celeste.Mod.MotionSmoothing.Maps;
 using Celeste.Mod.MotionSmoothing.Utilities;
 using Celeste.Mod.UI;
 using Microsoft.Xna.Framework.Input;
@@ -34,6 +35,7 @@ public class MotionSmoothingSettings : EverestModuleSettings
 {
     // Defaults
     private bool _enabled = true;
+    private bool _useMapSettings = true;
     private bool _tasMode = false;
     private int _frameRate = 120;
     private UnlockCameraStrategy _unlockCameraStrategy = UnlockCameraStrategy.Hires;
@@ -45,6 +47,11 @@ public class MotionSmoothingSettings : EverestModuleSettings
     private UpdateMode _updateMode = UpdateMode.Interval;
 
 	private bool _sillyMode = false;
+
+    // Set by the SpeedrunTool save-state hooks, which need everything unhooked while a state is
+    // restored. Kept separate from _enabled so that neither the player's saved setting nor an
+    // active map suggestion is disturbed by it.
+    private bool _forceDisabled = false;
 
     // Used for compatibility with Viv's game speed mod
     private double _gameSpeed = 60;
@@ -81,7 +88,7 @@ public class MotionSmoothingSettings : EverestModuleSettings
     // they're built up.
     private void RefreshMenuItemStates()
     {
-        bool masterDisabled = !_enabled;
+        bool masterDisabled = !Enabled;
 
         // These only depend on the master Enabled toggle.
         SetItemState(_frameRateMenuItem, masterDisabled);
@@ -104,15 +111,51 @@ public class MotionSmoothingSettings : EverestModuleSettings
 
     public bool Enabled
     {
-        get => _enabled;
+        get
+        {
+            // SpeedrunTool's state restore wins over everything; after that, a map's suggestion
+            // (see MapSmoothingSuggestions) stands in for the player's saved value while they're
+            // inside that map.
+            if (_forceDisabled) return false;
+            if (MapSmoothingSuggestions.TryGet(MapSmoothingOption.Enabled, out bool mapSmoothing))
+                return mapSmoothing;
+
+            return _enabled;
+        }
         set
         {
+            // The player setting this themselves takes the map's suggestion back off. Note this
+            // setter also runs during settings deserialization, when there's no override to drop.
+            MapSmoothingSuggestions.UserChanged(MapSmoothingOption.Enabled);
+
             _enabled = value;
 
             RefreshMenuItemStates();
 
             MotionSmoothingModule.Instance.ApplySettings();
-            MotionSmoothingModule.Instance.EnabledActions.ForEach(action => action(value));
+            MotionSmoothingModule.Instance.EnabledActions.ForEach(action => action(Enabled));
+        }
+    }
+
+    // The player's own saved value, ignoring any map suggestion currently in force. Used to work
+    // out whether a map is actually asking for something different from what they've picked.
+    [SettingIgnore][YamlIgnore] public bool UserEnabled => _enabled;
+
+    // Temporarily forces smoothing off without touching either the player's saved setting or an
+    // active map suggestion, so that both are still there when it's switched back.
+    [SettingIgnore]
+    [YamlIgnore]
+    public bool ForceDisabled
+    {
+        get => _forceDisabled;
+        set
+        {
+            _forceDisabled = value;
+
+            RefreshMenuItemStates();
+
+            MotionSmoothingModule.Instance.ApplySettings();
+            MotionSmoothingModule.Instance.EnabledActions.ForEach(action => action(Enabled));
         }
     }
 
@@ -157,21 +200,32 @@ public class MotionSmoothingSettings : EverestModuleSettings
     {
         get
         {
+            // A map can ask for a specific strategy -- see MapSmoothingSuggestions.
+            var strategy = MapSmoothingSuggestions.TryGetCameraSmoothing(out var mapStrategy)
+                ? mapStrategy
+                : _unlockCameraStrategy;
+
             // Fancy (Hires) is incompatible with auspicioushelper, so transparently
             // fall back to Fast (Unlock) regardless of what's persisted on disk.
-            if (_unlockCameraStrategy == UnlockCameraStrategy.Hires && IsAuspiciousHelperLoaded)
+            if (strategy == UnlockCameraStrategy.Hires && IsAuspiciousHelperLoaded)
             {
                 return UnlockCameraStrategy.Unlock;
             }
 
-            return _unlockCameraStrategy;
+            return strategy;
         }
         set
         {
+            // As with Enabled, the player picking a strategy drops the map's suggestion.
+            MapSmoothingSuggestions.UserChanged(MapSmoothingOption.CameraSmoothingMode);
+
             _unlockCameraStrategy = value;
             MotionSmoothingModule.Instance.ApplySettings();
         }
     }
+
+    // The player's own saved value, ignoring any map suggestion currently in force.
+    [SettingIgnore][YamlIgnore] public UnlockCameraStrategy UserUnlockCameraStrategy => _unlockCameraStrategy;
 
     public void CreateUnlockCameraStrategyEntry(TextMenu menu, bool inGame)
     {
@@ -244,19 +298,30 @@ public class MotionSmoothingSettings : EverestModuleSettings
 
     public bool RenderMadelineWithSubpixels
     {
-        get => _renderMadelineWithSubpixels;
+        get
+        {
+            if (MapSmoothingSuggestions.TryGet(MapSmoothingOption.RenderMadelineWithSubpixelPrecision, out bool mapValue))
+                return mapValue;
+
+            return _renderMadelineWithSubpixels;
+        }
         set
         {
+            MapSmoothingSuggestions.UserChanged(MapSmoothingOption.RenderMadelineWithSubpixelPrecision);
+
             _renderMadelineWithSubpixels = value;
             MotionSmoothingModule.Instance.ApplySettings();
         }
     }
 
+    // The player's own saved value, ignoring any map suggestion currently in force.
+    [SettingIgnore][YamlIgnore] public bool UserRenderMadelineWithSubpixels => _renderMadelineWithSubpixels;
+
     public void CreateRenderMadelineWithSubpixelsEntry(TextMenu menu, bool inGame)
     {
         _renderMadelineWithSubpixelsItem = new TextMenu.OnOff(
             "Render Madeline with Subpixel Precision",
-            _renderMadelineWithSubpixels
+            RenderMadelineWithSubpixels
         );
 
         (_renderMadelineWithSubpixelsItem as TextMenu.OnOff).Change(value =>
@@ -328,19 +393,30 @@ public class MotionSmoothingSettings : EverestModuleSettings
 
     public bool RenderBackgroundHires
     {
-        get => _renderBackgroundHires;
+        get
+        {
+            if (MapSmoothingSuggestions.TryGet(MapSmoothingOption.SmoothBackground, out bool mapValue))
+                return mapValue;
+
+            return _renderBackgroundHires;
+        }
         set
         {
+            MapSmoothingSuggestions.UserChanged(MapSmoothingOption.SmoothBackground);
+
             _renderBackgroundHires = value;
             MotionSmoothingModule.Instance.ApplySettings();
         }
     }
 
+    // The player's own saved value, ignoring any map suggestion currently in force.
+    [SettingIgnore][YamlIgnore] public bool UserRenderBackgroundHires => _renderBackgroundHires;
+
     public void CreateRenderBackgroundHiresEntry(TextMenu menu, bool inGame)
     {
         _renderBackgroundHiresItem = new TextMenu.OnOff(
             "Smooth Background",
-            _renderBackgroundHires
+            RenderBackgroundHires
         );
 
         (_renderBackgroundHiresItem as TextMenu.OnOff).Change(value =>
@@ -365,19 +441,30 @@ public class MotionSmoothingSettings : EverestModuleSettings
 
     public bool RenderForegroundHires
     {
-        get => _renderForegroundHires;
+        get
+        {
+            if (MapSmoothingSuggestions.TryGet(MapSmoothingOption.SmoothForeground, out bool mapValue))
+                return mapValue;
+
+            return _renderForegroundHires;
+        }
         set
         {
+            MapSmoothingSuggestions.UserChanged(MapSmoothingOption.SmoothForeground);
+
             _renderForegroundHires = value;
             MotionSmoothingModule.Instance.ApplySettings();
         }
     }
 
+    // The player's own saved value, ignoring any map suggestion currently in force.
+    [SettingIgnore][YamlIgnore] public bool UserRenderForegroundHires => _renderForegroundHires;
+
     public void CreateRenderForegroundHiresEntry(TextMenu menu, bool inGame)
     {
         _renderForegroundHiresItem = new TextMenu.OnOff(
             "Smooth Foreground",
-            _renderForegroundHires
+            RenderForegroundHires
         );
 
         (_renderForegroundHiresItem as TextMenu.OnOff).Change(value =>
@@ -434,6 +521,43 @@ public class MotionSmoothingSettings : EverestModuleSettings
 			"these, but it can be turned off to stretch the level edges to\n" +
             "the screen edges to cover the gaps instead. It's recommended to\n" +
 			"leave this on."
+        );
+    }
+
+
+
+	public bool UseMapSettings
+    {
+        get => _useMapSettings;
+        set
+        {
+            _useMapSettings = value;
+
+            // Re-evaluates the current map's suggestion (if any) and re-applies settings.
+            MapSmoothingSuggestions.UseMapSettingsChanged();
+        }
+    }
+
+    public void CreateUseMapSettingsEntry(TextMenu menu, bool inGame)
+    {
+        var item = new TextMenu.OnOff(
+            "Use Suggested Map Settings",
+            _useMapSettings
+        );
+
+        item.Change(value =>
+        {
+            UseMapSettings = value;
+        });
+
+        menu.Add(item);
+
+        item.AddDescription(
+            menu,
+            "Map authors can suggest particular settings in their maps.\n" +
+            "Suggestions only ever apply while you're in that map (your old settings\n" +
+            "are restored when exiting). This setting determines whether to automatically\n" +
+            "accept suggested settings; regardless, you can always override suggestions."
         );
     }
 

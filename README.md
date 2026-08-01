@@ -2,7 +2,19 @@
 
 [![GameBanana](https://gamebanana.com/mods/embeddables/514173?type=sd_image)](https://gamebanana.com/mods/514173)
 
-A mod for Celeste that greatly improves the smoothness of the camera and Madeline, and also can raise the FPS above 60 without breaking physics. **You do not need a high refresh monitor to get most of the benefit of Motion Smoothing!** The higher fps options work by keeping the physics update at a fixed 60 FPS and smoothing the entity/camera/etc positions during render at 120+ FPS. Motion Smoothing should work with most modded maps, but please read the following for more on compatibility. 
+A mod for Celeste that greatly improves the smoothness of the camera and Madeline, and also can raise the FPS above 60 without breaking physics. **You do not need a high refresh monitor to get most of the benefit of Motion Smoothing!** The higher fps options work by keeping the physics update at a fixed 60 FPS and smoothing the entity/camera/etc positions during render at 120+ FPS. Motion Smoothing should work with most modded maps, but please read the following for more on compatibility.
+
+## Adding Suggested Map Settings
+
+Place a **Motion Smoothing Controller** anywhere in your map (any room — it applies to the whole map) to suggest settings for it:
+
+- **Motion Smoothing**: `On`, `Off`, or `No Preference`. If you request `Off`, requesting anything other than `No Preference` for the remaining settings isn't allowed (since they would have no effect).
+
+- **Camera Smoothing**: `Fancy`, `Fast`, `Off`, or `No Preference`.
+
+- **Smooth Background**, **Smooth Foreground**, **Madeline's Subpixel Precision**: `On`, `Off`, or `No Preference`. These only do anything under Fancy camera smoothing. If you request `Fast` or `Off` camera smoothing, requesting `On` for any of these isn't allowed.
+
+These are only ever suggestions — players can override individual settings or turn off **Use Suggested Map Settings** in the Motion Smoothing options to ignore all maps' suggestions. Regardless of that setting, though, players with settings other than the suggested ones will be shown a postcard before the level starts telling them how their settings differ from the suggested ones.
 
 ## Implementation Details for Mod Authors
 
