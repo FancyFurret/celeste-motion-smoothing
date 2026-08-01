@@ -2,20 +2,17 @@
 
 # Shown before entering a map that suggests its own Motion Smoothing settings.
 # ((changes)) is replaced with the list of MOTIONSMOOTHING_POSTCARD_* lines below.
-MOTIONSMOOTHING_POSTCARD_APPLIED=	{big}Motion Smoothing{/big}{n}The following settings have been applied for this map at the author's suggestion:{n}{n}((changes)){n}{n}You can override these in the Mod Settings menu.
-MOTIONSMOOTHING_POSTCARD_SUGGESTED=	{big}Motion Smoothing{/big}{n}The author of this map suggests different settings:{n}{n}((changes)){n}{n}Your settings have not changed, because {#A54CFF}Use Suggested Map Settings{#} is{n}turned off in the Motion Smoothing options.
-MOTIONSMOOTHING_POSTCARD_SMOOTHING_ON=	{#A54CFF}Motion Smoothing{#}: Enabled
-MOTIONSMOOTHING_POSTCARD_SMOOTHING_OFF=	{#A54CFF}Motion Smoothing{#}: Disabled
-MOTIONSMOOTHING_POSTCARD_CAMERA_FANCY=	{#A54CFF}Camera Smoothing{#}: Fancy
-MOTIONSMOOTHING_POSTCARD_CAMERA_FAST=	{#A54CFF}Camera Smoothing{#}: Fast
-MOTIONSMOOTHING_POSTCARD_CAMERA_OFF=	{#A54CFF}Camera Smoothing{#}: Off
-MOTIONSMOOTHING_POSTCARD_BACKGROUND_ON=	{#A54CFF}Smooth Background{#}: On
-MOTIONSMOOTHING_POSTCARD_BACKGROUND_OFF=	{#A54CFF}Smooth Background{#}: Off
-MOTIONSMOOTHING_POSTCARD_FOREGROUND_ON=	{#A54CFF}Smooth Foreground{#}: On
-MOTIONSMOOTHING_POSTCARD_FOREGROUND_OFF=	{#A54CFF}Smooth Foreground{#}: Off
-MOTIONSMOOTHING_POSTCARD_SUBPIXELS_ON=	{#A54CFF}Render Madeline with Subpixel Precision{#}: On
-MOTIONSMOOTHING_POSTCARD_SUBPIXELS_OFF=	{#A54CFF}Render Madeline with Subpixel Precision{#}: Off
-
-# Shown instead of loading a map whose Motion Smoothing Controller asks for an invalid combination of settings.
-MOTIONSMOOTHING_POSTCARD_ERROR_SMOOTHING_OFF=	{big}Oops!{/big}{n}This map's {#A54CFF}Motion Smoothing Controller{#} asks for Motion Smoothing{n}to be disabled, but it also asks for other Motion Smoothing settings.{n}{n}With Motion Smoothing disabled, none of the others do anything.{n}Set them all back to No Preference.
-MOTIONSMOOTHING_POSTCARD_ERROR_NOT_FANCY=	{big}Oops!{/big}{n}This map's {#A54CFF}Motion Smoothing Controller{#} asks for Fast or Off camera{n}smoothing, and also asks for Smooth Background, Smooth Foreground{n}or Render Madeline with Subpixel Precision to be turned on.{n}{n}Those three only apply under Fancy camera smoothing. Set them back{n}to No Preference, or ask for Fancy.
+MOTIONSMOOTHING_POSTCARD_PROMPT=	This map's author suggests the following Motion Smoothing settings that are different from yours:{n}{n}((changes)){n}{n}Would you like to temporarily apply them while playing this map?{n}You can always change your mind in Mod Settings.
+MOTIONSMOOTHING_POSTCARD_ACCEPT=	Use These
+MOTIONSMOOTHING_POSTCARD_DECLINE=	Keep Mine
+MOTIONSMOOTHING_POSTCARD_SMOOTHING_ON=	Motion Smoothing: Enabled
+MOTIONSMOOTHING_POSTCARD_SMOOTHING_OFF=	Motion Smoothing: Disabled
+MOTIONSMOOTHING_POSTCARD_CAMERA_FANCY=	Camera Smoothing: Fancy
+MOTIONSMOOTHING_POSTCARD_CAMERA_FAST=	Camera Smoothing: Fast
+MOTIONSMOOTHING_POSTCARD_CAMERA_OFF=	Camera Smoothing: Off
+MOTIONSMOOTHING_POSTCARD_BACKGROUND_ON=	Smooth Background: On
+MOTIONSMOOTHING_POSTCARD_BACKGROUND_OFF=	Smooth Background: Off
+MOTIONSMOOTHING_POSTCARD_FOREGROUND_ON=	Smooth Foreground: On
+MOTIONSMOOTHING_POSTCARD_FOREGROUND_OFF=	Smooth Foreground: Off
+MOTIONSMOOTHING_POSTCARD_SUBPIXELS_ON=	Render Madeline with Subpixel Precision: On
+MOTIONSMOOTHING_POSTCARD_SUBPIXELS_OFF=	Render Madeline with Subpixel Precision: Off

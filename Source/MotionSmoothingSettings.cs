@@ -35,7 +35,6 @@ public class MotionSmoothingSettings : EverestModuleSettings
 {
     // Defaults
     private bool _enabled = true;
-    private bool _useMapSettings = true;
     private bool _tasMode = false;
     private int _frameRate = 120;
     private UnlockCameraStrategy _unlockCameraStrategy = UnlockCameraStrategy.Hires;
@@ -524,42 +523,6 @@ public class MotionSmoothingSettings : EverestModuleSettings
         );
     }
 
-
-
-	public bool UseMapSettings
-    {
-        get => _useMapSettings;
-        set
-        {
-            _useMapSettings = value;
-
-            // Re-evaluates the current map's suggestion (if any) and re-applies settings.
-            MapSmoothingSuggestions.UseMapSettingsChanged();
-        }
-    }
-
-    public void CreateUseMapSettingsEntry(TextMenu menu, bool inGame)
-    {
-        var item = new TextMenu.OnOff(
-            "Use Suggested Map Settings",
-            _useMapSettings
-        );
-
-        item.Change(value =>
-        {
-            UseMapSettings = value;
-        });
-
-        menu.Add(item);
-
-        item.AddDescription(
-            menu,
-            "Map authors can suggest particular settings in their maps.\n" +
-            "Suggestions only ever apply while you're in that map (your old settings\n" +
-            "are restored when exiting). This setting determines whether to automatically\n" +
-            "accept suggested settings; regardless, you can always override suggestions."
-        );
-    }
 
 
 

@@ -105,6 +105,11 @@ public static class MapSmoothingSuggestions
     // player has since overridden by hand.
     private static string _appliedSid;
 
+    // The SID the player turned a map's settings down for on the postcard, so that a "no" isn't
+    // undone the moment the level actually loads. Rewritten every time the postcard asks, so
+    // there's nothing to expire -- another map's SID simply won't match.
+    private static string _declinedSid;
+
     private static MapSmoothingSuggestion _active = new();
 
     // Set while Everest serializes our settings. The YAML serializer reads the same property
@@ -116,9 +121,11 @@ public static class MapSmoothingSuggestions
     {
         MotionSmoothingModule.DisableInliningConstructor(typeof(LevelLoader), typeof(Session), typeof(Vector2?));
         MotionSmoothingModule.DisableInlining(typeof(LevelEnter), "Routine");
+        MotionSmoothingModule.DisableInlining(typeof(LevelEnter), "BeforeRender");
 
         On.Celeste.LevelLoader.ctor += LevelLoaderCtorHook;
         On.Celeste.LevelEnter.Routine += LevelEnterRoutineHook;
+        On.Celeste.LevelEnter.BeforeRender += LevelEnterBeforeRenderHook;
         Everest.Events.Level.OnExit += LevelExit;
     }
 
@@ -126,6 +133,7 @@ public static class MapSmoothingSuggestions
     {
         On.Celeste.LevelLoader.ctor -= LevelLoaderCtorHook;
         On.Celeste.LevelEnter.Routine -= LevelEnterRoutineHook;
+        On.Celeste.LevelEnter.BeforeRender -= LevelEnterBeforeRenderHook;
         Everest.Events.Level.OnExit -= LevelExit;
 
         // Drop the override without re-applying settings: by the time the module unloads, every
@@ -178,13 +186,10 @@ public static class MapSmoothingSuggestions
 
     // --- Reading the map ----------------------------------------------------------------------
 
-    // Reads what the map's controllers ask for. `error` is the dialog key of an explanation when
-    // they ask for a combination that can't mean anything, and null otherwise; the caller refuses
-    // to load the map in that case rather than quietly ignoring part of the request.
-    public static MapSmoothingSuggestion Read(Session session, out string error)
+    // Reads what the map's controllers ask for.
+    public static MapSmoothingSuggestion Read(Session session)
     {
         var suggestion = new MapSmoothingSuggestion();
-        error = null;
 
         var mapData = GetMapData(session);
         if (mapData?.Levels == null) return suggestion;
@@ -208,30 +213,7 @@ public static class MapSmoothingSuggestions
             }
         }
 
-        error = Validate(suggestion);
         return suggestion;
-    }
-
-    // Returns the dialog key describing what's wrong with these requests, or null if nothing is.
-    private static string Validate(MapSmoothingSuggestion suggestion)
-    {
-        // With smoothing off, nothing else does anything.
-        if (suggestion.Enabled == false &&
-            (suggestion.SmoothBackground.HasValue || suggestion.SmoothForeground.HasValue ||
-             suggestion.RenderMadelineWithSubpixelPrecision.HasValue || suggestion.CameraSmoothingMode.HasValue))
-        {
-            return "MOTIONSMOOTHING_POSTCARD_ERROR_SMOOTHING_OFF";
-        }
-
-        // These three only apply under Fancy camera smoothing.
-        if (suggestion.CameraSmoothingMode is UnlockCameraStrategy.Unlock or UnlockCameraStrategy.Off &&
-            (suggestion.SmoothBackground == true || suggestion.SmoothForeground == true ||
-             suggestion.RenderMadelineWithSubpixelPrecision == true))
-        {
-            return "MOTIONSMOOTHING_POSTCARD_ERROR_NOT_FANCY";
-        }
-
-        return null;
     }
 
     // Anything that isn't explicitly On or Off -- including the "NoPreference" the editors write,
@@ -267,9 +249,6 @@ public static class MapSmoothingSuggestions
         return areaData.Mode[mode]?.MapData;
     }
 
-    private static void LogError(string sid, string error) =>
-        Logger.Log(LogLevel.Error, nameof(MotionSmoothingModule), $"{sid}: {Dialog.Clean(error)}");
-
     // --- Applying -----------------------------------------------------------------------------
 
     private static void LevelLoaderCtorHook(On.Celeste.LevelLoader.orig_ctor orig, LevelLoader self,
@@ -294,40 +273,12 @@ public static class MapSmoothingSuggestions
         if (sid != null && sid == _appliedSid) return;
 
         var wasEnabled = MotionSmoothingModule.Settings.Enabled;
+        var declined = sid != null && sid == _declinedSid;
 
         Reset();
         _appliedSid = sid;
 
-        if (MotionSmoothingModule.Settings.UseMapSettings)
-        {
-            // Entering through LevelEnter refuses a map with a bad controller outright; this path
-            // is the console `load` command and the like, where all we can do is log and ignore it.
-            var suggestion = Read(session, out var error);
-
-            if (error != null)
-                LogError(sid, error);
-            else
-                _active = suggestion;
-        }
-
-        Refresh(wasEnabled);
-    }
-
-    // Toggling Use Map Settings takes effect straight away rather than at the next map load, so
-    // the player can see what the option does from inside the map that prompted them to look.
-    public static void UseMapSettingsChanged()
-    {
-        var wasEnabled = MotionSmoothingModule.Settings.Enabled;
-
-        Reset();
-
-        if (MotionSmoothingModule.Settings.UseMapSettings && (Engine.Scene as Level)?.Session is { } session)
-        {
-            _appliedSid = session.Area.GetSID();
-
-            var suggestion = Read(session, out var error);
-            if (error == null) _active = suggestion;
-        }
+        if (!declined) _active = Read(session);
 
         Refresh(wasEnabled);
     }
@@ -363,21 +314,25 @@ public static class MapSmoothingSuggestions
         // Vanilla diverts to an error postcard in these cases; don't stack ours on top of it.
         if (LevelEnter.ErrorMessage != null || AreaData.Get(self.session) == null) return orig(self);
 
-        var suggestion = Read(self.session, out var error);
+        var message = GetPostcardMessage(Read(self.session));
+        return message == null ? orig(self) : PostcardRoutine(orig, self, message);
+    }
 
-        // A controller asking for a combination that can't mean anything is a mapping mistake, so
-        // refuse the map and say what's wrong. LevelEnter.ErrorMessage is the same channel vanilla
-        // reports bad tilesets and missing spawn points through: an explanatory postcard, then back
-        // to the overworld. orig_Routine picks it up at the top and takes that path.
-        if (error != null)
+    // LevelEnter.BeforeRender would call Postcard.BeforeRender, which isn't virtual and draws the
+    // message at vanilla's larger scale. Hide ours from it and render it ourselves instead.
+    private static void LevelEnterBeforeRenderHook(On.Celeste.LevelEnter.orig_BeforeRender orig, LevelEnter self)
+    {
+        if (self.postcard is not MotionSmoothingPostcard ours)
         {
-            LogError(self.session.Area.GetSID(), error);
-            LevelEnter.ErrorMessage = Dialog.Get(error);
-            return orig(self);
+            orig(self);
+            return;
         }
 
-        var message = GetPostcardMessage(suggestion);
-        return message == null ? orig(self) : PostcardRoutine(orig, self, message);
+        self.postcard = null;
+        orig(self);
+        self.postcard = ours;
+
+        ours.BeforeRender();
     }
 
     private static IEnumerator PostcardRoutine(On.Celeste.LevelEnter.orig_Routine orig, LevelEnter self,
@@ -385,14 +340,20 @@ public static class MapSmoothingSuggestions
     {
         yield return 1f;
 
-        var postcard = new Postcard(message);
+        var postcard = new MotionSmoothingPostcard(message);
 
-        // LevelEnter.BeforeRender renders the postcard's text through this field, so it has to be
-        // set for the card to come out with anything on it. Vanilla's own postcard routines do
-        // exactly the same thing, and orig_Routine overwrites it if the map has a postcard too.
+        // LevelEnter renders the postcard's text through this field, so it has to be set for the
+        // card to come out with anything on it. Vanilla's own postcard routines do exactly the
+        // same thing, and orig_Routine overwrites it if the map has a postcard too.
         self.postcard = postcard;
         self.Add(postcard);
-        yield return postcard.DisplayRoutine();
+
+        yield return postcard.PromptRoutine();
+
+        // ApplyFor runs next, from the LevelLoader constructor, and checks this. Recorded either
+        // way, so accepting after a previous "no" clears the old answer -- and so a "no" survives
+        // a chapter restart, which reloads the level without asking again.
+        _declinedSid = postcard.Accepted ? null : self.session.Area.GetSID();
 
         // Hand off to the vanilla routine, which shows the map's own postcard (if it has one) and
         // then starts the LevelLoader.
@@ -430,11 +391,8 @@ public static class MapSmoothingSuggestions
 
         if (changes.Count == 0) return null;
 
-        var key = settings.UseMapSettings
-            ? "MOTIONSMOOTHING_POSTCARD_APPLIED"
-            : "MOTIONSMOOTHING_POSTCARD_SUGGESTED";
-
-        return Dialog.Get(key).Replace("((changes))", string.Join("{n}", changes));
+        return Dialog.Get("MOTIONSMOOTHING_POSTCARD_PROMPT")
+            .Replace("((changes))", string.Join("{n}", changes));
     }
 
     private static string CameraPostcardKey(UnlockCameraStrategy camera) => camera switch

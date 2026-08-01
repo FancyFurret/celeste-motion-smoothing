@@ -156,7 +156,6 @@ public class MotionSmoothingModule : EverestModule
 		if (Everest.Loader.DependencyLoaded(auspicioushelper))
 		{
 			typeof(AuspicioushelperImports).ModInterop();
-			Console.WriteLine("################ success");
 		}
 
 		Settings.SillyMode = false;

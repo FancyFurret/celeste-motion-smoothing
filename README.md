@@ -8,13 +8,13 @@ A mod for Celeste that greatly improves the smoothness of the camera and Madelin
 
 Place a **Motion Smoothing Controller** anywhere in your map (any room — it applies to the whole map) to suggest settings for it:
 
-- **Motion Smoothing**: `On`, `Off`, or `No Preference`. If you request `Off`, requesting anything other than `No Preference` for the remaining settings isn't allowed (since they would have no effect).
+- **Motion Smoothing**: `On`, `Off`, or `No Preference`. If you request `Off`, the remaining settings have no effect, so leave them at `No Preference`.
 
 - **Camera Smoothing**: `Fancy`, `Fast`, `Off`, or `No Preference`.
 
-- **Smooth Background**, **Smooth Foreground**, **Madeline's Subpixel Precision**: `On`, `Off`, or `No Preference`. These only do anything under Fancy camera smoothing. If you request `Fast` or `Off` camera smoothing, requesting `On` for any of these isn't allowed.
+- **Smooth Background**, **Smooth Foreground**, **Madeline's Subpixel Precision**: `On`, `Off`, or `No Preference`. These only do anything under Fancy camera smoothing, so leave them at `No Preference` if you request `Fast` or `Off` camera smoothing.
 
-These are only ever suggestions — players can override individual settings or turn off **Use Suggested Map Settings** in the Motion Smoothing options to ignore all maps' suggestions. Regardless of that setting, though, players with settings other than the suggested ones will be shown a postcard before the level starts telling them how their settings differ from the suggested ones.
+These are only ever suggestions. Players whose settings differ from the suggested ones are shown a postcard before the level starts listing the differences and asking whether to use them; declining leaves their settings alone. Either way, they can still override individual settings from the Motion Smoothing options at any point, and their own settings are restored when they leave the map.
 
 ## Implementation Details for Mod Authors
 
