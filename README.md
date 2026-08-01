@@ -14,7 +14,7 @@ Place a **Motion Smoothing Controller** anywhere in your map (any room — it ap
 
 - **Smooth Background**, **Smooth Foreground**, **Madeline's Subpixel Precision**: `On`, `Off`, or `No Preference`. These only do anything under Fancy camera smoothing, so leave them at `No Preference` if you request `Fast` or `Off` camera smoothing.
 
-These are only ever suggestions. Players whose settings differ from the suggested ones are shown a postcard before the level starts listing the differences and asking whether to use them; declining leaves their settings alone. Either way, they can still override individual settings from the Motion Smoothing options at any point, and their own settings are restored when they leave the map.
+These are only ever suggestions. Players whose settings differ from the suggested ones are shown a postcard before the level starts listing the differences and asking whether to use them. Either way, they can override individual settings at any point, and their own settings are restored when they leave the map.
 
 ## Implementation Details for Mod Authors
 
