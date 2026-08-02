@@ -1,12 +1,13 @@
-local drawableRectangle = require("structs.drawable_rectangle")
-local utils = require("utils")
+local trigger = {}
 
-local controller = {}
+trigger.name = "MotionSmoothing/MotionSmoothingController"
 
-controller.name = "MotionSmoothing/MotionSmoothingController"
-controller.depth = -1000000
+-- Loenn draws triggers itself: a resizable translucent rectangle labelled with this text. The
+-- default label is the humanized entity name, which already reads "Motion Smoothing Controller",
+-- but say it outright so a rename can't quietly change it.
+trigger.triggerText = "Motion Smoothing Controller"
 
-controller.placements = {
+trigger.placements = {
     name = "controller",
     data = {
         motionSmoothing = "NoPreference",
@@ -19,21 +20,21 @@ controller.placements = {
 
 local onOff = {
     options = {
-        {"No Preference", "NoPreference"},
+        {"User Default", "NoPreference"},
         {"On", "On"},
         {"Off", "Off"}
     },
     editable = false
 }
 
-controller.fieldInformation = {
+trigger.fieldInformation = {
     motionSmoothing = onOff,
     smoothBackground = onOff,
     smoothForeground = onOff,
     renderMadelineWithSubpixels = onOff,
     cameraSmoothingMode = {
         options = {
-            {"No Preference", "NoPreference"},
+            {"User Default", "NoPreference"},
             {"Fancy", "Fancy"},
             {"Fast", "Fast"},
             {"Off", "Off"}
@@ -42,8 +43,8 @@ controller.fieldInformation = {
     }
 }
 
-controller.fieldOrder = {
-    "x", "y",
+trigger.fieldOrder = {
+    "x", "y", "width", "height",
     "motionSmoothing",
     "cameraSmoothingMode",
     "smoothBackground",
@@ -51,13 +52,4 @@ controller.fieldOrder = {
     "renderMadelineWithSubpixels"
 }
 
-function controller.sprite(room, entity)
-    return drawableRectangle.fromRectangle("bordered", entity.x, entity.y, 16, 16,
-        {0.11, 0.30, 0.44, 0.8}, {0.49, 0.78, 0.96, 1.0}):getDrawableSprite()
-end
-
-function controller.selection(room, entity)
-    return utils.rectangle(entity.x, entity.y, 16, 16)
-end
-
-return controller
+return trigger

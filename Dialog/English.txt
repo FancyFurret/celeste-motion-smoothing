@@ -1,18 +1,1 @@
 ﻿modoptions_motionsmoothing_tasmode=TAS Mode
-
-# Shown before entering a map that suggests its own Motion Smoothing settings.
-# ((changes)) is replaced with the list of MOTIONSMOOTHING_POSTCARD_* lines below.
-MOTIONSMOOTHING_POSTCARD_PROMPT=	This map's author suggests using the following Motion Smoothing settings that are different from yours:{n}{n}((changes)){n}{n}Would you like to apply them (for this map only)? You can always change your mind in Mod Settings.
-MOTIONSMOOTHING_POSTCARD_ACCEPT=	Use These
-MOTIONSMOOTHING_POSTCARD_DECLINE=	Keep Mine
-MOTIONSMOOTHING_POSTCARD_SMOOTHING_ON=	{#9D61D8}Motion Smoothing{#}: Enabled
-MOTIONSMOOTHING_POSTCARD_SMOOTHING_OFF=	{#9D61D8}Motion Smoothing{#}: Disabled
-MOTIONSMOOTHING_POSTCARD_CAMERA_FANCY=	{#9D61D8}Camera Smoothing{#}: Fancy
-MOTIONSMOOTHING_POSTCARD_CAMERA_FAST=	{#9D61D8}Camera Smoothing{#}: Fast
-MOTIONSMOOTHING_POSTCARD_CAMERA_OFF=	{#9D61D8}Camera Smoothing{#}: Off
-MOTIONSMOOTHING_POSTCARD_BACKGROUND_ON=	{#9D61D8}Smooth Background{#}: On
-MOTIONSMOOTHING_POSTCARD_BACKGROUND_OFF=	{#9D61D8}Smooth Background{#}: Off
-MOTIONSMOOTHING_POSTCARD_FOREGROUND_ON=	{#9D61D8}Smooth Foreground{#}: On
-MOTIONSMOOTHING_POSTCARD_FOREGROUND_OFF=	{#9D61D8}Smooth Foreground{#}: Off
-MOTIONSMOOTHING_POSTCARD_SUBPIXELS_ON=	{#9D61D8}Render Madeline with Subpixel Precision{#}: On
-MOTIONSMOOTHING_POSTCARD_SUBPIXELS_OFF=	{#9D61D8}Render Madeline with Subpixel Precision{#}: Off

@@ -6,15 +6,15 @@ A mod for Celeste that greatly improves the smoothness of the camera and Madelin
 
 ## Adding Suggested Map Settings
 
-Place a **Motion Smoothing Controller** anywhere in your map (any room — it applies to the whole map) to suggest settings for it:
+Place a **Motion Smoothing Controller** in your map to suggest settings for it. It applies them when Madeline enters it, so put it wherever the settings should take hold — a spawn point if they're for the whole map, or partway in if only one section needs them. Its options are:
 
-- **Motion Smoothing**: `On`, `Off`, or `No Preference`. If you request `Off`, the remaining settings have no effect, so leave them at `No Preference`.
+- **Motion Smoothing**: `On`, `Off`, or `User Default`. If you request `Off`, the remaining settings have no effect.
 
-- **Camera Smoothing**: `Fancy`, `Fast`, `Off`, or `No Preference`.
+- **Camera Smoothing**: `Fancy`, `Fast`, `Off`, or `User Default`.
 
-- **Smooth Background**, **Smooth Foreground**, **Madeline's Subpixel Precision**: `On`, `Off`, or `No Preference`. These only do anything under Fancy camera smoothing, so leave them at `No Preference` if you request `Fast` or `Off` camera smoothing.
+- **Smooth Background**, **Smooth Foreground**, **Render Madeline with Subpixel Precision**: `On`, `Off`, or `User Default`. These only do anything under Fancy camera smoothing.
 
-These are only ever suggestions. Players whose settings differ from the suggested ones are shown a postcard before the level starts listing the differences and asking whether to use them. Their choice persists while playing the map (and through save-and-quits). Whatever they choose, players can override individual settings at any point, and their own settings are restored when they leave the map. 
+The player's own saved settings are preserrved and come back when they leave the map. When a map is deciding a setting, it's shown in purple and can't be changed in Mod Settings, but a player can turn off **Use Suggested Map Settings** there, which overrides the map's settings.
 
 ## Implementation Details for Mod Authors
 

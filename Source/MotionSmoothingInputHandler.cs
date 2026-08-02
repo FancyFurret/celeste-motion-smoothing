@@ -1,4 +1,5 @@
-﻿using Celeste.Mod.MotionSmoothing.Utilities;
+﻿using Celeste.Mod.MotionSmoothing.Maps;
+using Celeste.Mod.MotionSmoothing.Utilities;
 using Monocle;
 
 namespace Celeste.Mod.MotionSmoothing;
@@ -43,6 +44,19 @@ public class MotionSmoothingInputHandler : ToggleableFeature<MotionSmoothingInpu
 
             if (MotionSmoothingModule.Settings.ButtonToggleMotionSmoothingEnabled.Pressed)
             {
+                // The setter refuses while a map is deciding this, so say why rather than
+                // leaving the hotkey looking broken.
+                if (MapSmoothingSuggestions.IsLocked(MapSmoothingOption.Enabled))
+                {
+                    MotionSmoothingMessage.Show(
+                        "motion_smoothing_enabled",
+                        "Motion Smoothing is set by this map",
+                        y: 980f
+                    );
+
+                    return;
+                }
+
                 Logger.Log(LogLevel.Info, "MotionSmoothingInputHandler", "Toggling motion smoothing");
                 MotionSmoothingModule.Settings.Enabled = !MotionSmoothingModule.Settings.Enabled;
 
@@ -57,8 +71,29 @@ public class MotionSmoothingInputHandler : ToggleableFeature<MotionSmoothingInpu
 
             else if (MotionSmoothingModule.Settings.ButtonChangeCameraSmoothingMode.Pressed)
             {
+                // Covers every way smoothing can be off: the player's own setting, a map deciding
+                // it, and SpeedrunTool's state restore. Checked before the lock below because
+                // it's the more actionable of the two -- and a map that turns smoothing off can't
+                // also be deciding Camera Smoothing, so the two never both apply.
                 if (!MotionSmoothingModule.Settings.Enabled)
                 {
+                    MotionSmoothingMessage.Show(
+                        "motion_smoothing_unlock_strategy",
+                        "Enable Motion Smoothing to change Camera Smoothing",
+                        y: 1020f
+                    );
+
+                    return;
+                }
+
+                if (MapSmoothingSuggestions.IsLocked(MapSmoothingOption.CameraSmoothingMode))
+                {
+                    MotionSmoothingMessage.Show(
+                        "motion_smoothing_unlock_strategy",
+                        "Camera Smoothing is set by this map",
+                        y: 1020f
+                    );
+
                     return;
                 }
 

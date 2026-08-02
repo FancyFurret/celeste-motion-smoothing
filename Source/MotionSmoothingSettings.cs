@@ -1,9 +1,11 @@
 using System;
 using System.Collections;
+using System.Collections.Generic;
 using System.Reflection;
 using Celeste.Mod.MotionSmoothing.Maps;
 using Celeste.Mod.MotionSmoothing.Utilities;
 using Celeste.Mod.UI;
+using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Input;
 using YamlDotNet.Serialization;
 using Monocle;
@@ -35,6 +37,7 @@ public class MotionSmoothingSettings : EverestModuleSettings
 {
     // Defaults
     private bool _enabled = true;
+    private bool _useMapSettings = true;
     private bool _tasMode = false;
     private int _frameRate = 120;
     private UnlockCameraStrategy _unlockCameraStrategy = UnlockCameraStrategy.Hires;
@@ -58,6 +61,7 @@ public class MotionSmoothingSettings : EverestModuleSettings
 
     private FrameRateTextMenuItem _frameRateMenuItem;
 
+    private TextMenu.Item _enabledItem;
     private TextMenu.Item _cameraStrategyItem;
     private TextMenu.Item _renderMadelineWithSubpixelsItem;
     private TextMenu.Item _renderBackgroundHiresItem;
@@ -69,15 +73,59 @@ public class MotionSmoothingSettings : EverestModuleSettings
 
 	private TextMenu.Item _sillyModeItem;
 
-    private static void SetItemState(TextMenu.Item item, bool shouldDisable)
+    // `locked` means a map is deciding this setting right now. A locked item stays selectable and
+    // keeps showing its value -- it just refuses to change, and is tinted to say why. See
+    // LockableMenuItems.
+    private static void SetItemState(TextMenu.Item item, bool shouldDisable, bool locked = false)
     {
         if (item == null)
         {
             return;
         }
 
+        // "Doesn't apply" wins over "a map is deciding it": there's nothing worth saying about who
+        // chose a value that isn't doing anything either way.
         item.Disabled = shouldDisable;
         item.Selectable = !shouldDisable;
+
+        SetLocked(item, locked && !shouldDisable);
+    }
+
+    // Locked lives on the two lockable subclasses, which close over different type arguments of
+    // TextMenu.Option<T> and so have no shared base to set it through.
+    private static void SetLocked(TextMenu.Item item, bool locked)
+    {
+        switch (item)
+        {
+            case LockableOnOff onOff:
+                onOff.Locked = locked;
+                break;
+            case LockableSlider slider:
+                slider.Locked = locked;
+                break;
+        }
+    }
+
+    // Points an item at the value that's actually in force. Menu items are built from whatever the
+    // getters returned at the time, so an item that was created while a map had the setting
+    // overridden goes on showing the map's value after the override drops -- which not only reads
+    // as "my setting didn't come back", but means nudging the item afterwards would write the map's
+    // value into the player's own settings.
+    private static void SetItemValue<T>(TextMenu.Item item, T value)
+    {
+        if (item is not TextMenu.Option<T> option) return;
+
+        var index = option.Values.FindIndex(entry => EqualityComparer<T>.Default.Equals(entry.Item2, value));
+        if (index >= 0) option.Index = index;
+    }
+
+    private void RefreshMenuItemValues()
+    {
+        SetItemValue(_enabledItem, Enabled);
+        SetItemValue(_cameraStrategyItem, (int)UnlockCameraStrategy);
+        SetItemValue(_renderMadelineWithSubpixelsItem, RenderMadelineWithSubpixels);
+        SetItemValue(_renderBackgroundHiresItem, RenderBackgroundHires);
+        SetItemValue(_renderForegroundHiresItem, RenderForegroundHires);
     }
 
     // Centralizes the "non-interactive based on other settings" logic. While the mod is
@@ -89,18 +137,26 @@ public class MotionSmoothingSettings : EverestModuleSettings
     {
         bool masterDisabled = !Enabled;
 
+        // A map is deciding these, so the player can't. MapSmoothingSuggestions drops its
+        // overrides when Use Suggested Map Settings goes off, so this needs no extra gating.
+        SetItemState(_enabledItem, false, MapSmoothingSuggestions.IsLocked(MapSmoothingOption.Enabled));
+
         // These only depend on the master Enabled toggle.
         SetItemState(_frameRateMenuItem, masterDisabled);
-        SetItemState(_cameraStrategyItem, masterDisabled);
+        SetItemState(_cameraStrategyItem, masterDisabled,
+            MapSmoothingSuggestions.IsLocked(MapSmoothingOption.CameraSmoothingMode));
         SetItemState(_objectSmoothingItem, masterDisabled);
         SetItemState(_framerateIncreaseMethodItem, masterDisabled);
         SetItemState(_tasModeItem, masterDisabled);
 
         // These additionally require the Fancy camera smoothing strategy.
         bool cameraNotFancy = UnlockCameraStrategy != UnlockCameraStrategy.Hires;
-        SetItemState(_renderMadelineWithSubpixelsItem, masterDisabled || cameraNotFancy);
-        SetItemState(_renderBackgroundHiresItem, masterDisabled || cameraNotFancy);
-        SetItemState(_renderForegroundHiresItem, masterDisabled || cameraNotFancy);
+        SetItemState(_renderMadelineWithSubpixelsItem, masterDisabled || cameraNotFancy,
+            MapSmoothingSuggestions.IsLocked(MapSmoothingOption.RenderMadelineWithSubpixelPrecision));
+        SetItemState(_renderBackgroundHiresItem, masterDisabled || cameraNotFancy,
+            MapSmoothingSuggestions.IsLocked(MapSmoothingOption.SmoothBackground));
+        SetItemState(_renderForegroundHiresItem, masterDisabled || cameraNotFancy,
+            MapSmoothingSuggestions.IsLocked(MapSmoothingOption.SmoothForeground));
         SetItemState(_sillyModeItem, masterDisabled || cameraNotFancy);
 
         // This is disabled only when camera smoothing is fully Off.
@@ -123,9 +179,12 @@ public class MotionSmoothingSettings : EverestModuleSettings
         }
         set
         {
-            // The player setting this themselves takes the map's suggestion back off. Note this
-            // setter also runs during settings deserialization, when there's no override to drop.
-            MapSmoothingSuggestions.UserChanged(MapSmoothingOption.Enabled);
+            // A map is deciding this right now, so nothing else gets to: not the menu (whose
+            // item refuses input), not the hotkeys, not another mod reaching in through interop.
+            // The lock lifts when the player leaves the map or turns off Use Suggested Map
+            // Settings. Nothing is locked while Everest deserializes the settings at startup, so
+            // the saved value still loads.
+            if (MapSmoothingSuggestions.IsLocked(MapSmoothingOption.Enabled)) return;
 
             _enabled = value;
 
@@ -136,8 +195,31 @@ public class MotionSmoothingSettings : EverestModuleSettings
         }
     }
 
-    // The player's own saved value, ignoring any map suggestion currently in force. Used to work
-    // out whether a map is actually asking for something different from what they've picked.
+    // Built by hand rather than left to Everest so that a map can lock it like the rest.
+    public void CreateEnabledEntry(TextMenu menu, bool inGame)
+    {
+        // A legend for the tint, above everything else because it explains items further down.
+        // Enabled is the first property in the class, so this is the first thing after the section
+        // header. Only worth the line when there's something tinted to explain.
+        if (MapSmoothingSuggestions.AnyLocked)
+        {
+            menu.Add(new TextMenu.SubHeader(
+                "Settings shown in purple are being chosen by this map.",
+                topPadding: false
+            ));
+        }
+
+        var item = new LockableOnOff("Enabled", Enabled);
+        item.Change(value => Enabled = value);
+
+        _enabledItem = item;
+
+        menu.Add(item);
+
+        RefreshMenuItemStates();
+    }
+
+    // The player's own saved value, ignoring any map suggestion currently in force.
     [SettingIgnore][YamlIgnore] public bool UserEnabled => _enabled;
 
     // Temporarily forces smoothing off without touching either the player's saved setting or an
@@ -215,8 +297,12 @@ public class MotionSmoothingSettings : EverestModuleSettings
         }
         set
         {
-            // As with Enabled, the player picking a strategy drops the map's suggestion.
-            MapSmoothingSuggestions.UserChanged(MapSmoothingOption.CameraSmoothingMode);
+            // A map is deciding this right now, so nothing else gets to: not the menu (whose
+            // item refuses input), not the hotkeys, not another mod reaching in through interop.
+            // The lock lifts when the player leaves the map or turns off Use Suggested Map
+            // Settings. Nothing is locked while Everest deserializes the settings at startup, so
+            // the saved value still loads.
+            if (MapSmoothingSuggestions.IsLocked(MapSmoothingOption.CameraSmoothingMode)) return;
 
             _unlockCameraStrategy = value;
             MotionSmoothingModule.Instance.ApplySettings();
@@ -241,7 +327,7 @@ public class MotionSmoothingSettings : EverestModuleSettings
             UnlockCameraStrategy = (UnlockCameraStrategy)initialIndex;
         }
 
-        var strategySlider = new TextMenu.Slider(
+        var strategySlider = new LockableSlider(
             "Camera Smoothing",
             index => {
 				if ((UnlockCameraStrategy)index == UnlockCameraStrategy.Hires)
@@ -306,7 +392,12 @@ public class MotionSmoothingSettings : EverestModuleSettings
         }
         set
         {
-            MapSmoothingSuggestions.UserChanged(MapSmoothingOption.RenderMadelineWithSubpixelPrecision);
+            // A map is deciding this right now, so nothing else gets to: not the menu (whose
+            // item refuses input), not the hotkeys, not another mod reaching in through interop.
+            // The lock lifts when the player leaves the map or turns off Use Suggested Map
+            // Settings. Nothing is locked while Everest deserializes the settings at startup, so
+            // the saved value still loads.
+            if (MapSmoothingSuggestions.IsLocked(MapSmoothingOption.RenderMadelineWithSubpixelPrecision)) return;
 
             _renderMadelineWithSubpixels = value;
             MotionSmoothingModule.Instance.ApplySettings();
@@ -318,7 +409,7 @@ public class MotionSmoothingSettings : EverestModuleSettings
 
     public void CreateRenderMadelineWithSubpixelsEntry(TextMenu menu, bool inGame)
     {
-        _renderMadelineWithSubpixelsItem = new TextMenu.OnOff(
+        _renderMadelineWithSubpixelsItem = new LockableOnOff(
             "Render Madeline with Subpixel Precision",
             RenderMadelineWithSubpixels
         );
@@ -342,46 +433,6 @@ public class MotionSmoothingSettings : EverestModuleSettings
         );
     }
 
-
-
-    // Reflection-based handle to auspicioushelper's MaterialPipe.layers field. We resolve
-    // it lazily (the type only exists if the mod is loaded) and cache the FieldInfo.
-    private static FieldInfo _auspiciousMaterialPipeLayersField;
-    private static bool _auspiciousMaterialPipeLayersFieldResolved;
-
-    private static FieldInfo GetAuspiciousMaterialPipeLayersField()
-    {
-        if (_auspiciousMaterialPipeLayersFieldResolved)
-        {
-            return _auspiciousMaterialPipeLayersField;
-        }
-
-        foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies())
-        {
-            Type type;
-            try
-            {
-                type = assembly.GetType("Celeste.Mod.auspicioushelper.MaterialPipe");
-            }
-            catch
-            {
-                continue;
-            }
-
-            if (type != null)
-            {
-                _auspiciousMaterialPipeLayersField = type.GetField(
-                    "layers",
-                    BindingFlags.Static | BindingFlags.NonPublic | BindingFlags.Public
-                );
-                break;
-            }
-        }
-
-        _auspiciousMaterialPipeLayersFieldResolved = true;
-        return _auspiciousMaterialPipeLayersField;
-    }
-
     public static bool IsAuspiciousHelperLoaded
     {
         get
@@ -401,7 +452,12 @@ public class MotionSmoothingSettings : EverestModuleSettings
         }
         set
         {
-            MapSmoothingSuggestions.UserChanged(MapSmoothingOption.SmoothBackground);
+            // A map is deciding this right now, so nothing else gets to: not the menu (whose
+            // item refuses input), not the hotkeys, not another mod reaching in through interop.
+            // The lock lifts when the player leaves the map or turns off Use Suggested Map
+            // Settings. Nothing is locked while Everest deserializes the settings at startup, so
+            // the saved value still loads.
+            if (MapSmoothingSuggestions.IsLocked(MapSmoothingOption.SmoothBackground)) return;
 
             _renderBackgroundHires = value;
             MotionSmoothingModule.Instance.ApplySettings();
@@ -413,7 +469,7 @@ public class MotionSmoothingSettings : EverestModuleSettings
 
     public void CreateRenderBackgroundHiresEntry(TextMenu menu, bool inGame)
     {
-        _renderBackgroundHiresItem = new TextMenu.OnOff(
+        _renderBackgroundHiresItem = new LockableOnOff(
             "Smooth Background",
             RenderBackgroundHires
         );
@@ -449,7 +505,12 @@ public class MotionSmoothingSettings : EverestModuleSettings
         }
         set
         {
-            MapSmoothingSuggestions.UserChanged(MapSmoothingOption.SmoothForeground);
+            // A map is deciding this right now, so nothing else gets to: not the menu (whose
+            // item refuses input), not the hotkeys, not another mod reaching in through interop.
+            // The lock lifts when the player leaves the map or turns off Use Suggested Map
+            // Settings. Nothing is locked while Everest deserializes the settings at startup, so
+            // the saved value still loads.
+            if (MapSmoothingSuggestions.IsLocked(MapSmoothingOption.SmoothForeground)) return;
 
             _renderForegroundHires = value;
             MotionSmoothingModule.Instance.ApplySettings();
@@ -461,7 +522,7 @@ public class MotionSmoothingSettings : EverestModuleSettings
 
     public void CreateRenderForegroundHiresEntry(TextMenu menu, bool inGame)
     {
-        _renderForegroundHiresItem = new TextMenu.OnOff(
+        _renderForegroundHiresItem = new LockableOnOff(
             "Smooth Foreground",
             RenderForegroundHires
         );
@@ -522,7 +583,6 @@ public class MotionSmoothingSettings : EverestModuleSettings
 			"leave this on."
         );
     }
-
 
 
 
@@ -604,6 +664,48 @@ public class MotionSmoothingSettings : EverestModuleSettings
             "Dynamic: Allows any FPS, but may rarely break other mods (e.g. TAS Recorder)."
         );
     }
+
+
+
+	public bool UseMapSettings
+    {
+        get => _useMapSettings;
+        set
+        {
+            _useMapSettings = value;
+
+            // Turning this off hands control back immediately rather than at the next map.
+            MapSmoothingSuggestions.UseMapSettingsChanged();
+
+            // The items were built while the map's values were in force, so they need pointing
+            // back at the player's own before they're unlocked.
+            RefreshMenuItemValues();
+            RefreshMenuItemStates();
+        }
+    }
+
+    public void CreateUseMapSettingsEntry(TextMenu menu, bool inGame)
+    {
+        var item = new TextMenu.OnOff(
+            "Use Suggested Map Settings",
+            _useMapSettings
+        );
+
+        item.Change(value =>
+        {
+            UseMapSettings = value;
+        });
+
+        menu.Add(item);
+
+        item.AddDescription(
+            menu,
+            "Maps can temporarily change Motion Smoothing settings. Turning this off\n" +
+            "overrides maps' suggested settings and keeps yours."
+        );
+    }
+
+	
 
     public bool TasMode
     {
