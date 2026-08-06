@@ -420,8 +420,33 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
         var camera = level.Camera;
 
         UnsmoothedCameraPosition = camera.position;
-        UnsmoothedCameraMatrix = camera.matrix;
-        UnsmoothedCameraInverse = camera.inverse;
+
+        // Build this rather than snapshotting camera.matrix. The field is only in sync with
+        // camera.position while camera.changed is false, and by the time Level.Render starts it
+        // very often isn't: HudRenderer_RenderContent ends the previous frame by restoring
+        // Camera.Position through the property (which sets changed, deliberately -- see the note
+        // there), leaving the *smoothed* matrix of that frame sitting in the field. Normally the
+        // next read of Camera.Matrix rebuilds it, but whether anything reads it before Level.Render
+        // depends on what else is in the scene, so it's a coin flip from one setup to the next.
+        //
+        // Snapshotting the field lost that coin flip by writing the stale matrix back in
+        // UnsmoothCameraPosition *and* clearing changed, which pinned it: for the rest of
+        // Level.Render (the bloom, and everything after Glitch.Apply, which never re-smooths)
+        // Camera.Matrix translated by the previous frame's smoothed position instead of this
+        // frame's whole-pixel one. Anything drawing in camera space over the composited level then
+        // landed one to three pixels off, by an amount that changed every frame -- which is what
+        // made StyleMaskHelper's ColorGradeMasks jitter while everything else scrolled smoothly.
+        //
+        // This mirrors Camera.UpdateMatrices exactly, so it's what Camera.Matrix would have
+        // returned for this position, coin flip or not.
+        UnsmoothedCameraMatrix = Matrix.Identity *
+                        Matrix.CreateTranslation(new Vector3(
+                            -new Vector2((int)Math.Floor(UnsmoothedCameraPosition.X), (int)Math.Floor(UnsmoothedCameraPosition.Y)), 0.0f)) *
+                        Matrix.CreateRotationZ(camera.angle) *
+                        Matrix.CreateScale(new Vector3(camera.zoom, 1f)) *
+                        Matrix.CreateTranslation(new Vector3(
+                            new Vector2((int)Math.Floor(camera.origin.X), (int)Math.Floor(camera.origin.Y)), 0.0f));
+        UnsmoothedCameraInverse = Matrix.Invert(UnsmoothedCameraMatrix);
 
         SmoothedCameraPosition = cameraState.SmoothedRealPosition;
 		SmoothedCameraMatrix = Matrix.Identity *
