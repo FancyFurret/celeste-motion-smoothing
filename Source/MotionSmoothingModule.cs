@@ -51,12 +51,19 @@ public class MotionSmoothingModule : EverestModule
 
     public List<Action<bool>> EnabledActions { get; } = new();
 
-    public IFrameUncapStrategy FrameUncapStrategy => Settings.FramerateIncreaseMethod switch
-    {
-        UpdateMode.Interval => UpdateEveryNTicks,
-        UpdateMode.Dynamic => DecoupledGameTick,
-        _ => throw new ArgumentOutOfRangeException()
-    };
+    // Interval mode works by running the game's tick at the draw rate and letting only every Nth
+    // tick through to Update, so its draw rate can only ever be a multiple of the 60fps update
+    // rate. A framerate below 60 (Nasty Mode only) therefore quietly runs on the decoupled tick
+    // instead, whatever the menu says -- the two produce the same result at these framerates, and
+    // the compatibility Interval mode is picked for doesn't much matter at 10fps.
+    private bool UseDecoupledGameTick =>
+        Settings.FramerateIncreaseMethod == UpdateMode.Dynamic
+        || Settings.GameSpeedModified
+        || (Settings.Enabled && Settings.FrameRate < 60);
+
+    // Must agree with the strategy ApplySettings actually enabled, or the target framerate gets
+    // handed to the strategy that isn't running.
+    public IFrameUncapStrategy FrameUncapStrategy => UseDecoupledGameTick ? DecoupledGameTick : UpdateEveryNTicks;
     private UpdateEveryNTicks UpdateEveryNTicks { get; } = new();
     private DecoupledGameTick DecoupledGameTick { get; } = new();
 
@@ -207,8 +214,9 @@ public class MotionSmoothingModule : EverestModule
 
 
 
-        // If the game speed is modified, then we have to use dynamic mode
-        if (Settings.FramerateIncreaseMethod == UpdateMode.Dynamic || Settings.GameSpeedModified)
+        // If the game speed is modified, or the framerate is below 60, then we have to use dynamic
+        // mode -- see UseDecoupledGameTick.
+        if (UseDecoupledGameTick)
         {
             UpdateEveryNTicks.Disable();
             DecoupledGameTick.Enable();

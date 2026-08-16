@@ -5,10 +5,15 @@ namespace Celeste.Mod.MotionSmoothing.Utilities;
 
 public class FrameRateTextMenuItem : TextMenuExt.IntSlider
 {
-    // Nasty Mode is allowed to take the framerate below the normal floor, all the way down to a
-    // single frame per second. Only in Dynamic mode: Interval moves in steps of 60, so there's
-    // nothing under 60 for it to land on anyway.
+    // Nasty Mode is allowed to take the framerate below the normal floor. Interval mode can't
+    // actually run below 60 -- MotionSmoothingModule.UseDecoupledGameTick quietly switches strategy
+    // under it -- so the floor is the same in both modes.
     private const int NastyModeMin = 10;
+
+    // Interval mode is restricted to values it can land on: multiples of 60 from 60 up, and (only
+    // reachable in Nasty Mode) multiples of 10 below that.
+    private const int IntervalStep = 60;
+    private const int LowIntervalStep = 10;
 
     private UpdateMode _updateMode;
     public UpdateMode UpdateMode
@@ -39,26 +44,24 @@ public class FrameRateTextMenuItem : TextMenuExt.IntSlider
         // The base constructor clamps the initial value to the minimum without telling anyone, so
         // it has to be given the lowered floor up front -- otherwise a menu opened while Nasty Mode
         // is running below 60 would show 60 while the setting stayed where it was.
-        label, EffectiveMin(min, MotionSmoothingModule.Settings.FramerateIncreaseMethod), max, value)
+        label, EffectiveMin(min), max, value)
     {
         _normalMin = min;
-        _min = EffectiveMin(min, MotionSmoothingModule.Settings.FramerateIncreaseMethod);
+        _min = EffectiveMin(min);
         _max = max;
         UpdateMode = MotionSmoothingModule.Settings.FramerateIncreaseMethod;
     }
 
-    private static int EffectiveMin(int normalMin, UpdateMode mode)
+    private static int EffectiveMin(int normalMin)
     {
-        return MotionSmoothingModule.Settings.SillyMode && mode == UpdateMode.Dynamic
-            ? NastyModeMin
-            : normalMin;
+        return MotionSmoothingModule.Settings.SillyMode ? NastyModeMin : normalMin;
     }
 
-    // Called whenever something the floor depends on changes: the update mode here, Nasty Mode from
-    // the settings. Raising the floor back to 60 takes the current value up with it.
+    // Called when Nasty Mode is toggled, which is the only thing the floor depends on. Raising the
+    // floor back to 60 takes the current value up with it.
     public void RefreshMinimum()
     {
-        var min = EffectiveMin(_normalMin, _updateMode);
+        var min = EffectiveMin(_normalMin);
         if (min == _min)
             return;
 
@@ -76,19 +79,25 @@ public class FrameRateTextMenuItem : TextMenuExt.IntSlider
     private void SetFrameUncapMode(UpdateMode mode)
     {
         _updateMode = mode;
-
-        // Before the rounding below, so that leaving Dynamic mode clamps against the restored floor.
-        RefreshMinimum();
-
         if (UpdateMode == UpdateMode.Dynamic)
             return;
 
-        // Ensure the value is a multiple of 60
+        // Ensure the value is one of the steps Interval mode moves in
+        var step = Index < IntervalStep ? LowIntervalStep : IntervalStep;
         PreviousIndex = Index;
-        Index = (int)(Math.Round(Index / 60f) * 60);
+        Index = (int)(Math.Round((float)Index / step) * step);
         Index = Math.Clamp(Index, _min, _max);
         if (Index != PreviousIndex)
             OnValueChange?.Invoke(Index);
+    }
+
+    // Below 60 the steps are 10 apart, above it they're 60 apart, and 60 itself is the seam: going
+    // left from it drops to 50, going right jumps to 120.
+    private int StepFrom(int index, int direction)
+    {
+        return (direction < 0 ? index <= IntervalStep : index < IntervalStep)
+            ? LowIntervalStep
+            : IntervalStep;
     }
 
     // The base implementation sizes the value column to fit the max, which would reserve
@@ -109,7 +118,7 @@ public class FrameRateTextMenuItem : TextMenuExt.IntSlider
 
         Audio.Play("event:/ui/main/button_toggle_off");
         PreviousIndex = Index;
-        Index -= 60;
+        Index -= StepFrom(Index, -1);
         Index = Math.Clamp(Index, _min, _max);
         LastDir = -1;
         ValueWiggler.Start();
@@ -126,7 +135,7 @@ public class FrameRateTextMenuItem : TextMenuExt.IntSlider
 
         Audio.Play("event:/ui/main/button_toggle_on");
         PreviousIndex = Index;
-        Index += 60;
+        Index += StepFrom(Index, 1);
         Index = Math.Clamp(Index, _min, _max);
         LastDir = 1;
         ValueWiggler.Start();
