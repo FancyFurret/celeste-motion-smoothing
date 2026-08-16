@@ -292,13 +292,19 @@ public class MotionSmoothingModule : EverestModule
         int framerate = Settings.Enabled ? Settings.FrameRate : 60;
 
         var updateFps = 60.0;
-        
+        int drawFps;
+
         if (!InLevel)
         {
             // For TAS, just draw at 60 as well. Motion smoothing in the Overworld looks awful at the moment.
             // If we're not in a level, just use the target framerate
-            var drawFps = Settings.TasMode ? 60 : framerate;
-            updateFps = framerate;
+            //
+            // A framerate below 60 (only reachable in Nasty Mode) is meant for gameplay, so it
+            // never applies out here: menus are all there is outside a level, and slowing them
+            // down would also drop input polling to the same rate -- leaving the menu that turns
+            // Nasty Mode back off barely usable.
+            drawFps = Settings.TasMode ? 60 : Math.Max(framerate, 60);
+            updateFps = Math.Max(framerate, 60);
             if (Settings.TasMode) updateFps = 60;
             else if (Settings.GameSpeedModified && !Settings.GameSpeedInLevelOnly) updateFps = Settings.GameSpeed;
 
@@ -309,11 +315,19 @@ public class MotionSmoothingModule : EverestModule
         }
         
         // If we're in a level, keep the update rate at 60fps
-        var level = (Engine.Scene as Level)!;
-        if (Settings.GameSpeedModified && !(level.Paused && Settings.GameSpeedInLevelOnly))
+        // InLevel also covers LevelLoader, LevelExit and Emulator, so there isn't always a Level
+        // here -- and none of those can be paused.
+        var paused = Engine.Scene is Level { Paused: true };
+
+        if (Settings.GameSpeedModified && !(paused && Settings.GameSpeedInLevelOnly))
             updateFps = Settings.GameSpeed;
-        
-        FrameUncapStrategy.SetTargetFramerate(updateFps, framerate);
+
+        // Same as above: a sub-60 framerate is for gameplay, so the pause menu draws at a normal
+        // rate and the low framerate resumes once it closes. LevelPause and LevelUnpause both
+        // re-run this, so the change lands as the menu opens and closes.
+        drawFps = paused ? Math.Max(framerate, 60) : framerate;
+
+        FrameUncapStrategy.SetTargetFramerate(updateFps, drawFps);
         if (DecoupledGameTick.Enabled)
             DecoupledGameTick.SetTargetDeltaTime(60);
     }

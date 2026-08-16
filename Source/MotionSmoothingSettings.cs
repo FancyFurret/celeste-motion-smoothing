@@ -777,6 +777,18 @@ public class MotionSmoothingSettings : EverestModuleSettings
         set
         {
             _sillyMode = value;
+
+            // Nasty Mode is the only thing that lets the framerate below 60, so turning it off has
+            // to bring one back up: the slider's floor rises with it, and a value left underneath
+            // would be one the player can't climb back out of. Done before the menu item is
+            // refreshed so it picks the restored value up, and unconditionally so that a framerate
+            // saved from a Nasty Mode session is repaired at startup too (Initialize turns Nasty
+            // Mode off on every launch).
+            if (!_sillyMode && _frameRate < 60)
+                FrameRate = 60;
+
+            _frameRateMenuItem?.RefreshMinimum();
+
             MotionSmoothingModule.Instance.ApplySettings();
         }
     }
