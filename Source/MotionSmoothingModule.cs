@@ -216,14 +216,17 @@ public class MotionSmoothingModule : EverestModule
 
         // If the game speed is modified, or the framerate is below 60, then we have to use dynamic
         // mode -- see UseDecoupledGameTick.
+        // Deactivate rather than Disable: the strategy standing down keeps its hooks, since
+        // re-detouring Engine.Update or Game.Tick costs long enough to be felt as a lag spike --
+        // and this swap can happen on a menu keypress, when the framerate crosses 60.
         if (UseDecoupledGameTick)
         {
-            UpdateEveryNTicks.Disable();
+            UpdateEveryNTicks.Deactivate();
             DecoupledGameTick.Enable();
         }
         else
         {
-            DecoupledGameTick.Disable();
+            DecoupledGameTick.Deactivate();
             UpdateEveryNTicks.Enable();
         }
         
@@ -306,12 +309,11 @@ public class MotionSmoothingModule : EverestModule
         {
             // For TAS, just draw at 60 as well. Motion smoothing in the Overworld looks awful at the moment.
             // If we're not in a level, just use the target framerate
-            //
-            // A framerate below 60 (only reachable in Nasty Mode) is meant for gameplay, so it
-            // never applies out here: menus are all there is outside a level, and slowing them
-            // down would also drop input polling to the same rate -- leaving the menu that turns
-            // Nasty Mode back off barely usable.
-            drawFps = Settings.TasMode ? 60 : Math.Max(framerate, 60);
+            drawFps = Settings.TasMode ? 60 : framerate;
+
+            // The update rate is the exception: a framerate below 60 (Nasty Mode only) would run
+            // the overworld in slow motion and poll input at the same rate, leaving the menu that
+            // turns Nasty Mode back off barely usable. Only the draw rate goes that low.
             updateFps = Math.Max(framerate, 60);
             if (Settings.TasMode) updateFps = 60;
             else if (Settings.GameSpeedModified && !Settings.GameSpeedInLevelOnly) updateFps = Settings.GameSpeed;
@@ -330,10 +332,7 @@ public class MotionSmoothingModule : EverestModule
         if (Settings.GameSpeedModified && !(paused && Settings.GameSpeedInLevelOnly))
             updateFps = Settings.GameSpeed;
 
-        // Same as above: a sub-60 framerate is for gameplay, so the pause menu draws at a normal
-        // rate and the low framerate resumes once it closes. LevelPause and LevelUnpause both
-        // re-run this, so the change lands as the menu opens and closes.
-        drawFps = paused ? Math.Max(framerate, 60) : framerate;
+        drawFps = framerate;
 
         FrameUncapStrategy.SetTargetFramerate(updateFps, drawFps);
         if (DecoupledGameTick.Enabled)

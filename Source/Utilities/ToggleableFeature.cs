@@ -52,6 +52,17 @@ public abstract class ToggleableFeature<T> where T : class
         Enabled = false;
     }
 
+    // Turns the feature off but leaves its hooks in place, so turning it back on costs nothing.
+    // Detouring is expensive -- re-JITting something the size of Engine.Update or Game.Tick stalls
+    // for long enough that the engine then runs a burst of catch-up updates -- so features that are
+    // toggled in response to a menu keypress want this instead of Disable. The catch is that their
+    // hook bodies have to check Enabled themselves and call orig when it's false; only use this on
+    // a feature that does. Disable and Unload still remove the hooks.
+    public void Deactivate()
+    {
+        Enabled = false;
+    }
+
     protected virtual void Hook()
     {
     }

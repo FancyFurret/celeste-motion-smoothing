@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Diagnostics;
 using System.Reflection;
 
 namespace Celeste.Mod.MotionSmoothing.Utilities;
@@ -21,6 +22,17 @@ public class FrameRateTextMenuItem : TextMenuExt.IntSlider
         get => _updateMode;
         set => SetFrameUncapMode(value);
     }
+
+    // Whatever stalls the game -- a level load, an alt-tab, changing a setting that has to install
+    // hooks -- is repaid as a run of catch-up updates, and each one of those re-reads the direction
+    // key as still held down and repeats the press, walking the slider several steps in one go.
+    // Wall-clock time is what separates the two cases: a burst of catch-up updates arrives inside a
+    // couple of milliseconds, while a genuine held-key repeat is 0.1s apart (Input.MenuLeft's
+    // repeat rate) and a deliberate second press slower still.
+    private const double MinSecondsBetweenPresses = 0.05;
+
+    private static readonly Stopwatch PressTimer = Stopwatch.StartNew();
+    private double _lastPressTime = double.NegativeInfinity;
 
     private readonly int _normalMin;
     private readonly int _max;
@@ -91,6 +103,16 @@ public class FrameRateTextMenuItem : TextMenuExt.IntSlider
             OnValueChange?.Invoke(Index);
     }
 
+    private bool SwallowRepeatedPress()
+    {
+        var now = PressTimer.Elapsed.TotalSeconds;
+        if (now - _lastPressTime < MinSecondsBetweenPresses)
+            return true;
+
+        _lastPressTime = now;
+        return false;
+    }
+
     // Below 60 the steps are 10 apart, above it they're 60 apart, and 60 itself is the seam: going
     // left from it drops to 50, going right jumps to 120.
     private int StepFrom(int index, int direction)
@@ -110,6 +132,9 @@ public class FrameRateTextMenuItem : TextMenuExt.IntSlider
 
     public override void LeftPressed()
     {
+        if (SwallowRepeatedPress())
+            return;
+
         if (UpdateMode == UpdateMode.Dynamic)
         {
             base.LeftPressed();
@@ -127,6 +152,9 @@ public class FrameRateTextMenuItem : TextMenuExt.IntSlider
 
     public override void RightPressed()
     {
+        if (SwallowRepeatedPress())
+            return;
+
         if (UpdateMode == UpdateMode.Dynamic)
         {
             base.RightPressed();

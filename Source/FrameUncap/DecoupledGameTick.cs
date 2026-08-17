@@ -27,6 +27,27 @@ public class DecoupledGameTick : ToggleableFeature<DecoupledGameTick>, IFrameUnc
     private TimeSpan _accumulatedDrawElapsedTime;
     private long _previousTicks;
 
+    // The accumulators below only mean anything while this strategy is the one running.
+    // _previousTicks is wherever Interval mode left it -- or zero, on the first switch of a session
+    // -- so the first Tick would otherwise count that entire stretch as elapsed time and run one
+    // Update per 1/60s of it: a freeze as long as the game has been open, and a burst of menu-input
+    // repeats along with it. Start clean instead.
+    public override void Enable()
+    {
+        var wasEnabled = Enabled;
+
+        base.Enable();
+
+        // After base.Enable, so that the cost of installing the hooks (the first time round) isn't
+        // itself counted as elapsed time.
+        if (wasEnabled) return;
+
+        _previousTicks = _game.gameTimer.Elapsed.Ticks;
+        _accumulatedElapsedTime = TimeSpan.Zero;
+        _accumulatedUpdateElapsedTime = TimeSpan.Zero;
+        _accumulatedDrawElapsedTime = TimeSpan.Zero;
+    }
+
     protected override void Hook()
     {
         base.Hook();
@@ -73,7 +94,9 @@ public class DecoupledGameTick : ToggleableFeature<DecoupledGameTick>, IFrameUnc
         {
             static double GetDeltaTime(float oldDt)
             {
-                if (MotionSmoothingModule.Settings.GameSpeedModified)
+                // This hook stays installed while the strategy is switched off (see
+                // ToggleableFeature.Deactivate), when TargetUpdateElapsedTime is stale.
+                if (Instance.Enabled && MotionSmoothingModule.Settings.GameSpeedModified)
                     return Instance.TargetUpdateElapsedTime.TotalSeconds;
                 return oldDt;
             }
@@ -107,6 +130,12 @@ public class DecoupledGameTick : ToggleableFeature<DecoupledGameTick>, IFrameUnc
         // Cap the accumulated time
         if (_accumulatedElapsedTime >= Game.MaxElapsedTime)
             _accumulatedElapsedTime = Game.MaxElapsedTime;
+
+        // And the update accumulator, which is what the loop below burns off -- vanilla Game.Tick
+        // caps its equivalent for the same reason. Without this, any long stall (a level load, an
+        // alt-tab) is repaid as a run of back-to-back updates rather than simply skipped.
+        if (_accumulatedUpdateElapsedTime >= Game.MaxElapsedTime)
+            _accumulatedUpdateElapsedTime = Game.MaxElapsedTime;
 
         // Update if ready
         if (_accumulatedUpdateElapsedTime >= TargetUpdateElapsedTime)
@@ -188,6 +217,13 @@ public class DecoupledGameTick : ToggleableFeature<DecoupledGameTick>, IFrameUnc
 #pragma warning disable CL0003
     private static void GameTickHook(orig_Tick orig, Game self)
     {
+        // Left installed while the strategy is switched off; see ToggleableFeature.Deactivate.
+        if (!Instance.Enabled)
+        {
+            orig(self);
+            return;
+        }
+
         Instance.Tick();
     }
 #pragma warning restore CL0003
