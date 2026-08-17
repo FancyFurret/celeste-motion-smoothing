@@ -14,6 +14,8 @@ Place a **Motion Smoothing Controller** in your map to suggest settings for it. 
 
 - **Smooth Background**, **Smooth Foreground**, **Render Madeline with Subpixel Precision**: `On`, `Off`, or `User Default`. These only do anything under Fancy camera smoothing.
 
+- **Framerate**: any integer or `User Default`. Setting this to a value that isn't a multiple of 60 will switch the framerate increase method to Dynamic.
+
 The player's own saved settings are preserrved and come back when they leave the map. When a map is deciding a setting, it's shown in purple and can't be changed in Mod Settings, but a player can turn off **Use Suggested Map Settings** there, which overrides the map's settings.
 
 ## Implementation Details for Mod Authors
