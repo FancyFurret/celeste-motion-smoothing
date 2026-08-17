@@ -103,6 +103,9 @@ public class MotionSmoothingSettings : EverestModuleSettings
             case LockableSlider slider:
                 slider.Locked = locked;
                 break;
+            case FrameRateTextMenuItem frameRate:
+                frameRate.Locked = locked;
+                break;
         }
     }
 
@@ -121,8 +124,17 @@ public class MotionSmoothingSettings : EverestModuleSettings
 
     private void RefreshMenuItemValues()
     {
+        // Not a TextMenu.Option<T>, so these can't go through SetItemValue. The mode goes first: it
+        // decides the framerate item's floor.
+        if (_frameRateMenuItem != null)
+        {
+            _frameRateMenuItem.UpdateMode = FramerateIncreaseMethod;
+            _frameRateMenuItem.SetValue(FrameRate);
+        }
+
         SetItemValue(_enabledItem, Enabled);
         SetItemValue(_cameraStrategyItem, (int)UnlockCameraStrategy);
+        SetItemValue(_framerateIncreaseMethodItem, (int)FramerateIncreaseMethod);
         SetItemValue(_renderMadelineWithSubpixelsItem, RenderMadelineWithSubpixels);
         SetItemValue(_renderBackgroundHiresItem, RenderBackgroundHires);
         SetItemValue(_renderForegroundHiresItem, RenderForegroundHires);
@@ -142,11 +154,13 @@ public class MotionSmoothingSettings : EverestModuleSettings
         SetItemState(_enabledItem, false, MapSmoothingSuggestions.IsLocked(MapSmoothingOption.Enabled));
 
         // These only depend on the master Enabled toggle.
-        SetItemState(_frameRateMenuItem, masterDisabled);
+        SetItemState(_frameRateMenuItem, masterDisabled,
+            MapSmoothingSuggestions.IsLocked(MapSmoothingOption.FrameRate));
         SetItemState(_cameraStrategyItem, masterDisabled,
             MapSmoothingSuggestions.IsLocked(MapSmoothingOption.CameraSmoothingMode));
         SetItemState(_objectSmoothingItem, masterDisabled);
-        SetItemState(_framerateIncreaseMethodItem, masterDisabled);
+        SetItemState(_framerateIncreaseMethodItem, masterDisabled,
+            MapSmoothingSuggestions.ForcesDynamicUpdateMode);
         SetItemState(_tasModeItem, masterDisabled);
 
         // These additionally require the Fancy camera smoothing strategy.
@@ -245,37 +259,6 @@ public class MotionSmoothingSettings : EverestModuleSettings
 
     [DefaultButtonBinding(new Buttons(), Keys.F9)]
     public ButtonBinding ButtonChangeCameraSmoothingMode { get; set; }
-
-    public int FrameRate
-    {
-        get => _frameRate;
-        set
-        {
-            // Always persist the value. This setter also runs during settings
-            // deserialization, which can happen while Enabled is false (e.g. the mod was
-            // saved disabled); returning early there would discard the saved framerate and
-            // revert to the default. Only the live re-apply is gated on Enabled.
-            _frameRate = value;
-
-            if (!Enabled)
-            {
-                return;
-            }
-
-            MotionSmoothingModule.Instance.ApplySettings();
-        }
-    }
-
-    // ReSharper disable once UnusedMember.Global
-    public void CreateFrameRateEntry(TextMenu menu, bool _)
-    {
-        _frameRateMenuItem = new FrameRateTextMenuItem("Framerate", 60, int.MaxValue, FrameRate);
-        _frameRateMenuItem.Change(fps => FrameRate = fps);
-
-        menu.Add(_frameRateMenuItem);
-
-        RefreshMenuItemStates();
-    }
 
     public UnlockCameraStrategy UnlockCameraStrategy
     {
@@ -586,6 +569,64 @@ public class MotionSmoothingSettings : EverestModuleSettings
 
 
 
+	// A framerate below 60 doesn't survive a restart -- MotionSmoothingModule.Initialize puts it
+    // back to this -- so nobody can leave the game running at 5fps and not work out why.
+    public const int MinPersistedFrameRate = 60;
+
+    public int FrameRate
+    {
+        get
+        {
+            if (MapSmoothingSuggestions.TryGetFrameRate(out var mapFrameRate))
+                return mapFrameRate;
+
+            return _frameRate;
+        }
+        set
+        {
+            // A map is deciding this right now, so nothing else gets to: not the menu (whose
+            // item refuses input), not another mod reaching in through interop. The lock lifts when
+            // the player leaves the map or turns off Use Suggested Map Settings. Nothing is locked
+            // while Everest deserializes the settings at startup, so the saved value still loads.
+            if (MapSmoothingSuggestions.IsLocked(MapSmoothingOption.FrameRate)) return;
+
+            // Always persist the value. This setter also runs during settings
+            // deserialization, which can happen while Enabled is false (e.g. the mod was
+            // saved disabled); returning early there would discard the saved framerate and
+            // revert to the default. Only the live re-apply is gated on Enabled.
+            _frameRate = value;
+
+            if (!Enabled)
+            {
+                return;
+            }
+
+            MotionSmoothingModule.Instance.ApplySettings();
+        }
+    }
+
+    // The player's own saved value, ignoring any map suggestion currently in force.
+    [SettingIgnore][YamlIgnore] public int UserFrameRate => _frameRate;
+
+    // ReSharper disable once UnusedMember.Global
+    public void CreateFrameRateEntry(TextMenu menu, bool _)
+    {
+        _frameRateMenuItem = new FrameRateTextMenuItem(
+            "Framerate", FrameRateTextMenuItem.MinFrameRate, int.MaxValue, FrameRate);
+
+        _frameRateMenuItem.Change(fps => FrameRate = fps);
+
+        menu.Add(_frameRateMenuItem);
+
+        RefreshMenuItemStates();
+
+        // With the change handler wired and the map lock applied, put the value in step with the
+        // mode: a framerate loaded from the settings file needn't be one Interval mode can produce.
+        _frameRateMenuItem.UpdateMode = FramerateIncreaseMethod;
+    }
+
+
+
     public SmoothingMode ObjectSmoothing
     {
         get => _smoothingMode;
@@ -628,9 +669,21 @@ public class MotionSmoothingSettings : EverestModuleSettings
 
     public UpdateMode FramerateIncreaseMethod
     {
-        get => _updateMode;
+        get
+        {
+            // A map asking for a framerate Interval mode can't produce is asking for Dynamic mode
+            // with it -- see MapSmoothingSuggestions.ForcesDynamicUpdateMode.
+            if (MapSmoothingSuggestions.ForcesDynamicUpdateMode) return UpdateMode.Dynamic;
+
+            return _updateMode;
+        }
         set
         {
+            // A map is deciding this right now, so nothing else gets to. The lock lifts when the
+            // player leaves the map or turns off Use Suggested Map Settings. Nothing is locked
+            // while Everest deserializes the settings at startup, so the saved value still loads.
+            if (MapSmoothingSuggestions.ForcesDynamicUpdateMode) return;
+
             _updateMode = value;
             if (_frameRateMenuItem != null)
                 _frameRateMenuItem.UpdateMode = value;
@@ -638,14 +691,17 @@ public class MotionSmoothingSettings : EverestModuleSettings
         }
     }
 
+    // The player's own saved value, ignoring any map suggestion currently in force.
+    [SettingIgnore][YamlIgnore] public UpdateMode UserFramerateIncreaseMethod => _updateMode;
+
     public void CreateFramerateIncreaseMethodEntry(TextMenu menu, bool inGame)
     {
-        _framerateIncreaseMethodItem = new TextMenu.Slider(
+        _framerateIncreaseMethodItem = new LockableSlider(
             "Framerate Increase Method",
             index => ((UpdateMode)index) == UpdateMode.Interval ? "Interval" : "Dynamic",
             0,
             Enum.GetValues(typeof(UpdateMode)).Length - 1,
-            (int)_updateMode
+            (int)FramerateIncreaseMethod
         );
 
         (_framerateIncreaseMethodItem as TextMenu.Slider).Change(index =>
@@ -661,7 +717,7 @@ public class MotionSmoothingSettings : EverestModuleSettings
             menu,
             "Interval: [Recommended] Has the best compatibility, but restricts the FPS\n" +
             "to multiples of 60.\n" +
-            "Dynamic: Allows any FPS, but may rarely break other mods (e.g. TAS Recorder)."
+            "Dynamic: Allows any FPS (including below 60), but may rarely break other mods (e.g. TAS Recorder)."
         );
     }
 
@@ -777,18 +833,6 @@ public class MotionSmoothingSettings : EverestModuleSettings
         set
         {
             _sillyMode = value;
-
-            // Nasty Mode is the only thing that lets the framerate below 60, so turning it off has
-            // to bring one back up: the slider's floor rises with it, and a value left underneath
-            // would be one the player can't climb back out of. Done before the menu item is
-            // refreshed so it picks the restored value up, and unconditionally so that a framerate
-            // saved from a Nasty Mode session is repaired at startup too (Initialize turns Nasty
-            // Mode off on every launch).
-            if (!_sillyMode && _frameRate < 60)
-                FrameRate = 60;
-
-            _frameRateMenuItem?.RefreshMinimum();
-
             MotionSmoothingModule.Instance.ApplySettings();
         }
     }

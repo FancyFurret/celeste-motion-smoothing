@@ -5,6 +5,7 @@ mods.MotionSmoothing.name=Motion Smoothing
 triggers.MotionSmoothing/MotionSmoothingController.placements.name.controller=Motion Smoothing Controller
 
 triggers.MotionSmoothing/MotionSmoothingController.attributes.name.motionSmoothing=Motion Smoothing
+triggers.MotionSmoothing/MotionSmoothingController.attributes.name.frameRate=Framerate
 triggers.MotionSmoothing/MotionSmoothingController.attributes.name.cameraSmoothingMode=Camera Smoothing
 triggers.MotionSmoothing/MotionSmoothingController.attributes.name.smoothBackground=Smooth Background
 triggers.MotionSmoothing/MotionSmoothingController.attributes.name.smoothForeground=Smooth Foreground

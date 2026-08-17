@@ -9,7 +9,8 @@ public enum MapSmoothingOption
     SmoothBackground,
     SmoothForeground,
     RenderMadelineWithSubpixelPrecision,
-    CameraSmoothingMode
+    CameraSmoothingMode,
+    FrameRate
 }
 
 // What a single controller asks for. Every field is null when it has no preference for that option.
@@ -20,13 +21,15 @@ public class MapSmoothingSuggestion
     public bool? SmoothForeground;
     public bool? RenderMadelineWithSubpixelPrecision;
     public UnlockCameraStrategy? CameraSmoothingMode;
+    public int? FrameRate;
 
     public bool IsEmpty =>
         !Enabled.HasValue && !SmoothBackground.HasValue && !SmoothForeground.HasValue &&
-        !RenderMadelineWithSubpixelPrecision.HasValue && !CameraSmoothingMode.HasValue;
+        !RenderMadelineWithSubpixelPrecision.HasValue && !CameraSmoothingMode.HasValue &&
+        !FrameRate.HasValue;
 
-    // The four options whose value is a plain on/off. CameraSmoothingMode isn't one of them and
-    // always reads back null here -- use the CameraSmoothingMode field for it.
+    // The four options whose value is a plain on/off. CameraSmoothingMode and FrameRate aren't
+    // among them and always read back null here -- use their own fields for those.
     public bool? GetBoolean(MapSmoothingOption option) => option switch
     {
         MapSmoothingOption.Enabled => Enabled,
@@ -36,10 +39,12 @@ public class MapSmoothingSuggestion
         _ => null
     };
 
-    public bool HasPreference(MapSmoothingOption option) =>
-        option == MapSmoothingOption.CameraSmoothingMode
-            ? CameraSmoothingMode.HasValue
-            : GetBoolean(option).HasValue;
+    public bool HasPreference(MapSmoothingOption option) => option switch
+    {
+        MapSmoothingOption.CameraSmoothingMode => CameraSmoothingMode.HasValue,
+        MapSmoothingOption.FrameRate => FrameRate.HasValue,
+        _ => GetBoolean(option).HasValue
+    };
 
     public void Clear(MapSmoothingOption option)
     {
@@ -52,6 +57,7 @@ public class MapSmoothingSuggestion
                 RenderMadelineWithSubpixelPrecision = null;
                 break;
             case MapSmoothingOption.CameraSmoothingMode: CameraSmoothingMode = null; break;
+            case MapSmoothingOption.FrameRate: FrameRate = null; break;
         }
     }
 
@@ -61,7 +67,8 @@ public class MapSmoothingSuggestion
         SmoothBackground = SmoothBackground,
         SmoothForeground = SmoothForeground,
         RenderMadelineWithSubpixelPrecision = RenderMadelineWithSubpixelPrecision,
-        CameraSmoothingMode = CameraSmoothingMode
+        CameraSmoothingMode = CameraSmoothingMode,
+        FrameRate = FrameRate
     };
 }
 
@@ -127,6 +134,18 @@ public static class MapSmoothingSuggestions
         return false;
     }
 
+    public static bool TryGetFrameRate(out int value)
+    {
+        if (!_suspended && _active.FrameRate is { } mapValue)
+        {
+            value = mapValue;
+            return true;
+        }
+
+        value = 0;
+        return false;
+    }
+
     public static bool TryGetCameraSmoothing(out UnlockCameraStrategy value)
     {
         if (!_suspended && _active.CameraSmoothingMode is { } mapValue)
@@ -138,6 +157,13 @@ public static class MapSmoothingSuggestions
         value = UnlockCameraStrategy.Hires;
         return false;
     }
+
+    // Interval mode can only draw at multiples of the 60fps update rate, so a map asking for a
+    // framerate that isn't one is asking for Dynamic mode along with it. That decides the update
+    // mode as surely as if the map had set it, and locks it the same way -- it isn't something the
+    // mapper picks, so it has no MapSmoothingOption of its own.
+    public static bool ForcesDynamicUpdateMode =>
+        TryGetFrameRate(out var frameRate) && frameRate % 60 != 0;
 
     // Whether a map is currently deciding this option. The settings refuse to be written while it
     // is, so this is both what the menu tints and what actually enforces the lock.
@@ -190,6 +216,7 @@ public static class MapSmoothingSuggestions
         if (suggestion.Enabled == false)
         {
             suggestion.Clear(MapSmoothingOption.CameraSmoothingMode);
+            suggestion.Clear(MapSmoothingOption.FrameRate);
             foreach (var option in FancyOnlyOptions) suggestion.Clear(option);
             return;
         }

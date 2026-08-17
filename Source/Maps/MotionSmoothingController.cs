@@ -28,7 +28,8 @@ public class MotionSmoothingController : Trigger
             SmoothBackground = ParseBoolean(data.Attr("smoothBackground")),
             SmoothForeground = ParseBoolean(data.Attr("smoothForeground")),
             RenderMadelineWithSubpixelPrecision = ParseBoolean(data.Attr("renderMadelineWithSubpixels")),
-            CameraSmoothingMode = ParseCameraSmoothing(data.Attr("cameraSmoothingMode"))
+            CameraSmoothingMode = ParseCameraSmoothing(data.Attr("cameraSmoothingMode")),
+            FrameRate = ParseFrameRate(data.Attr("frameRate"))
         };
 
         MapSmoothingSuggestions.DropInapplicable(_suggestion);
@@ -53,6 +54,18 @@ public class MotionSmoothingController : Trigger
         ValueOff => false,
         _ => null
     };
+
+    // The framerate is written as a string rather than a number so that "NoPreference" can be one
+    // of the values a mapper picks -- so anything that isn't an integer means the map doesn't care.
+    // Whatever they do ask for is used exactly, including framerates the in-game slider would never
+    // stop on (24) or reach (3). Only zero and negatives are refused, having no meaning as a
+    // framerate at all.
+    private static int? ParseFrameRate(string value)
+    {
+        if (!int.TryParse(value, out var frameRate)) return null;
+
+        return frameRate >= 1 ? frameRate : null;
+    }
 
     private static UnlockCameraStrategy? ParseCameraSmoothing(string value) => value switch
     {

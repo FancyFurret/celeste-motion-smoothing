@@ -51,15 +51,11 @@ public class MotionSmoothingModule : EverestModule
 
     public List<Action<bool>> EnabledActions { get; } = new();
 
-    // Interval mode works by running the game's tick at the draw rate and letting only every Nth
-    // tick through to Update, so its draw rate can only ever be a multiple of the 60fps update
-    // rate. A framerate below 60 (Nasty Mode only) therefore quietly runs on the decoupled tick
-    // instead, whatever the menu says -- the two produce the same result at these framerates, and
-    // the compatibility Interval mode is picked for doesn't much matter at 10fps.
+    // The update mode, plus the one thing that overrides it. A framerate Interval mode can't produce
+    // is handled where it belongs, in the setting itself: FramerateIncreaseMethod reports Dynamic
+    // when a map asks for one, and the menu shows it as such.
     private bool UseDecoupledGameTick =>
-        Settings.FramerateIncreaseMethod == UpdateMode.Dynamic
-        || Settings.GameSpeedModified
-        || (Settings.Enabled && Settings.FrameRate < 60);
+        Settings.FramerateIncreaseMethod == UpdateMode.Dynamic || Settings.GameSpeedModified;
 
     // Must agree with the strategy ApplySettings actually enabled, or the target framerate gets
     // handed to the strategy that isn't running.
@@ -168,6 +164,12 @@ public class MotionSmoothingModule : EverestModule
 		}
 
 		Settings.SillyMode = false;
+
+		// A framerate below 60 is a deliberate curiosity rather than something to play on, so it
+		// lasts for the session that set it and no longer -- the same deal as Nasty Mode above.
+		// Otherwise someone sets 5fps, forgets, and comes back to a game that looks broken.
+		if (Settings.FrameRate < MotionSmoothingSettings.MinPersistedFrameRate)
+			Settings.FrameRate = MotionSmoothingSettings.MinPersistedFrameRate;
 
 		ApplySettings();
 	}
@@ -311,9 +313,9 @@ public class MotionSmoothingModule : EverestModule
             // If we're not in a level, just use the target framerate
             drawFps = Settings.TasMode ? 60 : framerate;
 
-            // The update rate is the exception: a framerate below 60 (Nasty Mode only) would run
-            // the overworld in slow motion and poll input at the same rate, leaving the menu that
-            // turns Nasty Mode back off barely usable. Only the draw rate goes that low.
+            // The update rate is the exception: a framerate below 60 would run the overworld in
+            // slow motion and poll input at the same rate, leaving the menu that sets the framerate
+            // back barely usable. Only the draw rate goes that low.
             updateFps = Math.Max(framerate, 60);
             if (Settings.TasMode) updateFps = 60;
             else if (Settings.GameSpeedModified && !Settings.GameSpeedInLevelOnly) updateFps = Settings.GameSpeed;
