@@ -605,67 +605,7 @@ public class MotionSmoothingSettings : EverestModuleSettings
         }
     }
 
-    // The player's own saved value, ignoring any map suggestion currently in force.
-    [SettingIgnore][YamlIgnore] public int UserFrameRate => _frameRate;
 
-    // ReSharper disable once UnusedMember.Global
-    public void CreateFrameRateEntry(TextMenu menu, bool _)
-    {
-        _frameRateMenuItem = new FrameRateTextMenuItem(
-            "Framerate", FrameRateTextMenuItem.MinFrameRate, int.MaxValue, FrameRate);
-
-        _frameRateMenuItem.Change(fps => FrameRate = fps);
-
-        menu.Add(_frameRateMenuItem);
-
-        RefreshMenuItemStates();
-
-        // With the change handler wired and the map lock applied, put the value in step with the
-        // mode: a framerate loaded from the settings file needn't be one Interval mode can produce.
-        _frameRateMenuItem.UpdateMode = FramerateIncreaseMethod;
-    }
-
-
-
-    public SmoothingMode ObjectSmoothing
-    {
-        get => _smoothingMode;
-        set => _smoothingMode = value;
-    }
-
-    public void CreateObjectSmoothingEntry(TextMenu menu, bool inGame)
-    {
-        _objectSmoothingItem = new TextMenu.Slider(
-            "Object Smoothing",
-            index => ((SmoothingMode)index) switch
-            {
-                SmoothingMode.Extrapolate => "Extrapolate",
-                SmoothingMode.Interpolate => "Interpolate",
-                _ => "Off"
-            },
-            0,
-            Enum.GetValues(typeof(SmoothingMode)).Length - 1,
-            (int)_smoothingMode
-        );
-
-        (_objectSmoothingItem as TextMenu.Slider).Change(index =>
-        {
-            ObjectSmoothing = (SmoothingMode)index;
-        });
-
-        menu.Add(_objectSmoothingItem);
-
-        RefreshMenuItemStates();
-
-        _objectSmoothingItem.AddDescription(
-            menu,
-            "Extrapolate: [Recommended] Predicts object positions in between physics frames\n" +
-            "based on their velocities.\n\n" +
-            "Interpolate: Uses the last two physics frames to compute the exact positions\n" +
-            "in between. This is more technically correct, but it adds 1-2 frames of input delay.\n\n" +
-            "Off: Disables smoothing entirely. Objects render only at their exact physics positions."
-        );
-    }
 
     public UpdateMode FramerateIncreaseMethod
     {
@@ -717,7 +657,72 @@ public class MotionSmoothingSettings : EverestModuleSettings
             menu,
             "Interval: [Recommended] Has the best compatibility, but restricts the FPS\n" +
             "to multiples of 60.\n" +
-            "Dynamic: Allows any FPS (including below 60), but may rarely break other mods (e.g. TAS Recorder)."
+            "Dynamic: Allows any FPS (including below 60), but may rarely break other mods\n" +
+			"(e.g. TAS Recorder)."
+        );
+    }
+
+
+
+	// The player's own saved value, ignoring any map suggestion currently in force.
+    [SettingIgnore][YamlIgnore] public int UserFrameRate => _frameRate;
+
+    // ReSharper disable once UnusedMember.Global
+    public void CreateFrameRateEntry(TextMenu menu, bool _)
+    {
+        _frameRateMenuItem = new FrameRateTextMenuItem(
+            "Framerate", FrameRateTextMenuItem.MinFrameRate, int.MaxValue, FrameRate);
+
+        _frameRateMenuItem.Change(fps => FrameRate = fps);
+
+        menu.Add(_frameRateMenuItem);
+
+        RefreshMenuItemStates();
+
+        // With the change handler wired and the map lock applied, put the value in step with the
+        // mode: a framerate loaded from the settings file needn't be one Interval mode can produce.
+        _frameRateMenuItem.UpdateMode = FramerateIncreaseMethod;
+    }
+
+
+
+	public SmoothingMode ObjectSmoothing
+    {
+        get => _smoothingMode;
+        set => _smoothingMode = value;
+    }
+
+    public void CreateObjectSmoothingEntry(TextMenu menu, bool inGame)
+    {
+        _objectSmoothingItem = new TextMenu.Slider(
+            "Object Smoothing",
+            index => ((SmoothingMode)index) switch
+            {
+                SmoothingMode.Extrapolate => "Extrapolate",
+                SmoothingMode.Interpolate => "Interpolate",
+                _ => "Off"
+            },
+            0,
+            Enum.GetValues(typeof(SmoothingMode)).Length - 1,
+            (int)_smoothingMode
+        );
+
+        (_objectSmoothingItem as TextMenu.Slider).Change(index =>
+        {
+            ObjectSmoothing = (SmoothingMode)index;
+        });
+
+        menu.Add(_objectSmoothingItem);
+
+        RefreshMenuItemStates();
+
+        _objectSmoothingItem.AddDescription(
+            menu,
+			"How to draw frames in-between physics ones. Only applies when the framerate is above 60.\n\n" +
+            "Extrapolate: [Recommended] Predicts object positions in between physics frames\n" +
+            "based on their velocities.\n\n" +
+            "Interpolate: Uses the last two physics frames to compute the exact positions\n" +
+            "in between. More technically correct, but adds 1-2 frames of input delay."
         );
     }
 

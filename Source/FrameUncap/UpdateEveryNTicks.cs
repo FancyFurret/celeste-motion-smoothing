@@ -32,6 +32,11 @@ public class UpdateEveryNTicks : ToggleableFeature<UpdateEveryNTicks>, IFrameUnc
         // itself counted as elapsed time.
         if (wasEnabled) return;
 
+        // Game.Run starts that clock, and we can be here before it does: Everest deserializes our
+        // settings while the game is still booting, and those setters land on ApplySettings.
+        // Nothing to reset that early -- no frame has been ticked yet.
+        if (_game?.gameTimer == null) return;
+
         _game.previousTicks = _game.gameTimer.Elapsed.Ticks;
         _game.accumulatedElapsedTime = TimeSpan.Zero;
     }
