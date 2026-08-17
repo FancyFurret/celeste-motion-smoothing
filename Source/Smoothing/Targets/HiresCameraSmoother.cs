@@ -1211,6 +1211,22 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 	private static Vector2 _subpixelRenderSpriteOffset;
 	private static Entity _subpixelRenderEntity;
 
+	// How far to shift a sprite to land it on its exact position, given that it was drawn at the
+	// rounded one (SmoothingStateBase.SetSmoothed rounds before writing the position back).
+	//
+	// With Object Smoothing off there's no smoothed position to take the remainder of -- the sprite
+	// sits on its physics position -- but that position still carries a subpixel remainder of its
+	// own (an Actor's movementCounter), and showing it is the whole point of subpixel rendering. So
+	// the target is the real position rather than the smoothed one, which is where it was drawn.
+	private static Vector2 SubpixelOffset(IPositionSmoothingState state)
+	{
+		var target = MotionSmoothingModule.Settings.ObjectSmoothing == SmoothingMode.Off
+			? state.OriginalRealPosition
+			: state.SmoothedRealPosition;
+
+		return target - state.SmoothedRealPosition.Round();
+	}
+
 	// Pre: if this entity should render at a subpixel-precise position, flush everything drawn so
 	// far into the large buffer and start a fresh gameplay buffer, so the upcoming
 	// `callvirt Entity::Render` draws this entity alone. Returns true if it set that up, so the
@@ -1235,7 +1251,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 		if (self is Strawberry strawberry)
 		{
             IPositionSmoothingState state = MotionSmoothingHandler.Instance.GetState(self) as IPositionSmoothingState;
-            offset = state.SmoothedRealPosition - state.SmoothedRealPosition.Round();
+            offset = SubpixelOffset(state);
 
 			// The visual-only bobbing animation of strawberry interacts really badly
 			// with position smoothing, so we just disable it, add the offset into ours,
@@ -1254,7 +1270,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
             IPositionSmoothingState state = MotionSmoothingHandler.Instance.GetState(
                 MotionSmoothingHandler.Instance.Player
             ) as IPositionSmoothingState;
-            offset = state.SmoothedRealPosition - state.SmoothedRealPosition.Round();
+            offset = SubpixelOffset(state);
 
             if (!PlayerSmoother.AllowSubpixelRenderingX)
 			{

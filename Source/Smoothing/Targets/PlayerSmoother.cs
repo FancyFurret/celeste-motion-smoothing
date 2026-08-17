@@ -38,25 +38,20 @@ public static class PlayerSmoother
         };
     }
 
-    // Cold-reset every piece of static state owned by PlayerSmoother. Needed when
-    // ObjectSmoothing is set to Off, because PositionSmoother.Smooth short-circuits
-    // before this class runs, so the oscillation detectors, IsSmoothing*, and
-    // AllowSubpixelRendering* flags would otherwise stay latched at whatever they
-    // held when smoothing was last on — and resurrect those stale values the moment
-    // the user switches back to Extrapolate/Interpolate.
-    public static void ResetStaticState()
+    // Runs everything this class tracks about the player -- the oscillation detectors, IsSmoothing*
+    // and AllowSubpixelRendering* -- without smoothing anything with it. Called on the
+    // ObjectSmoothing Off path, where PositionSmoother.Smooth short-circuits before this class
+    // would normally run.
+    //
+    // Subpixel rendering doesn't depend on smoothing: with smoothing off, Madeline is drawn at her
+    // physics position, which still carries a subpixel remainder (an Actor's movementCounter) worth
+    // showing. It's allowed under exactly the same conditions either way -- including the guards
+    // that keep her subpixel position from being readable while she's standing still. Keeping the
+    // flags current here also stops them latching at whatever they held when smoothing was last on,
+    // which would resurrect stale values the moment it comes back.
+    public static void UpdateSubpixelState(Player player, IPositionSmoothingState state, double elapsed)
     {
-        IsSmoothingX = false;
-        IsSmoothingY = false;
-        AllowSubpixelRenderingX = false;
-        AllowSubpixelRenderingY = false;
-
-        _ignoreSubpixelMotionX = false;
-        _ignoreSubpixelMotionY = false;
-        _xDeltaSignChanges = 0;
-        _yDeltaSignChanges = 0;
-        _prevXDeltaSign = 0;
-        _prevYDeltaSign = 0;
+        GetExtrapolatedPositionAndUpdateIsSmoothing(player, state, elapsed);
     }
 
     private static Vector2 Interpolate(Player player, IPositionSmoothingState state, double elapsed)

@@ -158,7 +158,9 @@ public class MotionSmoothingSettings : EverestModuleSettings
             MapSmoothingSuggestions.IsLocked(MapSmoothingOption.FrameRate));
         SetItemState(_cameraStrategyItem, masterDisabled,
             MapSmoothingSuggestions.IsLocked(MapSmoothingOption.CameraSmoothingMode));
-        SetItemState(_objectSmoothingItem, masterDisabled);
+        // Object Smoothing only means something above 60fps -- below that the getter reports Off
+        // whatever the item says.
+        SetItemState(_objectSmoothingItem, masterDisabled || FrameRate <= PhysicsFrameRate);
         SetItemState(_framerateIncreaseMethodItem, masterDisabled,
             MapSmoothingSuggestions.ForcesDynamicUpdateMode);
         SetItemState(_tasModeItem, masterDisabled);
@@ -569,44 +571,6 @@ public class MotionSmoothingSettings : EverestModuleSettings
 
 
 
-	// A framerate below 60 doesn't survive a restart -- MotionSmoothingModule.Initialize puts it
-    // back to this -- so nobody can leave the game running at 5fps and not work out why.
-    public const int MinPersistedFrameRate = 60;
-
-    public int FrameRate
-    {
-        get
-        {
-            if (MapSmoothingSuggestions.TryGetFrameRate(out var mapFrameRate))
-                return mapFrameRate;
-
-            return _frameRate;
-        }
-        set
-        {
-            // A map is deciding this right now, so nothing else gets to: not the menu (whose
-            // item refuses input), not another mod reaching in through interop. The lock lifts when
-            // the player leaves the map or turns off Use Suggested Map Settings. Nothing is locked
-            // while Everest deserializes the settings at startup, so the saved value still loads.
-            if (MapSmoothingSuggestions.IsLocked(MapSmoothingOption.FrameRate)) return;
-
-            // Always persist the value. This setter also runs during settings
-            // deserialization, which can happen while Enabled is false (e.g. the mod was
-            // saved disabled); returning early there would discard the saved framerate and
-            // revert to the default. Only the live re-apply is gated on Enabled.
-            _frameRate = value;
-
-            if (!Enabled)
-            {
-                return;
-            }
-
-            MotionSmoothingModule.Instance.ApplySettings();
-        }
-    }
-
-
-
     public UpdateMode FramerateIncreaseMethod
     {
         get
@@ -655,14 +619,58 @@ public class MotionSmoothingSettings : EverestModuleSettings
 
         _framerateIncreaseMethodItem.AddDescription(
             menu,
-            "Interval: [Recommended] Has the best compatibility, but restricts the FPS\n" +
+            "Interval [Recommended]: Has the best compatibility, but restricts the FPS\n" +
             "to multiples of 60.\n" +
             "Dynamic: Allows any FPS (including below 60), but may rarely break other mods\n" +
 			"(e.g. TAS Recorder)."
         );
     }
 
+	
 
+	// A framerate below 60 doesn't survive a restart -- MotionSmoothingModule.Initialize puts it
+    // back to this -- so nobody can leave the game running at 5fps and not work out why.
+    public const int MinPersistedFrameRate = 60;
+
+    // The rate physics runs at. At or below it, every draw lands on a physics frame, so there are
+    // no in-between frames for object smoothing to fill. Same number as above, different reason.
+    public const int PhysicsFrameRate = 60;
+
+    public int FrameRate
+    {
+        get
+        {
+            if (MapSmoothingSuggestions.TryGetFrameRate(out var mapFrameRate))
+                return mapFrameRate;
+
+            return _frameRate;
+        }
+        set
+        {
+            // A map is deciding this right now, so nothing else gets to: not the menu (whose
+            // item refuses input), not another mod reaching in through interop. The lock lifts when
+            // the player leaves the map or turns off Use Suggested Map Settings. Nothing is locked
+            // while Everest deserializes the settings at startup, so the saved value still loads.
+            if (MapSmoothingSuggestions.IsLocked(MapSmoothingOption.FrameRate)) return;
+
+            // Always persist the value. This setter also runs during settings
+            // deserialization, which can happen while Enabled is false (e.g. the mod was
+            // saved disabled); returning early there would discard the saved framerate and
+            // revert to the default. Only the live re-apply is gated on Enabled.
+            _frameRate = value;
+
+            // Object Smoothing stops applying at 60 and below, so the item has to gray out as the
+            // framerate crosses that line.
+            RefreshMenuItemStates();
+
+            if (!Enabled)
+            {
+                return;
+            }
+
+            MotionSmoothingModule.Instance.ApplySettings();
+        }
+    }
 
 	// The player's own saved value, ignoring any map suggestion currently in force.
     [SettingIgnore][YamlIgnore] public int UserFrameRate => _frameRate;
@@ -688,9 +696,21 @@ public class MotionSmoothingSettings : EverestModuleSettings
 
 	public SmoothingMode ObjectSmoothing
     {
-        get => _smoothingMode;
+        get
+        {
+            // At 60 and below there are no frames in between physics frames: every draw lands on
+            // one, so there's nothing to smooth into and predicting positions could only move
+            // objects away from where they actually are. Madeline is still drawn at her exact
+            // subpixel position -- that's independent of smoothing, see PositionSmoother.
+            if (FrameRate <= PhysicsFrameRate) return SmoothingMode.Off;
+
+            return _smoothingMode;
+        }
         set => _smoothingMode = value;
     }
+
+    // The player's own saved value, ignoring the framerate it doesn't apply at.
+    [SettingIgnore][YamlIgnore] public SmoothingMode UserObjectSmoothing => _smoothingMode;
 
     public void CreateObjectSmoothingEntry(TextMenu menu, bool inGame)
     {
@@ -718,8 +738,8 @@ public class MotionSmoothingSettings : EverestModuleSettings
 
         _objectSmoothingItem.AddDescription(
             menu,
-			"How to draw frames in-between physics ones. Only applies when the framerate is above 60.\n\n" +
-            "Extrapolate: [Recommended] Predicts object positions in between physics frames\n" +
+			"How to draw frames in between physics ones. Only applies when the framerate is above 60.\n\n" +
+            "Extrapolate [Recommended]: Predicts object positions in between physics frames\n" +
             "based on their velocities.\n\n" +
             "Interpolate: Uses the last two physics frames to compute the exact positions\n" +
             "in between. More technically correct, but adds 1-2 frames of input delay."
@@ -796,11 +816,9 @@ public class MotionSmoothingSettings : EverestModuleSettings
 
         _tasModeItem.AddDescription(
             menu,
-            "*** This does not affect gameplay in levels! ***\n" +
-            "By default, the overworld is updated at the full\n" +
-            "framerate since accuracy there is not as important.\n" +
-            "Turning this on locks the overworld update at 60 FPS\n" +
-            "so that TASes function properly."
+            "This does not affect gameplay in levels! By default, the overworld is updated\n" +
+            "at the full framerate, since accuracy there is not as important. Turning\n" +
+            "this on locks the overworld update at 60 FPS, so that TASes function properly."
         );
     }
 

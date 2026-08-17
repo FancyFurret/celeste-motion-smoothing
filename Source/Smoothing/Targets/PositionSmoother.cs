@@ -19,12 +19,15 @@ public static class PositionSmoother
 
         if (mode == SmoothingMode.Off)
         {
-            // PlayerSmoother is skipped on the Off path, so reset its static oscillation
-            // and IsSmoothing*/AllowSubpixelRendering* flags here — otherwise toggling
-            // ObjectSmoothing back to Extrapolate/Interpolate mid-level resumes with stale
-            // values, suppressing subpixel rendering and per-axis smoothing for a while.
-            if (obj == MotionSmoothingHandler.Instance.Player)
-                PlayerSmoother.ResetStaticState();
+            // Nothing to smooth: without frames in between physics frames, every draw is already
+            // where the object is. Subpixel rendering is a separate matter -- Madeline's physics
+            // position carries a subpixel remainder whether or not anything is being smoothed --
+            // so PlayerSmoother's flags still have to be maintained from here, since it's
+            // otherwise skipped entirely on this path. That also keeps them from going stale and
+            // resurrecting old values the moment smoothing comes back on.
+            if (MotionSmoothingHandler.Instance.Player is { } player && obj == player)
+                PlayerSmoother.UpdateSubpixelState(player, state, elapsedSeconds);
+
             return sillyMode ? state.OriginalRealPosition : state.OriginalDrawPosition;
         }
 
