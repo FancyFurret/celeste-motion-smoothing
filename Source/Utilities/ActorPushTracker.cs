@@ -133,6 +133,9 @@ public class ActorPushTracker : ToggleableFeature<ActorPushTracker>
 
     private static void EngineUpdateHook(On.Monocle.Engine.orig_Update orig, Engine self, GameTime gameTime)
     {
+        MotionSmoothingProfiler.Count(MotionSmoothingProfiler.Phase.UpdatePusherScan);
+        var profileStart = MotionSmoothingProfiler.Start(MotionSmoothingProfiler.Phase.UpdatePusherScan);
+
         foreach (var kv in Instance._pushers)
             kv.Value.Clear();
 
@@ -191,6 +194,8 @@ public class ActorPushTracker : ToggleableFeature<ActorPushTracker>
                 }
             }
         }
+
+        MotionSmoothingProfiler.Stop(MotionSmoothingProfiler.Phase.UpdatePusherScan, profileStart);
 
         orig(self, gameTime);
     }

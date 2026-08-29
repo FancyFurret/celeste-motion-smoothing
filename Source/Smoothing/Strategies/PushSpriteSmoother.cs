@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Reflection;
 using System.Runtime.CompilerServices;
 using Celeste.Mod.MotionSmoothing.Smoothing.States;
 using Celeste.Mod.MotionSmoothing.Utilities;
@@ -146,6 +147,10 @@ public class PushSpriteSmoother : SmoothingStrategy<PushSpriteSmoother>
     {
         base.Unhook();
 
+        // base.Unhook disposes the detours, so the record of which methods carry one has to go too
+        // or a later Enable would skip re-hooking all of them.
+        _hookedRenderMethods.Clear();
+
         IL.Monocle.ComponentList.Render -= ComponentListRenderHook;
         IL.Monocle.EntityList.Render -= EntityListRenderHook;
         IL.Monocle.EntityList.RenderOnly -= EntityListRenderHook;
@@ -162,6 +167,7 @@ public class PushSpriteSmoother : SmoothingStrategy<PushSpriteSmoother>
             ? renderTargetBindings[0].RenderTarget
             : null;
         Instance._currentRenderTargetIsForeign = Instance.ComputeIsForeignTarget();
+        MotionSmoothingProfiler.Count(MotionSmoothingProfiler.Phase.RenderSetRenderTarget);
         orig(self, renderTargetBindings);
     }
 
@@ -220,7 +226,10 @@ public class PushSpriteSmoother : SmoothingStrategy<PushSpriteSmoother>
 
     private static void PreObjectRender(object obj)
     {
+        MotionSmoothingProfiler.Count(MotionSmoothingProfiler.Phase.RenderObjectPush);
+        var profileStart = MotionSmoothingProfiler.Start(MotionSmoothingProfiler.Phase.RenderObjectPush);
         Instance._currentObjects.Push(obj);
+        MotionSmoothingProfiler.Stop(MotionSmoothingProfiler.Phase.RenderObjectPush, profileStart);
     }
 
     private static void PostObjectRender()
@@ -414,9 +423,27 @@ public class PushSpriteSmoother : SmoothingStrategy<PushSpriteSmoother>
         return state.SmoothedRealPosition.Round() - anchor;
     }
 
+    // The render methods already detoured, so the list above can name types freely without any of
+    // them landing on the same method twice. Keyed by runtime handle rather than by MethodInfo:
+    // MethodInfo equality for a non-generic method is reference equality, and GetMethod returns a
+    // *different instance* per reflected type, so a HashSet<MethodInfo> silently fails to match the
+    // very case this exists to catch. The handle identifies the underlying method itself.
+    // Cleared in Unhook alongside the detours themselves.
+    private readonly HashSet<RuntimeMethodHandle> _hookedRenderMethods = new();
+
     private void HookComponentRender<T>() where T : Component
     {
-        AddHook(typeof(T).GetMethod("Render")!, ComponentRenderHook);
+        // GetMethod walks the base chain, so a type that doesn't declare its own Render resolves to
+        // the one it inherits: Sprite has no Render of its own, so typeof(Sprite) and typeof(Image)
+        // both land on Image.Render. Hooking that twice stacked two detours on every image render
+        // in the game -- the outer pushed the component, called orig into the inner, which found
+        // the same component already on top and pushed nothing. Identical behaviour, twice the
+        // dispatch, on the single most-rendered thing in Celeste.
+        var method = typeof(T).GetMethod("Render")!;
+        if (!_hookedRenderMethods.Add(method.MethodHandle))
+            return;
+
+        AddHook(method, ComponentRenderHook);
     }
 
     private void HookEntityRender<T>() where T : Entity
@@ -465,6 +492,11 @@ public class PushSpriteSmoother : SmoothingStrategy<PushSpriteSmoother>
 
     private static void ComponentRenderHook(On.Monocle.Component.orig_Render orig, Component self)
     {
+        MotionSmoothingProfiler.Count(MotionSmoothingProfiler.Phase.RenderComponentHook);
+        var profile_RenderComponentHook = MotionSmoothingProfiler.Start(MotionSmoothingProfiler.Phase.RenderComponentHook);
+        try
+        {
+
         // ComponentList.Render's IL hook has almost always just pushed this very component, and
         // this detour fires immediately inside the call it wrapped. Pushing it a second time costs
         // a stack slot per sprite in the game for no change in what GetSpritePosition sees. The
@@ -485,7 +517,13 @@ public class PushSpriteSmoother : SmoothingStrategy<PushSpriteSmoother>
         {
             PostObjectRender();
         }
-    }
+    
+        }
+        finally
+        {
+            MotionSmoothingProfiler.Stop(MotionSmoothingProfiler.Phase.RenderComponentHook, profile_RenderComponentHook);
+        }
+}
 
     private static void BorderRenderHook(On.Monocle.Entity.orig_Render orig, Entity self)
     {
@@ -515,10 +553,21 @@ public class PushSpriteSmoother : SmoothingStrategy<PushSpriteSmoother>
         float destinationH, Color color, float originX, float originY, float rotationSin, float rotationCos,
         float depth, byte effects)
     {
+        MotionSmoothingProfiler.Count(MotionSmoothingProfiler.Phase.RenderPushSpriteTotal);
+        var totalStart = MotionSmoothingProfiler.Start(MotionSmoothingProfiler.Phase.RenderPushSpriteTotal);
+
+        MotionSmoothingProfiler.Count(MotionSmoothingProfiler.Phase.RenderPushSprite);
+        var profileStart = MotionSmoothingProfiler.Start(MotionSmoothingProfiler.Phase.RenderPushSprite);
+
         var pos = new Vector2(destinationX, destinationY);
         if (Instance.Enabled && !TemporarilyDisablePushSpriteSmoothing)
             pos = Instance.GetSpritePosition(pos);
+
+        MotionSmoothingProfiler.Stop(MotionSmoothingProfiler.Phase.RenderPushSprite, profileStart);
+
         orig(self, texture, sourceX, sourceY, sourceW, sourceH, pos.X, pos.Y, destinationW, destinationH, color,
             originX, originY, rotationSin, rotationCos, depth, effects);
+
+        MotionSmoothingProfiler.Stop(MotionSmoothingProfiler.Phase.RenderPushSpriteTotal, totalStart);
     }
 }

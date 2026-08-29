@@ -89,6 +89,48 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
     // Meanwhile this just contains the four textures we make and nothing else.
     private static HashSet<Texture> _internalLargeTextures = new HashSet<Texture>();
 
+    // One-entry memo over _largeTextures. The set never holds more than a few dozen entries, but
+    // Contains is asked twice for every sprite drawn -- once in the SpriteBatch.Draw hooks and once
+    // in PushSpriteHook -- which in a busy room is tens of thousands of hash probes a frame. For a
+    // gameplay sprite the answer is always "no": the texture is an atlas page, not a buffer, and it
+    // is the same atlas page as the sprite before it. A reference compare answers almost all of
+    // them. Every mutation of the set goes through the helpers below, so the memo cannot go stale.
+    private static Texture _memoizedLargeQuery;
+    private static bool _memoizedLargeResult;
+    private static bool _memoizedLargeValid;
+
+    private static bool IsLargeTexture(Texture texture)
+    {
+        if (_memoizedLargeValid && ReferenceEquals(texture, _memoizedLargeQuery))
+            return _memoizedLargeResult;
+
+        // HashSet.Contains(null) is false, so the null guard keeps this identical to a bare probe.
+        var result = texture != null && _largeTextures.Contains(texture);
+
+        _memoizedLargeQuery = texture;
+        _memoizedLargeResult = result;
+        _memoizedLargeValid = true;
+        return result;
+    }
+
+    private static void AddLargeTexture(Texture texture)
+    {
+        _largeTextures.Add(texture);
+        InvalidateLargeTextureMemo();
+    }
+
+    private static void RemoveLargeTexture(Texture texture)
+    {
+        _largeTextures.Remove(texture);
+        InvalidateLargeTextureMemo();
+    }
+
+    private static void InvalidateLargeTextureMemo()
+    {
+        _memoizedLargeValid = false;
+        _memoizedLargeQuery = null;
+    }
+
 	private static Effect _fxHiresDistort;
 	private static Effect _fxOrigDistort;
 
@@ -152,6 +194,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
         _internalLargeTextures.Clear();
         _largeTextures.Clear();
+        InvalidateLargeTextureMemo();
 
         // PushSpriteSmoother classifies the bound render target once per bind instead of once per
         // sprite; tearing the large buffers down changes that answer with nothing rebinding.
@@ -168,7 +211,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
         foreach (var largeTarget in _largeExternalTextureMap.Values)
         {
             if (largeTarget?.Target != null)
-                _largeTextures.Remove(largeTarget.Target);
+                RemoveLargeTexture(largeTarget.Target);
             largeTarget?.Dispose();
         }
 
@@ -195,6 +238,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
         _internalLargeTextures.Add(renderer.LargeTempBBuffer.Target);
 
         _largeTextures.UnionWith(_internalLargeTextures);
+        InvalidateLargeTextureMemo();
 
 		_needSmallBufferSizeUpdate = true;
 
@@ -763,6 +807,11 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
     // game again.
     private static void BloomRenderer_Apply(On.Celeste.BloomRenderer.orig_Apply orig, BloomRenderer self, VirtualRenderTarget target, Scene scene)
     {
+        MotionSmoothingProfiler.Count(MotionSmoothingProfiler.Phase.RenderBloom);
+        var profile_RenderBloom = MotionSmoothingProfiler.Start(MotionSmoothingProfiler.Phase.RenderBloom);
+        try
+        {
+
 		if (scene is not Level level || HiresRenderer.Instance is not { } renderer)
 		{
 			orig(self, target, scene);
@@ -801,7 +850,13 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
         _enableLargeTempBBuffer = false;
 
 		SmoothCameraPosition(level);
-    }
+    
+        }
+        finally
+        {
+            MotionSmoothingProfiler.Stop(MotionSmoothingProfiler.Phase.RenderBloom, profile_RenderBloom);
+        }
+}
 
 
 
@@ -825,7 +880,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 		// This is a really blunt fix, but for things like Extended Variants that blur at small scales,
 		// they tend to look gross since they blur the sharp pixel boundaries. This just disables them
 		// when the scale is small enough that it wouldn't be noticible at low res anyway.
-		if (_largeTextures.Contains(texture))
+		if (IsLargeTexture(texture))
 		{
 			if (sampleScale < 0.175f)
 			{
@@ -846,7 +901,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 			if (renderer.GaussianBlurTempBuffer.Width != texture.Width
 			    || renderer.GaussianBlurTempBuffer.Height != texture.Height)
 			{
-				_largeTextures.Remove(renderer.GaussianBlurTempBuffer.Target);
+				RemoveLargeTexture(renderer.GaussianBlurTempBuffer.Target);
 
 				renderer.GaussianBlurTempBuffer.Width = texture.Width;
 				renderer.GaussianBlurTempBuffer.Height = texture.Height;
@@ -872,6 +927,11 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
     private static void BackdropRenderer_Render(On.Celeste.BackdropRenderer.orig_Render orig, BackdropRenderer self, Scene scene)
     {
+        MotionSmoothingProfiler.Count(MotionSmoothingProfiler.Phase.RenderBackdrop);
+        var profile_RenderBackdrop = MotionSmoothingProfiler.Start(MotionSmoothingProfiler.Phase.RenderBackdrop);
+        try
+        {
+
         if (
             HiresRenderer.Instance is not { } renderer
             || (
@@ -952,7 +1012,13 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
         Engine.Instance.GraphicsDevice.SetRenderTarget(GameplayBuffers.Level);
 
         _disableFloorFunctions = DisableFloorFunctionsMode.Integer;
-    }
+    
+        }
+        finally
+        {
+            MotionSmoothingProfiler.Stop(MotionSmoothingProfiler.Phase.RenderBackdrop, profile_RenderBackdrop);
+        }
+}
 
 	private static void BackdropRendererRenderHook(ILContext il)
     {
@@ -1104,6 +1170,11 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
     private static void GameplayRenderer_Render(On.Celeste.GameplayRenderer.orig_Render orig, GameplayRenderer self, Scene scene)
     {
+        MotionSmoothingProfiler.Count(MotionSmoothingProfiler.Phase.RenderGameplay);
+        var profile_RenderGameplay = MotionSmoothingProfiler.Start(MotionSmoothingProfiler.Phase.RenderGameplay);
+        try
+        {
+
 		if (
 			HiresRenderer.Instance is not { } renderer
 			|| !MotionSmoothingModule.Settings.RenderMadelineWithSubpixels
@@ -1159,7 +1230,13 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 		}
 
 		_enableLargeGameplayBuffer = true;
-    }
+    
+        }
+        finally
+        {
+            MotionSmoothingProfiler.Stop(MotionSmoothingProfiler.Phase.RenderGameplay, profile_RenderGameplay);
+        }
+}
 
 	private static void EntityListRenderHook(ILContext il)
 	{
@@ -1256,6 +1333,11 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 	// post delegate knows to finish the job.
 	private static bool BeginSubpixelEntityRender(Entity self)
 	{
+        MotionSmoothingProfiler.Count(MotionSmoothingProfiler.Phase.RenderSubpixelIntercept);
+        var profile_RenderSubpixelIntercept = MotionSmoothingProfiler.Start(MotionSmoothingProfiler.Phase.RenderSubpixelIntercept);
+        try
+        {
+
 		if (HiresRenderer.Instance is not { } renderer)
 		{
 			return false;
@@ -1338,7 +1420,13 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
 		// The original callvirt now renders just this entity into the cleared gameplay buffer.
 		return true;
-	}
+	
+        }
+        finally
+        {
+            MotionSmoothingProfiler.Stop(MotionSmoothingProfiler.Phase.RenderSubpixelIntercept, profile_RenderSubpixelIntercept);
+        }
+}
 
 	// Post: copy the lone entity (now sitting in the gameplay buffer) into the large buffer at
 	// its subpixel-precise position, then start another fresh gameplay buffer so the entity-list
@@ -1441,6 +1529,11 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
     private static void Distort_Render(On.Celeste.Distort.orig_Render orig, Texture2D source, Texture2D map, bool hasDistortion)
     {
+        MotionSmoothingProfiler.Count(MotionSmoothingProfiler.Phase.RenderDistort);
+        var profile_RenderDistort = MotionSmoothingProfiler.Start(MotionSmoothingProfiler.Phase.RenderDistort);
+        try
+        {
+
         if (HiresRenderer.Instance is not { } renderer || !_interceptDistortRender)
         {
 			orig(source, map, hasDistortion);
@@ -1528,7 +1621,13 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 		Engine.Instance.GraphicsDevice.SetRenderTargets(renderTargets);
 		orig(source, renderer.LargeTempABuffer, hasDistortion);
         _offsetWhenDrawnTo.Clear();
-    }
+    
+        }
+        finally
+        {
+            MotionSmoothingProfiler.Stop(MotionSmoothingProfiler.Phase.RenderDistort, profile_RenderDistort);
+        }
+}
 
 
 
@@ -1875,7 +1974,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
             {
                 // Large target was disposed, remove stale entry
                 _largeExternalTextureMap.Remove(texture);
-                _largeTextures.Remove(largeRenderTarget?.Target);
+                RemoveLargeTexture(largeRenderTarget?.Target);
             }
         }
 
@@ -1907,8 +2006,10 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
         if (texture == GameplayBuffers.Level.Target)
             return _enableLargeLevelBuffer ? renderer.LargeLevelBuffer : texture;
 
-        // External textures (including hot-created entries for TempA/TempB).
-        if (_largeExternalTextureMap.TryGetValue(texture, out var largeRenderTarget))
+        // External textures (including hot-created entries for TempA/TempB). The Count guard skips
+        // the hash when no external buffer has been hot-created, which is the usual case.
+        if (_largeExternalTextureMap.Count > 0
+            && _largeExternalTextureMap.TryGetValue(texture, out var largeRenderTarget))
         {
             if (largeRenderTarget?.Target != null)
             {
@@ -1918,7 +2019,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
             {
                 // Large target was disposed, remove stale entry
                 _largeExternalTextureMap.Remove(texture);
-                _largeTextures.Remove(largeRenderTarget?.Target);
+                RemoveLargeTexture(largeRenderTarget?.Target);
                 return texture;
             }
         }
@@ -1981,6 +2082,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
     private static void GraphicsDevice_SetRenderTargets(orig_SetRenderTargets orig, GraphicsDevice self, RenderTargetBinding[] renderTargetBindings)
     {
+
         if (HiresRenderer.Instance is not { } renderer)
         {
             orig(self, renderTargetBindings);
@@ -2027,6 +2129,8 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
     private static void TextureCollection_SetItem(orig_TextureCollection_SetItem orig, TextureCollection self, int index, Texture texture)
     {
+        MotionSmoothingProfiler.Count(MotionSmoothingProfiler.Phase.RenderTextureBind);
+
         orig(self, index, GetPotentiallyLargeTexture(texture));
     }
 
@@ -2038,12 +2142,14 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
     private static void SpriteBatch_Begin(orig_SpriteBatch_Begin orig, SpriteBatch self, SpriteSortMode sortMode, BlendState blendState,
         SamplerState samplerState, DepthStencilState depthStencilState, RasterizerState rasterizerState, Effect effect, Matrix transformMatrix)
     {
+        MotionSmoothingProfiler.Count(MotionSmoothingProfiler.Phase.RenderSpriteBatchState);
+
         _lastSpriteBatchBeginParams = (sortMode, blendState, samplerState, depthStencilState, rasterizerState, effect, transformMatrix);
 
         
 
         // If we're drawing to a large target, scale.
-        if (_largeTextures.Contains(_currentRenderTarget))
+        if (IsLargeTexture(_currentRenderTarget))
         {
             transformMatrix = transformMatrix * Matrix.CreateScale(Scale);
 
@@ -2095,7 +2201,12 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
     private static void SpriteBatch_Draw2(Action<SpriteBatch, Texture2D, Vector2, Rectangle?, Color> orig, SpriteBatch self, Texture2D texture, Vector2 position, Rectangle? sourceRectangle, Color color)
     {
-        if (_largeTextures.Contains(texture) && _scaleSourceAndDestinationForLargeTextures)
+        MotionSmoothingProfiler.Count(MotionSmoothingProfiler.Phase.RenderSpriteBatchDraw);
+        var profile_RenderSpriteBatchDraw = MotionSmoothingProfiler.Start(MotionSmoothingProfiler.Phase.RenderSpriteBatchDraw);
+        try
+        {
+
+        if (IsLargeTexture(texture) && _scaleSourceAndDestinationForLargeTextures)
 		{
 			if (
 				sourceRectangle is Rectangle rect
@@ -2107,11 +2218,22 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
         }
 
         orig(self, texture, position, sourceRectangle, color);
-    }
+    
+        }
+        finally
+        {
+            MotionSmoothingProfiler.Stop(MotionSmoothingProfiler.Phase.RenderSpriteBatchDraw, profile_RenderSpriteBatchDraw);
+        }
+}
 
     private static void SpriteBatch_Draw3(Action<SpriteBatch, Texture2D, Vector2, Rectangle?, Color, float, Vector2, float, SpriteEffects, float> orig, SpriteBatch self, Texture2D texture, Vector2 position, Rectangle? sourceRectangle, Color color, float rotation, Vector2 origin, float scale, SpriteEffects effects, float layerDepth)
     {
-        if (_largeTextures.Contains(texture) && _scaleSourceAndDestinationForLargeTextures)
+        MotionSmoothingProfiler.Count(MotionSmoothingProfiler.Phase.RenderSpriteBatchDraw);
+        var profile_RenderSpriteBatchDraw = MotionSmoothingProfiler.Start(MotionSmoothingProfiler.Phase.RenderSpriteBatchDraw);
+        try
+        {
+
+        if (IsLargeTexture(texture) && _scaleSourceAndDestinationForLargeTextures)
 		{
 			origin *= Scale;
 
@@ -2125,11 +2247,22 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
         }
 
         orig(self, texture, position, sourceRectangle, color, rotation, origin, scale, effects, layerDepth);
-    }
+    
+        }
+        finally
+        {
+            MotionSmoothingProfiler.Stop(MotionSmoothingProfiler.Phase.RenderSpriteBatchDraw, profile_RenderSpriteBatchDraw);
+        }
+}
 
     private static void SpriteBatch_Draw4(Action<SpriteBatch, Texture2D, Vector2, Rectangle?, Color, float, Vector2, Vector2, SpriteEffects, float> orig, SpriteBatch self, Texture2D texture, Vector2 position, Rectangle? sourceRectangle, Color color, float rotation, Vector2 origin, Vector2 scale, SpriteEffects effects, float layerDepth)
     {
-        if (_largeTextures.Contains(texture) && _scaleSourceAndDestinationForLargeTextures)
+        MotionSmoothingProfiler.Count(MotionSmoothingProfiler.Phase.RenderSpriteBatchDraw);
+        var profile_RenderSpriteBatchDraw = MotionSmoothingProfiler.Start(MotionSmoothingProfiler.Phase.RenderSpriteBatchDraw);
+        try
+        {
+
+        if (IsLargeTexture(texture) && _scaleSourceAndDestinationForLargeTextures)
 		{
 			origin *= Scale;
 
@@ -2143,11 +2276,22 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
         }
 
         orig(self, texture, position, sourceRectangle, color, rotation, origin, scale, effects, layerDepth);
-    }
+    
+        }
+        finally
+        {
+            MotionSmoothingProfiler.Stop(MotionSmoothingProfiler.Phase.RenderSpriteBatchDraw, profile_RenderSpriteBatchDraw);
+        }
+}
 
     private static void SpriteBatch_Draw6(Action<SpriteBatch, Texture2D, Rectangle, Rectangle?, Color> orig, SpriteBatch self, Texture2D texture, Rectangle destinationRectangle, Rectangle? sourceRectangle, Color color)
     {
-        if (_largeTextures.Contains(texture) && _scaleSourceAndDestinationForLargeTextures)
+        MotionSmoothingProfiler.Count(MotionSmoothingProfiler.Phase.RenderSpriteBatchDraw);
+        var profile_RenderSpriteBatchDraw = MotionSmoothingProfiler.Start(MotionSmoothingProfiler.Phase.RenderSpriteBatchDraw);
+        try
+        {
+
+        if (IsLargeTexture(texture) && _scaleSourceAndDestinationForLargeTextures)
 		{
 			if (
 				sourceRectangle is Rectangle rect
@@ -2159,11 +2303,22 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
         }
 
         orig(self, texture, destinationRectangle, sourceRectangle, color);
-    }
+    
+        }
+        finally
+        {
+            MotionSmoothingProfiler.Stop(MotionSmoothingProfiler.Phase.RenderSpriteBatchDraw, profile_RenderSpriteBatchDraw);
+        }
+}
 
     private static void SpriteBatch_Draw7(Action<SpriteBatch, Texture2D, Rectangle, Rectangle?, Color, float, Vector2, SpriteEffects, float> orig, SpriteBatch self, Texture2D texture, Rectangle destinationRectangle, Rectangle? sourceRectangle, Color color, float rotation, Vector2 origin, SpriteEffects effects, float layerDepth)
     {
-        if (_largeTextures.Contains(texture) && _scaleSourceAndDestinationForLargeTextures)
+        MotionSmoothingProfiler.Count(MotionSmoothingProfiler.Phase.RenderSpriteBatchDraw);
+        var profile_RenderSpriteBatchDraw = MotionSmoothingProfiler.Start(MotionSmoothingProfiler.Phase.RenderSpriteBatchDraw);
+        try
+        {
+
+        if (IsLargeTexture(texture) && _scaleSourceAndDestinationForLargeTextures)
 		{
 			origin *= Scale;
 
@@ -2177,7 +2332,13 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
         }
 
         orig(self, texture, destinationRectangle, sourceRectangle, color, rotation, origin, effects, layerDepth);
-    }
+    
+        }
+        finally
+        {
+            MotionSmoothingProfiler.Stop(MotionSmoothingProfiler.Phase.RenderSpriteBatchDraw, profile_RenderSpriteBatchDraw);
+        }
+}
 
     
 
@@ -2189,13 +2350,15 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
             return new Vector2(x + offset.X * 1, y + offset.Y * 1);
         }
 
-        if (_offsetWhenDrawnTo.Contains(_currentRenderTarget))
+        // Count first: both sets are usually empty, and this runs once per sprite drawn. Contains on
+        // an empty set is always false, so the guard changes nothing but the hashing.
+        if (_offsetWhenDrawnTo.Count > 0 && _offsetWhenDrawnTo.Contains(_currentRenderTarget))
         {
             Vector2 offset = GetCameraOffset();
             return new Vector2(x + offset.X * scale, y + offset.Y * scale);
         }
 
-        if (_inverseOffsetWhenDrawnFrom.Contains(sourceTexture))
+        if (_inverseOffsetWhenDrawnFrom.Count > 0 && _inverseOffsetWhenDrawnFrom.Contains(sourceTexture))
         {
             Vector2 offset = GetCameraOffset();
             return new Vector2(x - offset.X * scale, y - offset.Y * scale);
@@ -2208,6 +2371,11 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
 	private static void PushSpriteHook(orig_PushSprite orig, SpriteBatch self, Texture2D texture, float sourceX, float sourceY, float sourceW, float sourceH, float destinationX, float destinationY, float destinationW, float destinationH, Color color, float originX, float originY, float rotationSin, float rotationCos, float depth, byte effects)
     {
+        MotionSmoothingProfiler.Count(MotionSmoothingProfiler.Phase.RenderHiresPushSprite);
+        var profile_RenderHiresPushSprite = MotionSmoothingProfiler.Start(MotionSmoothingProfiler.Phase.RenderHiresPushSprite);
+        try
+        {
+
         if (texture == null)
 		{
 			orig(self, texture, sourceX, sourceY, sourceW, sourceH, destinationX, destinationY, destinationW, destinationH, color, originX, originY, rotationSin, rotationCos, depth, effects);
@@ -2223,6 +2391,10 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
             texture = largeTexture2D;
         }
 
+        // `texture` is settled from here on, so resolve this once and share it with the branch
+        // below. Both reads are memoized anyway; the local keeps the two in obvious agreement.
+        var textureIsLarge = IsLargeTexture(texture);
+
         // If you're drawing the small version of this texture, no you're not!
         if (changedTexture)
         {
@@ -2237,7 +2409,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 		// We do *not* scale the width and height because we aren't changing the size of the texture!
         else if (
             (_currentRenderTarget == null || _currentlyScaling)
-            && _largeTextures.Contains(texture)
+            && textureIsLarge
             && _scaleSourceAndDestinationForLargeTextures
         ) {
             destinationX *= Scale;
@@ -2248,15 +2420,9 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
         Vector2 offsetDestination = GetCurrentDrawingOffset(texture, destinationX, destinationY, _currentlyScaling ? 1 : Scale);
 
-
-
-        bool sourceAndTargetAreSimilarSize = _currentRenderTarget is Texture2D targetTexture2D
-            && Math.Abs(targetTexture2D.Width - texture.Width) < 8
-			&& Math.Abs(targetTexture2D.Height - texture.Height) < 8;
-
         // We handle scaling when the target is large in the Begin hook, so the only things
         // we're handling here are when the *source* is large.
-		if (_largeTextures.Contains(texture))
+		if (textureIsLarge)
 		{
 			// If we're drawing something large and it's going to be scaled, we need to
             // not do that scaling to avoid drawing at 36x. Similarly, drawing something
@@ -2294,6 +2460,15 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
                 return;
 			}            
 
+            // Computed here rather than at the top of the hook. It is only read a few lines down,
+            // inside this large-source branch, but it used to be evaluated for every sprite in the
+            // game -- a type test and two Math.Abs apiece. Still ahead of HotCreateLargeBuffer, so
+            // it sees the same _currentRenderTarget the original did; targetTexture2D2 *is*
+            // _currentRenderTarget, checked non-null just above.
+            bool sourceAndTargetAreSimilarSize =
+                Math.Abs(targetTexture2D2.Width - texture.Width) < 8
+                && Math.Abs(targetTexture2D2.Height - texture.Height) < 8;
+
             // If we get to this point, then we're drawing something large into something
             // small. Danger! We need to replace that small buffer with a larger one.
             var createdSuccessfully = HotCreateLargeBuffer(targetTexture2D2);
@@ -2325,7 +2500,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
 				if (!hasScaling)
 				{
-					_largeTextures.Add(targetTexture2D2);
+					AddLargeTexture(targetTexture2D2);
 				}
 			}
 			
@@ -2366,7 +2541,13 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
 
         orig(self, texture, sourceX, sourceY, sourceW, sourceH, offsetDestination.X, offsetDestination.Y, destinationW, destinationH, color, originX, originY, rotationSin, rotationCos, depth, effects);
-    }
+    
+        }
+        finally
+        {
+            MotionSmoothingProfiler.Stop(MotionSmoothingProfiler.Phase.RenderHiresPushSprite, profile_RenderHiresPushSprite);
+        }
+}
 
     /// <summary>
     /// When drawing from an _inverseOffsetWhenDrawnFrom texture, the content is shifted right/down,
@@ -2507,7 +2688,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
             Draw.SpriteBatch.End();
 
             _largeExternalTextureMap[smallTexture] = largeTarget;
-            _largeTextures.Add(largeTarget.Target);
+            AddLargeTexture(largeTarget.Target);
 
             Draw.SpriteBatch.Begin(sortMode, blendState, samplerState, depthStencilState, rasterizerState, effect, matrix);
         }
@@ -2522,7 +2703,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
             Draw.SpriteBatch.End();
 
             _largeExternalTextureMap[smallTexture] = largeTarget;
-            _largeTextures.Add(largeTarget.Target);
+            AddLargeTexture(largeTarget.Target);
         }
 
         return true;
@@ -2532,6 +2713,8 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
 	private static void SpriteBatch_End(Action<SpriteBatch> orig, SpriteBatch self)
 	{
+        MotionSmoothingProfiler.Count(MotionSmoothingProfiler.Phase.RenderSpriteBatchState);
+
 		_currentlyScaling = false;
 		orig(self);
 	}
@@ -2552,7 +2735,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
                 // Keep _largeTextures in sync so it doesn't retain references to disposed
                 // textures for the rest of the level (it's only bulk-cleared on level reinit).
-                _largeTextures.Remove(texture2D);
+                RemoveLargeTexture(texture2D);
                 largeRenderTarget?.Dispose();
             }
         }
@@ -2573,7 +2756,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
         var currentRenderTarget = renderTargets[0].RenderTarget;
 
-        if (!_largeTextures.Contains(currentRenderTarget))
+        if (!IsLargeTexture(currentRenderTarget))
         {
             return Matrix.Identity;
         }
@@ -2654,7 +2837,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
         if (
             _currentRenderTarget == null
-            || !_largeTextures.Contains(_currentRenderTarget)
+            || !IsLargeTexture(_currentRenderTarget)
         ) {
             return false;
         }
@@ -2719,6 +2902,11 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
     private static Vector2 FloorHook(orig_Floor orig, Vector2 self)
     {
+        MotionSmoothingProfiler.Count(MotionSmoothingProfiler.Phase.RenderCalcRounding);
+        var profile_RenderCalcRounding = MotionSmoothingProfiler.Start(MotionSmoothingProfiler.Phase.RenderCalcRounding);
+        try
+        {
+
         switch (_disableFloorFunctions)
         {
             case DisableFloorFunctionsMode.Continuous:
@@ -2732,12 +2920,23 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
         }
 
         return orig(self);
-    }
+    
+        }
+        finally
+        {
+            MotionSmoothingProfiler.Stop(MotionSmoothingProfiler.Phase.RenderCalcRounding, profile_RenderCalcRounding);
+        }
+}
 
     private delegate Vector2 orig_Ceiling(Vector2 self);
 
     private static Vector2 CeilingHook(orig_Ceiling orig, Vector2 self)
     {
+        MotionSmoothingProfiler.Count(MotionSmoothingProfiler.Phase.RenderCalcRounding);
+        var profile_RenderCalcRounding = MotionSmoothingProfiler.Start(MotionSmoothingProfiler.Phase.RenderCalcRounding);
+        try
+        {
+
         switch (_disableFloorFunctions)
         {
             case DisableFloorFunctionsMode.Continuous:
@@ -2751,12 +2950,23 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
         }
 
         return orig(self);
-    }
+    
+        }
+        finally
+        {
+            MotionSmoothingProfiler.Stop(MotionSmoothingProfiler.Phase.RenderCalcRounding, profile_RenderCalcRounding);
+        }
+}
 
     private delegate Vector2 orig_Round(Vector2 self);
 
     private static Vector2 RoundHook(orig_Round orig, Vector2 self)
     {
+        MotionSmoothingProfiler.Count(MotionSmoothingProfiler.Phase.RenderCalcRounding);
+        var profile_RenderCalcRounding = MotionSmoothingProfiler.Start(MotionSmoothingProfiler.Phase.RenderCalcRounding);
+        try
+        {
+
         switch (_disableFloorFunctions)
         {
             case DisableFloorFunctionsMode.Continuous:
@@ -2770,7 +2980,13 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
         }
 
         return orig(self);
-    }
+    
+        }
+        finally
+        {
+            MotionSmoothingProfiler.Stop(MotionSmoothingProfiler.Phase.RenderCalcRounding, profile_RenderCalcRounding);
+        }
+}
 
 
 
@@ -3150,6 +3366,6 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 	// quad fills the whole large target instead of a 1/scale corner.
 	public static float GetCurrentRenderTargetScale()
 	{
-		return _largeTextures.Contains(_currentRenderTarget) ? Scale : 1f;
+		return IsLargeTexture(_currentRenderTarget) ? Scale : 1f;
 	}
 }

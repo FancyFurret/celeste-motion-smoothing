@@ -136,8 +136,12 @@ public class MotionSmoothingHandler : ToggleableFeature<MotionSmoothingHandler>
         // if the game is not frozen and if the scene *actually* had a chance to update its positions
         if (Instance.Enabled)
         {
+            MotionSmoothingProfiler.Count(MotionSmoothingProfiler.Phase.UpdatePositions);
+            var profileStart = MotionSmoothingProfiler.Start(MotionSmoothingProfiler.Phase.UpdatePositions);
             Instance.ValueSmoother.UpdatePositions();
             Instance.PushSpriteSmoother.UpdatePositions();
+            MotionSmoothingProfiler.Stop(MotionSmoothingProfiler.Phase.UpdatePositions, profileStart);
+
             Instance._positionsWereUpdated = true;
             Instance._lastTicks = Instance._timer.ElapsedTicks;
             if (!Engine.Scene.Paused && Instance._pauseCounter > 0)
@@ -147,12 +151,22 @@ public class MotionSmoothingHandler : ToggleableFeature<MotionSmoothingHandler>
 
     private static void EngineUpdateHook(On.Monocle.Engine.orig_Update orig, Engine self, GameTime gameTime)
     {
+        MotionSmoothingProfiler.CountUpdate();
+        MotionSmoothingProfiler.Count(MotionSmoothingProfiler.Phase.UpdateTotal);
+        var profileStart = MotionSmoothingProfiler.Start(MotionSmoothingProfiler.Phase.UpdateTotal);
+
         Instance._positionsWereUpdated = false;
         orig(self, gameTime);
+
+        MotionSmoothingProfiler.Stop(MotionSmoothingProfiler.Phase.UpdateTotal, profileStart);
     }
 
     private static void EngineDrawHook(On.Monocle.Engine.orig_Draw orig, Engine self, GameTime gameTime)
     {
+        MotionSmoothingProfiler.BeginFrame();
+        MotionSmoothingProfiler.Count(MotionSmoothingProfiler.Phase.DrawTotal);
+        var frameStart = MotionSmoothingProfiler.Start(MotionSmoothingProfiler.Phase.DrawTotal);
+
         if (Instance.Enabled)
         {
             DeltaTimeFix.UpdateFixedDeltaTimeMultiplier();
@@ -163,7 +177,10 @@ public class MotionSmoothingHandler : ToggleableFeature<MotionSmoothingHandler>
 
             // To keep physics consistent, input is still only updated at 60FPS, but we want to check if there is input
             // during smoothing. So temporarily update the input to the current frame.
+            MotionSmoothingProfiler.Count(MotionSmoothingProfiler.Phase.DrawAtDrawInput);
+            var inputStart = MotionSmoothingProfiler.Start(MotionSmoothingProfiler.Phase.DrawAtDrawInput);
             Instance.AtDrawInputHandler.UpdateInput();
+            MotionSmoothingProfiler.Stop(MotionSmoothingProfiler.Phase.DrawAtDrawInput, inputStart);
 
             // Pause-counter is set from the OnPause event hook (see Hook()) — driven
             // by the actual pause transition, not a speculative draw-time button press
@@ -171,24 +188,38 @@ public class MotionSmoothingHandler : ToggleableFeature<MotionSmoothingHandler>
 
             if (Instance._positionsWereUpdated)
             {
+                MotionSmoothingProfiler.Count(MotionSmoothingProfiler.Phase.DrawSmoothing);
+                var smoothStart = MotionSmoothingProfiler.Start(MotionSmoothingProfiler.Phase.DrawSmoothing);
                 Instance.ValueSmoother.CalculateSmoothedPositions(elapsedSeconds, mode);
                 Instance.PushSpriteSmoother.CalculateSmoothedPositions(elapsedSeconds, mode);
+                MotionSmoothingProfiler.Stop(MotionSmoothingProfiler.Phase.DrawSmoothing, smoothStart);
             }
 
+            MotionSmoothingProfiler.Count(MotionSmoothingProfiler.Phase.DrawPreRender);
+            var preRenderStart = MotionSmoothingProfiler.Start(MotionSmoothingProfiler.Phase.DrawPreRender);
             Instance.ValueSmoother.PreRender();
             Instance.PushSpriteSmoother.PreRender();
+            MotionSmoothingProfiler.Stop(MotionSmoothingProfiler.Phase.DrawPreRender, preRenderStart);
 
             // Reset the input back so that physics is still consistent
             Instance.AtDrawInputHandler.ResetInput();
         }
 
+        MotionSmoothingProfiler.Count(MotionSmoothingProfiler.Phase.DrawOrig);
+        var renderStart = MotionSmoothingProfiler.Start(MotionSmoothingProfiler.Phase.DrawOrig);
         orig(self, gameTime);
+        MotionSmoothingProfiler.Stop(MotionSmoothingProfiler.Phase.DrawOrig, renderStart);
 
         if (Instance.Enabled)
         {
+            MotionSmoothingProfiler.Count(MotionSmoothingProfiler.Phase.DrawPostRender);
+            var postRenderStart = MotionSmoothingProfiler.Start(MotionSmoothingProfiler.Phase.DrawPostRender);
             Instance.ValueSmoother.PostRender();
             Instance.PushSpriteSmoother.PostRender();
+            MotionSmoothingProfiler.Stop(MotionSmoothingProfiler.Phase.DrawPostRender, postRenderStart);
         }
+
+        MotionSmoothingProfiler.Stop(MotionSmoothingProfiler.Phase.DrawTotal, frameStart);
     }
 
     private static void TrackerEntityAddedHook(On.Monocle.Tracker.orig_EntityAdded orig, Tracker self, Entity entity)

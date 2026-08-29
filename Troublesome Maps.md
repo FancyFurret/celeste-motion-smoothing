@@ -2,11 +2,11 @@
 
 Maps and mods to check when messing with details. Check all of these with and without subpixel Madeline and smooth background.
 
-- Strawberry Jam: the Advanced Heart Side.
-	- Color grade masks and bloom masks at the end of flag 18 and the start of flag 17
-	- Bloom glow around level edges at the start of flag 17
-	- Background at the very start, which uses styleground masks.
-    - Spirialis Helper when rendering time stop entities (Lunar Pagoda)
+- Strawberry Jam
+	- AHS: Color grade masks and bloom masks at the end of flag 18 and the start of flag 17
+	- AHS: Bloom glow around level edges at the start of flag 17
+	- AHS: Background at the very start, which uses styleground masks.
+    - Lunar Pagoda: Spirialis Helper when rendering time stop entities
 - CelesteNet when enabled, including specifically with Celeste running at 1920x1080 (window scale 6)
 - DBBHelper when loaded at all, and specifically with binoculars
 - Crossover Collab lobby
