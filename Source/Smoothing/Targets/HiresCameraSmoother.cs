@@ -2903,23 +2903,6 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 		}
 
 
-        
-        Version extendedCameraDynamicsVersion = new Version(1, 1, 2);
-
-		EverestModuleMetadata extendedCameraDynamics = new() {
-			Name = "ExtendedCameraDynamics",
-			Version = extendedCameraDynamicsVersion
-		};
-
-		// Check for exact version so we don't hook anything if the mod updates
-		if (Everest.Loader.TryGetDependency(extendedCameraDynamics, out var extendedCameraDynamicsModule))
-		{
-			if (extendedCameraDynamicsModule.Metadata.Version.Equals(extendedCameraDynamicsVersion))
-			{
-				AddExtendedCameraDynamicsHook();
-			}
-		}
-
 
         Version zoomOutHelperPrototypeVersion = new Version(0, 2, 0);
 
@@ -3088,31 +3071,6 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 	}
 
 
-	[MethodImpl(MethodImplOptions.NoInlining)]
-	private void AddExtendedCameraDynamicsHook()
-	{
-		Type t_CameraZoomHooks = Type.GetType("Celeste.Mod.ExCameraDynamics.Code.Hooks.CameraZoomHooks, ExCameraDynamics");
-		
-		MethodInfo m_ResizeVanillaBuffers = t_CameraZoomHooks?.GetMethod(
-			"ResizeVanillaBuffers",
-			BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic
-		);
-
-		if (m_ResizeVanillaBuffers != null)
-		{
-			AddHook(m_ResizeVanillaBuffers, ResizeVanillaBuffersHook);
-		}
-
-		MethodInfo m_ResizeBufferToZoom = t_CameraZoomHooks?.GetMethod(
-			"ResizeBufferToZoom",
-			BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic
-		);
-
-		if (m_ResizeBufferToZoom != null)
-		{
-			AddHook(m_ResizeBufferToZoom, ResizeBufferToZoomHook);
-		}
-	}
 
 	private delegate void orig_ResizeVanillaBuffers(float zoomTarget);
 	private static void ResizeVanillaBuffersHook(orig_ResizeVanillaBuffers orig, float zoomTarget)
