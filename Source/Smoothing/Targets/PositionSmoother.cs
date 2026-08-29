@@ -15,7 +15,11 @@ public static class PositionSmoother
         // SillyMode: cancellations and subpixel-ignores still snap *back*, but to the
         // unrounded OriginalRealPosition so we don't introduce 1-px grid snaps on a
         // pipeline that's otherwise rendering at 1/6-px under the 6x composite.
-        var sillyMode = MotionSmoothingModule.Settings.SillyMode;
+        //
+        // The same holds, in every mode, for a state whose smoothed value feeds a sub-pixel offset
+        // rather than being drawn at -- the camera. See IPositionSmoothingState.SnapsBackUnrounded.
+        // Resolved once here rather than at each of the six sites below.
+        var snapBackUnrounded = MotionSmoothingModule.Settings.SillyMode || state.SnapsBackUnrounded;
 
         if (mode == SmoothingMode.Off)
         {
@@ -28,23 +32,23 @@ public static class PositionSmoother
             if (MotionSmoothingHandler.Instance.Player is { } player && obj == player)
                 PlayerSmoother.UpdateSubpixelState(player, state, elapsedSeconds);
 
-            return sillyMode ? state.OriginalRealPosition : state.OriginalDrawPosition;
+            return snapBackUnrounded ? state.OriginalRealPosition : state.OriginalDrawPosition;
         }
 
         if (ShouldCancelSmoothing(state, obj))
-            return sillyMode ? state.OriginalRealPosition : state.OriginalDrawPosition;
+            return snapBackUnrounded ? state.OriginalRealPosition : state.OriginalDrawPosition;
 
         var smoothed = GetSmoothedPosition(state, obj, elapsedSeconds, mode);
 
         // If we are changing X direction, cancel X smoothing
         if (DirectionChanged(state.RealPositionHistory[2].X, state.RealPositionHistory[1].X,
                 state.RealPositionHistory[0].X))
-            smoothed.X = sillyMode ? state.OriginalRealPosition.X : state.OriginalDrawPosition.X;
+            smoothed.X = snapBackUnrounded ? state.OriginalRealPosition.X : state.OriginalDrawPosition.X;
 
         // If we are changing Y direction, cancel Y smoothing
         if (DirectionChanged(state.RealPositionHistory[2].Y, state.RealPositionHistory[1].Y,
                 state.RealPositionHistory[0].Y))
-            smoothed.Y = sillyMode ? state.OriginalRealPosition.Y : state.OriginalDrawPosition.Y;
+            smoothed.Y = snapBackUnrounded ? state.OriginalRealPosition.Y : state.OriginalDrawPosition.Y;
 
         // Detect subpixel X oscillation
         if (state.DrawPositionHistory[0].X != state.DrawPositionHistory[1].X)
@@ -87,10 +91,10 @@ public static class PositionSmoother
         }
 
         if (state.IgnoreSubpixelMotionX)
-            smoothed.X = sillyMode ? state.OriginalRealPosition.X : state.OriginalDrawPosition.X;
+            smoothed.X = snapBackUnrounded ? state.OriginalRealPosition.X : state.OriginalDrawPosition.X;
 
         if (state.IgnoreSubpixelMotionY)
-            smoothed.Y = sillyMode ? state.OriginalRealPosition.Y : state.OriginalDrawPosition.Y;
+            smoothed.Y = snapBackUnrounded ? state.OriginalRealPosition.Y : state.OriginalDrawPosition.Y;
 
         return smoothed;
     }

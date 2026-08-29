@@ -138,6 +138,12 @@ public interface IPositionSmoothingState : ISmoothingState
 
     // Called when a StaticMover is attached to or detached from the object.
     public void RefreshStaticMover(object obj);
+
+    // Whether PositionSmoother's snap-backs -- the smoothing cancels and the subpixel-motion
+    // ignores -- should land on the unrounded OriginalRealPosition instead of the rounded
+    // OriginalDrawPosition. True for states whose smoothed value isn't a render position at all.
+    // See PositionSmoothingState.SnapsBackUnrounded.
+    public bool SnapsBackUnrounded { get; }
 }
 
 public abstract class PositionSmoothingState<T> : IPositionSmoothingState
@@ -162,6 +168,19 @@ public abstract class PositionSmoothingState<T> : IPositionSmoothingState
 
     public StaticMover CachedStaticMover { get; private set; }
     public bool MayBeSpinnerFiller { get; private set; }
+
+    // Overridden to true by states whose smoothed position is not somewhere to draw the object but
+    // the source of a sub-pixel offset -- today, the camera, whose fractional part is what
+    // Hires/UnlockedCameraSmoother.GetCameraOffset shifts the whole composite by. Rounding a
+    // snap-back destination is right for anything that lands on the pixel grid anyway; for the
+    // camera it zeroes that fraction and steps the entire scene a full pixel, which is visible on
+    // every direction change (PositionSmoother's DirectionChanged fires on each reversal, and
+    // IgnoreSubpixelMotion latches the moment a small oscillation leaves the rounded position
+    // alone for two ticks). Cancelling the smoothing is still correct there -- only the
+    // destination was wrong.
+    //
+    // Read once per Smooth into a local, so this stays a plain virtual property.
+    public virtual bool SnapsBackUnrounded => false;
 
     // --- Redundant-smooth elision -------------------------------------------------------------
     //

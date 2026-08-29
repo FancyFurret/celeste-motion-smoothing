@@ -121,6 +121,13 @@ public class CameraSmoothingState : PositionSmoothingState<Camera>
     // the next even while the camera sits still. There is exactly one camera.
     protected override bool AllowRedundantSmoothElision => false;
 
+    // The camera's smoothed position is never drawn anywhere; both camera smoothers take its
+    // fractional part as the sub-pixel offset for the whole composite, which is the same reason
+    // the pause snap below is overridden. Rounding a snap-back would zero that offset and jump the
+    // scene a whole pixel. ApplyOffscreenSnap deliberately still rounds -- that one is the
+    // anti-exploit measure, not a rendering detail.
+    public override bool SnapsBackUnrounded => true;
+
     protected override bool CancelSmoothing => CelesteTasInterop.CenterCamera;
     protected override Vector2 GetRealPosition(Camera obj) => obj.Position;
     protected override void SetPosition(Camera obj, Vector2 position) => obj.Position = position;
