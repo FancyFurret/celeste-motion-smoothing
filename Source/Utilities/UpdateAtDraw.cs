@@ -61,10 +61,7 @@ public class UpdateAtDraw : ToggleableFeature<UpdateAtDraw>
 
     private static void EngineDrawHook(On.Monocle.Engine.orig_Draw orig, Engine self, GameTime gameTime)
     {
-        MotionSmoothingProfiler.Count(MotionSmoothingProfiler.Phase.DrawAtDrawUpdates);
-        var profileStart = MotionSmoothingProfiler.Start(MotionSmoothingProfiler.Phase.DrawAtDrawUpdates);
         Instance.Update(Engine.Instance.scene);
-        MotionSmoothingProfiler.Stop(MotionSmoothingProfiler.Phase.DrawAtDrawUpdates, profileStart);
 
         orig(self, gameTime);
     }

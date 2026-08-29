@@ -196,7 +196,19 @@ public abstract class PositionSmoothingState<T> : IPositionSmoothingState
     private SmoothingMode _smoothedMode;
 
     // Overridden to false by states whose Smooth reads something outside the position history.
+    // Snapshotted into _allowElision on first UpdateHistory: every override is a constant, and this
+    // is otherwise a virtual call on every smoothed object on every tick.
     protected virtual bool AllowRedundantSmoothElision => true;
+    private bool _allowElision;
+
+    // Calc.Round is an extension method, and HiresCameraSmoother detours it so that rounding can be
+    // reinterpreted while the level renders at 6x. UpdateHistory runs from Scene.AfterUpdate, never
+    // inside a render pass, so that detour is always in its pass-through mode here -- but it is
+    // still a MonoMod dispatch, once per smoothed object per tick, which in a room holding tens of
+    // thousands of them is over a million a second for nothing. This is Calc.Round's exact body.
+    // Rounding done *during* rendering (GetOffset, SetSmoothed) must keep going through Calc.
+    private static Vector2 RoundOffRenderPath(Vector2 value) =>
+        new((float)Math.Round(value.X), (float)Math.Round(value.Y));
 
     public bool SmoothIsRedundant(SmoothingMode mode) =>
         _tickStable && _smoothedThisTick && _smoothedMode == mode;
@@ -257,15 +269,19 @@ public abstract class PositionSmoothingState<T> : IPositionSmoothingState
 
     public void UpdateHistory(object obj)
     {
+        // Cast once. This runs for every smoothed object on every tick, and the three accessors
+        // below each cast the argument again.
+        var typed = (T)obj;
+
         if (!_initialized)
         {
-            var realPos = GetRealPosition((T)obj);
+            var realPos = GetRealPosition(typed);
             RealPositionHistory[0] = realPos;
             RealPositionHistory[1] = realPos;
             RealPositionHistory[2] = realPos;
             OriginalRealPosition = realPos;
 
-            var drawPos = GetDrawPosition((T)obj).Round();
+            var drawPos = RoundOffRenderPath(GetDrawPosition(typed));
             DrawPositionHistory[0] = drawPos;
             DrawPositionHistory[1] = drawPos;
             DrawPositionHistory[2] = drawPos;
@@ -273,8 +289,10 @@ public abstract class PositionSmoothingState<T> : IPositionSmoothingState
 
             SmoothedRealPosition = realPos;
 
-            if (!GetVisible((T)obj))
+            if (!GetVisible(typed))
                 WasInvisible = true;
+
+            _allowElision = AllowRedundantSmoothElision;
 
             // Resolved here rather than at construction because the state is created from
             // Tracker.EntityAdded, which Monocle raises *before* Entity.Added(scene) -- so the
@@ -295,31 +313,42 @@ public abstract class PositionSmoothingState<T> : IPositionSmoothingState
             return;
         }
 
-        RealPositionHistory[2] = RealPositionHistory[1];
-        RealPositionHistory[1] = RealPositionHistory[0];
-        RealPositionHistory[0] = GetRealPosition((T)obj);
-        OriginalRealPosition = RealPositionHistory[0];
+        // The shifted-out values are kept in locals rather than read back out of the arrays for the
+        // stability test below: the histories are auto-properties over arrays, so each read is a
+        // property call and a bounds check, and there were six of them.
+        var prevReal = RealPositionHistory[0];
+        var prevPrevReal = RealPositionHistory[1];
+        var newReal = GetRealPosition(typed);
 
-        DrawPositionHistory[2] = DrawPositionHistory[1];
-        DrawPositionHistory[1] = DrawPositionHistory[0];
-        DrawPositionHistory[0] = GetDrawPosition((T)obj).Round();
-        OriginalDrawPosition = DrawPositionHistory[0];
+        RealPositionHistory[2] = prevPrevReal;
+        RealPositionHistory[1] = prevReal;
+        RealPositionHistory[0] = newReal;
+        OriginalRealPosition = newReal;
 
-        if (!GetVisible((T)obj))
+        var prevDraw = DrawPositionHistory[0];
+        var prevPrevDraw = DrawPositionHistory[1];
+        var newDraw = RoundOffRenderPath(GetDrawPosition(typed));
+
+        DrawPositionHistory[2] = prevPrevDraw;
+        DrawPositionHistory[1] = prevDraw;
+        DrawPositionHistory[0] = newDraw;
+        OriginalDrawPosition = newDraw;
+
+        if (!GetVisible(typed))
             WasInvisible = true;
 
         // A fresh tick invalidates whatever the last one computed, whether or not anything moved.
         // Cheap tests first: the great majority of objects are ruled in or out by the two bools.
         _smoothedThisTick = false;
-        _tickStable = AllowRedundantSmoothElision
+        _tickStable = _allowElision
                       && !_typeHasCrossObjectDependency
                       // Rides a platform: PositionSmoother follows the platform's offset instead,
                       // which moves while this object's own history sits still.
                       && CachedStaticMover == null
-                      && RealPositionHistory[0] == RealPositionHistory[1]
-                      && RealPositionHistory[1] == RealPositionHistory[2]
-                      && DrawPositionHistory[0] == DrawPositionHistory[1]
-                      && DrawPositionHistory[1] == DrawPositionHistory[2];
+                      && newReal == prevReal
+                      && prevReal == prevPrevReal
+                      && newDraw == prevDraw
+                      && prevDraw == prevPrevDraw;
     }
 
     public void SetSmoothed(object obj) => SetSmoothed((T)obj);
