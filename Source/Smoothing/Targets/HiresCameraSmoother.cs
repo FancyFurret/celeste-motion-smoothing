@@ -1163,7 +1163,23 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 		// is thousands of calls a frame -- each one otherwise re-reading a settings property
 		// (which consults the map-suggestion override) and re-resolving the player weak reference.
 		// Neither can change while the entity list is being walked; nothing updates mid-render.
-		_gameplayRenderSubpixels = MotionSmoothingModule.Settings.RenderMadelineWithSubpixels;
+		//
+		// Subpixel interception also comes off entirely while SpirialisHelper is re-rendering.
+		// It draws the gameplay entities a second time into its own 320x180 layer buffers and
+		// composites those over the finished level, so Madeline exists twice -- and it is
+		// Spirialis' copy you actually see, because that one carries the per-layer colour grade
+		// that keeps her in colour while the world around her goes greyscale. The two copies only
+		// work because they land on exactly the same pixel, with ours hidden underneath.
+		//
+		// Pulling ours out and recompositing it at a fractional offset breaks that: Spirialis'
+		// copy stays on the whole pixel and ours slides out from under it, showing as a greyscale
+		// Madeline alongside the real one. Its layers are 1x and composited 1:1, so its copy has
+		// nowhere to put the same fractional offset -- the only way to make the two agree again is
+		// to drop ours back onto the whole pixel, which is exactly what "Render Madeline with
+		// Subpixels" off already does, for as long as Spirialis is active. Nothing else about the
+		// hires pipeline changes; the camera keeps its own subpixel offset.
+		_gameplayRenderSubpixels = MotionSmoothingModule.Settings.RenderMadelineWithSubpixels
+		                           && !SpirialisWillDuplicateGameplay();
 		_gameplayRenderPlayer = MotionSmoothingHandler.Instance.Player;
 		_gameplayRenderHeldEntity = _gameplayRenderPlayer?.Holding?.Entity;
 
@@ -2944,6 +2960,17 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 	private delegate void orig_DrawTimeStopEntities(object self);
 	private delegate void orig_RenderTimestopEntities(object self);
 
+	// SpirialisHelper's `TimeController.instance.active`, bound reflectively so there's no
+	// compile-time dependency on it. Left null unless SpirialisHelper is loaded and both fields
+	// are still where AddSpirialisHelperHooks expects them; the callers below then behave as if
+	// Spirialis weren't there at all.
+	private static Func<bool> _spirialisIsActive;
+
+	// Whether SpirialisHelper is going to draw the gameplay entities a second time this frame.
+	// RenderTimestopEntities runs from Level.Render *after* the gameplay pass, so this has to be
+	// asked ahead of time rather than latched from the hook below.
+	private static bool SpirialisWillDuplicateGameplay() => _spirialisIsActive?.Invoke() ?? false;
+
 	// noinlining necessary to avoid crashes when the jit attempts inline this method while jitting methods that use this function
 	[MethodImpl(MethodImplOptions.NoInlining)]
 	private void AddSpirialisHelperHooks()
@@ -2967,6 +2994,17 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 		if (m_RenderTimestopEntities != null)
 		{
 			AddHook(m_RenderTimestopEntities, RenderTimestopEntitiesHook);
+		}
+
+		// Both of these are public fields on TimeController, so this is only reflection because we
+		// can't reference the assembly, not because we're reaching into anything private.
+		FieldInfo f_instance = t_TimeController?.GetField("instance", BindingFlags.Static | BindingFlags.Public);
+		FieldInfo f_active = t_TimeController?.GetField("active", BindingFlags.Instance | BindingFlags.Public);
+
+		if (f_instance != null && f_active != null && f_active.FieldType == typeof(bool))
+		{
+			_spirialisIsActive = () =>
+				f_instance.GetValue(null) is { } controller && (bool)f_active.GetValue(controller);
 		}
 	}
 
