@@ -27,10 +27,25 @@ public class CrystalSpinnerFillerTracker : ToggleableFeature<CrystalSpinnerFille
 {
     private readonly ConditionalWeakTable<Entity, CrystalStaticSpinner> _fillerToSpinner = new();
 
+    // Vanilla builds the filler as a plain `new Entity(...)`, which lets PositionSmoother skip the
+    // table probe for anything of a more derived type -- worth doing, since it is otherwise paid
+    // for every smoothed entity on every frame. If a filler that isn't a plain Entity ever turns
+    // up (some mod rewriting AddSprite), this latches and the gate opens back up for everything.
+    public static bool HasNonPlainFillers { get; private set; }
+
     public CrystalStaticSpinner GetSpinnerForFiller(Entity entity)
     {
         if (entity == null) return null;
         return _fillerToSpinner.TryGetValue(entity, out var spinner) ? spinner : null;
+    }
+
+    private void Register(Entity filler, CrystalStaticSpinner spinner)
+    {
+        if (filler.GetType() != typeof(Entity))
+            HasNonPlainFillers = true;
+
+        _fillerToSpinner.Remove(filler);
+        _fillerToSpinner.Add(filler, spinner);
     }
 
     public override void Enable()
@@ -47,10 +62,7 @@ public class CrystalSpinnerFillerTracker : ToggleableFeature<CrystalSpinnerFille
             foreach (CrystalStaticSpinner spinner in level.Tracker.GetEntities<CrystalStaticSpinner>())
             {
                 if (spinner.filler != null)
-                {
-                    _fillerToSpinner.Remove(spinner.filler);
-                    _fillerToSpinner.Add(spinner.filler, spinner);
-                }
+                    Register(spinner.filler, spinner);
             }
         }
     }
@@ -78,9 +90,6 @@ public class CrystalSpinnerFillerTracker : ToggleableFeature<CrystalSpinnerFille
         // keeps us robust if the spinner ever swaps out its filler (e.g. core-mode
         // re-instantiation, which calls ClearSprites / CreateSprites).
         if (self.filler != null)
-        {
-            Instance._fillerToSpinner.Remove(self.filler);
-            Instance._fillerToSpinner.Add(self.filler, self);
-        }
+            Instance.Register(self.filler, self);
     }
 }

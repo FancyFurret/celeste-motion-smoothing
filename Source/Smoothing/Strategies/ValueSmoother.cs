@@ -11,16 +11,24 @@ public class ValueSmoother : SmoothingStrategy<ValueSmoother>
 
     public void SetPositions()
     {
-        foreach (var (obj, state) in States())
+        var states = States();
+        for (var i = 0; i < states.Count; i++)
+        {
+            var (obj, state) = states[i];
             if (!NoInterpolate.IsDisabled(obj))
                 state.SetSmoothed(obj);
+        }
     }
 
     public void ResetPositions()
     {
-        foreach (var (obj, state) in States())
+        var states = States();
+        for (var i = 0; i < states.Count; i++)
+        {
+            var (obj, state) = states[i];
             if (!NoInterpolate.IsDisabled(obj))
                 state.SetOriginal(obj);
+        }
     }
 
     public override void PreRender()

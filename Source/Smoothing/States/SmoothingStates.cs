@@ -55,6 +55,11 @@ public class EyeballsSmoothingState : PositionSmoothingState<DustGraphic.Eyeball
 
 public class ComponentSmoothingState : PositionSmoothingState<GraphicsComponent>
 {
+    // GetRealPosition below reads the player's live state for a Booster's components, and
+    // PositionSmoother has a carve-out that reads the Booster's dash/respawn state, so this one is
+    // never safe to leave at last tick's value. There are only ever a handful of them.
+    protected override bool AllowRedundantSmoothElision => false;
+
     protected override Vector2 GetRealPosition(GraphicsComponent obj)
     {
         if (obj.Entity is Booster booster)
@@ -110,6 +115,11 @@ public class CameraSmoothingState : PositionSmoothingState<Camera>
     private Vector2 _lastSmoothedBeforePause;
     private bool _hasLastSmoothedBeforePause;
     private UnlockCameraStrategy _lastSmoothedStrategy;
+
+    // Smooth is overridden below to read the camera-smoothing strategy and Madeline's position on
+    // top of the position history, so it can produce a different answer from one drawn frame to
+    // the next even while the camera sits still. There is exactly one camera.
+    protected override bool AllowRedundantSmoothElision => false;
 
     protected override bool CancelSmoothing => CelesteTasInterop.CenterCamera;
     protected override Vector2 GetRealPosition(Camera obj) => obj.Position;

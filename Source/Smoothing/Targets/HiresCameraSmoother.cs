@@ -152,6 +152,10 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
         _internalLargeTextures.Clear();
         _largeTextures.Clear();
+
+        // PushSpriteSmoother classifies the bound render target once per bind instead of once per
+        // sprite; tearing the large buffers down changes that answer with nothing rebinding.
+        Strategies.PushSpriteSmoother.Instance?.InvalidateRenderTargetClassification();
 	}
 
 	public static void DestroyExternalLargeTextures()
@@ -193,6 +197,9 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
         _largeTextures.UnionWith(_internalLargeTextures);
 
 		_needSmallBufferSizeUpdate = true;
+
+        // See the note in DestroyLargeTextures.
+        Strategies.PushSpriteSmoother.Instance?.InvalidateRenderTargetClassification();
 	}
 
 
@@ -1118,9 +1125,21 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
 		Engine.Instance.GraphicsDevice.SetRenderTarget(GameplayBuffers.Gameplay);
 		
+		// Captured once for the whole pass instead of per entity: ShouldInterceptEntityRender runs
+		// for every entity the gameplay list renders, and in a room full of crystal spinners that
+		// is thousands of calls a frame -- each one otherwise re-reading a settings property
+		// (which consults the map-suggestion override) and re-resolving the player weak reference.
+		// Neither can change while the entity list is being walked; nothing updates mid-render.
+		_gameplayRenderSubpixels = MotionSmoothingModule.Settings.RenderMadelineWithSubpixels;
+		_gameplayRenderPlayer = MotionSmoothingHandler.Instance.Player;
+		_gameplayRenderHeldEntity = _gameplayRenderPlayer?.Holding?.Entity;
+
 		_currentlyRenderingGameplay = true;
 		orig(self, scene);
 		_currentlyRenderingGameplay = false;
+
+		_gameplayRenderPlayer = null;
+		_gameplayRenderHeldEntity = null;
 
 		// Draw the topmost things that are left (we got the others in Player.Render)
 		Engine.Instance.GraphicsDevice.SetRenderTarget(renderer.LargeGameplayBuffer);
@@ -1175,19 +1194,23 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 		cursor.EmitDelegate<Action<bool>>(EndSubpixelEntityRender);
 	}
 
+	// Snapshot of everything ShouldInterceptEntityRender needs that is constant across one
+	// gameplay render pass; set in GameplayRenderer_Render.
+	private static bool _gameplayRenderSubpixels;
+	private static Player _gameplayRenderPlayer;
+	private static Entity _gameplayRenderHeldEntity;
+
 	private static bool ShouldInterceptEntityRender(Entity self)
 	{
-		if (
-			!_currentlyRenderingGameplay
-			|| !MotionSmoothingModule.Settings.RenderMadelineWithSubpixels
-		) {
+		if (!_currentlyRenderingGameplay || !_gameplayRenderSubpixels)
+		{
 			return false;
 		}
 
-		var player = MotionSmoothingHandler.Instance.Player;
+		var player = _gameplayRenderPlayer;
 
 		bool isCandidate = self == player
-			|| player?.Holding?.Entity == self // A currently-held holdable
+			|| (_gameplayRenderHeldEntity != null && _gameplayRenderHeldEntity == self) // A currently-held holdable
 			|| self is Strawberry { Golden: true } strawberry && strawberry.Follower.Leader != null // A golden attacked to the player
 			|| (Strategies.PushSpriteSmoother.Instance?.IsTiedToPlayer(self) ?? false); // A standalone entity tied to the player via interop (e.g. extra-jump dots)
 		if (!isCandidate)

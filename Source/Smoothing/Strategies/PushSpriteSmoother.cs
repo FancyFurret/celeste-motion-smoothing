@@ -28,6 +28,7 @@ public class PushSpriteSmoother : SmoothingStrategy<PushSpriteSmoother>
     private readonly Stack<object> _currentObjects = new();
 
     private Texture _currentRenderTarget;
+    private bool _currentRenderTargetIsForeign;
 
     // Components and entities whose rendering should follow Madeline's smoothed position — a hat
     // component parented to her, or a standalone entity like the extra-jump dots. Registered
@@ -41,6 +42,18 @@ public class PushSpriteSmoother : SmoothingStrategy<PushSpriteSmoother>
     public void SmoothObject(object obj, IPositionSmoothingState state)
     {
         base.SmoothObject(obj, state);
+    }
+
+    public override void PreRender()
+    {
+        base.PreRender();
+        ClearOffsetMemo();
+    }
+
+    public override void PostRender()
+    {
+        ClearOffsetMemo();
+        base.PostRender();
     }
 
     // Idempotent: an object can be tied once and forgotten. The owning mod never has to pass
@@ -148,7 +161,16 @@ public class PushSpriteSmoother : SmoothingStrategy<PushSpriteSmoother>
         Instance._currentRenderTarget = renderTargetBindings is { Length: > 0 }
             ? renderTargetBindings[0].RenderTarget
             : null;
+        Instance._currentRenderTargetIsForeign = Instance.ComputeIsForeignTarget();
         orig(self, renderTargetBindings);
+    }
+
+    // The classification below is a fixed function of the bound target and the current buffer set,
+    // so it is worked out once per bind rather than once per sprite. HiresCameraSmoother calls this
+    // when it creates or tears down the large buffers, which changes the answer without any rebind.
+    public void InvalidateRenderTargetClassification()
+    {
+        _currentRenderTargetIsForeign = ComputeIsForeignTarget();
     }
 
     // True when the current render target isn't one of the gameplay/level buffers — i.e. an
@@ -166,8 +188,15 @@ public class PushSpriteSmoother : SmoothingStrategy<PushSpriteSmoother>
     {
         // SpirialisHelper's timestop layers are foreign targets that nonetheless get composited
         // 1:1, so HiresCameraSmoother opts them into smoothing for the duration of that re-render.
+        // Checked live rather than baked into the cached classification, because it is toggled
+        // around a re-render without rebinding anything.
         if (TreatForeignTargetAsGameplay) return false;
 
+        return _currentRenderTargetIsForeign;
+    }
+
+    private bool ComputeIsForeignTarget()
+    {
         var target = _currentRenderTarget;
         if (target == null) return false; // backbuffer/screen — not a scratch target
 
@@ -218,13 +247,69 @@ public class PushSpriteSmoother : SmoothingStrategy<PushSpriteSmoother>
 
         position += obj switch
         {
-            GraphicsComponent graphicsComponent => GetOffset(graphicsComponent) + GetOffset(graphicsComponent.Entity),
+            // HasComponentStates: a component only carries a state of its own in narrow cases
+            // (today, a Booster's graphics). With none registered the probe cannot find anything,
+            // so skip it rather than pay a weak-table lookup on every sprite in the room.
+            GraphicsComponent graphicsComponent =>
+                (HasComponentStates ? GetComponentOffset(graphicsComponent) : Vector2.Zero)
+                + GetOwnerOffset(graphicsComponent.Entity),
             PlayerHair hair => GetHairOffset(hair),
-            Component component => GetOffset(component.Entity),
-            _ => GetOffset(obj)
+            Component component => GetOwnerOffset(component.Entity),
+            _ => GetOwnerOffset(obj)
         };
 
         return position;
+    }
+
+    // --- Offset memo ---------------------------------------------------------------------------
+    //
+    // GetOffset's answer is a pure function of the object's smoothing state, and every field it
+    // reads is settled before rendering starts (CalculateSmoothedPositions runs ahead of
+    // Engine.Draw's orig, and nothing smooths again during it). So an offset is constant for the
+    // whole frame, and the same object gets asked for it over and over: a TileGrid pushes a sprite
+    // per visible tile, all resolving to the same SolidTiles entity; a crystal spinner's filler
+    // draws one sprite per neighbour, all resolving to the same filler entity; and
+    // CrystalStaticSpinner.Border re-renders each of a spinner's images four times over. Without
+    // the memo that is a weak-table probe apiece -- a hash of the reference and a DependentHandle
+    // resolved through the GC -- and a room whose spinners have all been scrolled into view keeps
+    // drawing thousands of those sprites every frame, on and off camera alike, forever.
+    //
+    // Two dedicated slots rather than one shared pair, so the component lookup and the owning
+    // entity lookup can't evict each other as rendering alternates between them.
+    private object _componentOffsetKey;
+    private Vector2 _componentOffsetValue;
+    private object _ownerOffsetKey;
+    private Vector2 _ownerOffsetValue;
+
+    private Vector2 GetComponentOffset(GraphicsComponent component)
+    {
+        if (ReferenceEquals(component, _componentOffsetKey))
+            return _componentOffsetValue;
+
+        var offset = GetOffset(component);
+        _componentOffsetKey = component;
+        _componentOffsetValue = offset;
+        return offset;
+    }
+
+    private Vector2 GetOwnerOffset(object obj)
+    {
+        if (obj == null) return Vector2.Zero;
+        if (ReferenceEquals(obj, _ownerOffsetKey))
+            return _ownerOffsetValue;
+
+        var offset = GetOffset(obj);
+        _ownerOffsetKey = obj;
+        _ownerOffsetValue = offset;
+        return offset;
+    }
+
+    // Cleared around the frame rather than trusted across one: cheap insurance, and it drops the
+    // references so a removed entity isn't pinned by the memo.
+    private void ClearOffsetMemo()
+    {
+        _componentOffsetKey = null;
+        _ownerOffsetKey = null;
     }
 
     // The offset a player-tied attachment needs to stay glued to Madeline. Both kinds of tie are
@@ -380,6 +465,17 @@ public class PushSpriteSmoother : SmoothingStrategy<PushSpriteSmoother>
 
     private static void ComponentRenderHook(On.Monocle.Component.orig_Render orig, Component self)
     {
+        // ComponentList.Render's IL hook has almost always just pushed this very component, and
+        // this detour fires immediately inside the call it wrapped. Pushing it a second time costs
+        // a stack slot per sprite in the game for no change in what GetSpritePosition sees. The
+        // push still happens for the case these detours exist to catch -- a Render() called
+        // directly, outside a ComponentList (CrystalStaticSpinner.Border does exactly that).
+        if (Instance._currentObjects.Count > 0 && ReferenceEquals(Instance._currentObjects.Peek(), self))
+        {
+            orig(self);
+            return;
+        }
+
         PreObjectRender(self);
         try
         {

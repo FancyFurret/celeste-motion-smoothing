@@ -210,6 +210,8 @@ public class MotionSmoothingHandler : ToggleableFeature<MotionSmoothingHandler>
         orig(self, component);
         if (component is GraphicsComponent graphicsComponent)
             Instance.SmoothComponent(graphicsComponent);
+        if (component is StaticMover)
+            Instance.RefreshStaticMover(component.Entity);
     }
 
     private static void TrackerComponentRemovedHook(On.Monocle.Tracker.orig_ComponentRemoved orig, Tracker self,
@@ -217,6 +219,23 @@ public class MotionSmoothingHandler : ToggleableFeature<MotionSmoothingHandler>
     {
         orig(self, component);
         Instance.StopSmoothingObject(component);
+        if (component is StaticMover)
+            Instance.RefreshStaticMover(component.Entity);
+    }
+
+    // Keeps the StaticMover a position state caches in step with the entity's actual components.
+    // PositionSmoother needs to know whether an object rides a platform on every frame, and
+    // resolving that through Entity.Get<StaticMover>() meant walking the entity's whole
+    // ComponentList each time; these two hooks are the only way the answer can ever change.
+    private void RefreshStaticMover(Entity entity)
+    {
+        if (entity == null) return;
+
+        if (PushSpriteSmoother.GetState(entity) is IPositionSmoothingState pushState)
+            pushState.RefreshStaticMover(entity);
+
+        if (ValueSmoother.GetState(entity) is IPositionSmoothingState valueState)
+            valueState.RefreshStaticMover(entity);
     }
 
     private static void LevelCtorHook(On.Celeste.Level.orig_ctor orig, Level self)
@@ -247,10 +266,14 @@ public class MotionSmoothingHandler : ToggleableFeature<MotionSmoothingHandler>
 
     public void SmoothAllObjects()
     {
-        if (Engine.Scene is not Level level) return;
-
+        // Cleared before the Level check, not after: the states are keyed to the scene we are
+        // leaving, and holding them through a LevelLoader/LevelExit means a whole room's worth of
+        // dead entities stay on the per-frame smoothing walk (and stay alive) until the next
+        // level actually begins.
         ValueSmoother.ClearStates();
         PushSpriteSmoother.ClearStates();
+
+        if (Engine.Scene is not Level level) return;
 
         foreach (var entity in level.Entities)
         {

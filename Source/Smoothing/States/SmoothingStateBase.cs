@@ -13,6 +13,12 @@ public interface ISmoothingState
     public void SetSmoothed(object obj);
     public void SetOriginal(object obj);
     public void Smooth(object obj, double elapsedSeconds, SmoothingMode mode);
+
+    // Whether calling Smooth again right now would provably reproduce the value it already holds,
+    // so the caller can skip it. Only ever true *after* a Smooth for the current update tick has
+    // already run; the first drawn frame after every tick always recomputes. See
+    // PositionSmoothingState for the conditions.
+    public bool SmoothIsRedundant(SmoothingMode mode);
 }
 
 public interface ISmoothingState<T> : ISmoothingState
@@ -90,6 +96,10 @@ public abstract class SmoothingState<TObject, TValue> : ISmoothingState<TValue>
         else
             Smoothed = SmoothValue((TObject)obj, elapsedSeconds, mode);
     }
+
+    // There are only ever a handful of these (the camera zoom, a zip mover's percent, a screen
+    // wipe), so there is nothing to gain from working out whether they could be skipped.
+    public bool SmoothIsRedundant(SmoothingMode mode) => false;
 }
 
 // Positions get a fancier state object in order to deal with visibility, and draw vs exact positions
@@ -114,6 +124,20 @@ public interface IPositionSmoothingState : ISmoothingState
     public int PrevXDeltaSign { get; set; }
     public int YDeltaSignChanges { get; set; }
     public int PrevYDeltaSign { get; set; }
+
+    // The object's StaticMover, if it has one, resolved once and then kept in step by
+    // MotionSmoothingHandler's Tracker.ComponentAdded/ComponentRemoved hooks. PositionSmoother
+    // consults it on every smoothed object; doing so through Entity.Get<StaticMover>() meant a
+    // linear scan of the object's whole ComponentList, per object, per drawn frame.
+    public StaticMover CachedStaticMover { get; }
+
+    // Whether this object could be the private filler Entity a CrystalStaticSpinner adds to the
+    // scene -- see CrystalSpinnerFillerTracker. Vanilla builds it as a plain `new Entity(...)`, so
+    // anything of a more derived type can skip the filler lookup entirely.
+    public bool MayBeSpinnerFiller { get; }
+
+    // Called when a StaticMover is attached to or detached from the object.
+    public void RefreshStaticMover(object obj);
 }
 
 public abstract class PositionSmoothingState<T> : IPositionSmoothingState
@@ -135,6 +159,58 @@ public abstract class PositionSmoothingState<T> : IPositionSmoothingState
     public int PrevXDeltaSign { get; set; }
     public int YDeltaSignChanges { get; set; }
     public int PrevYDeltaSign { get; set; }
+
+    public StaticMover CachedStaticMover { get; private set; }
+    public bool MayBeSpinnerFiller { get; private set; }
+
+    // --- Redundant-smooth elision -------------------------------------------------------------
+    //
+    // Smooth() is called on every smoothed object once per *drawn* frame, but everything it reads
+    // only advances once per *update tick*: the two position histories, the pause state, and the
+    // smoothing mode (settings are only ever changed from an entity's Update). The single input
+    // that varies between the draws of one tick is elapsedSeconds -- and for an object whose
+    // history has not moved, elapsedSeconds cancels out of every path:
+    //
+    //   * Interpolate lerps between two equal endpoints,
+    //   * Extrapolate finds a zero delta and returns the current position unchanged,
+    //   * every cancel/snap path (ShouldCancelSmoothing, the direction-change checks, the
+    //     subpixel-oscillation ignores) returns a history value, and
+    //   * the oscillation detector's own bookkeeping sees a zero delta, so it makes no change to
+    //     its counters either -- there are no side effects to lose.
+    //
+    // So the second and later Smooth calls within a tick recompute a value they already have. In a
+    // room full of crystal spinners that is thousands of objects' worth of arithmetic per frame,
+    // for nothing. _tickStable records that the above holds; _smoothedThisTick records that the
+    // one call that does the work has already happened.
+    //
+    // Objects whose smoothed position is derived from *another* object's are excluded outright
+    // (a StaticMover's platform, a spinner filler's spinner, an Actor's pusher): theirs can change
+    // while their own history sits still, which is the entire reason those branches exist in
+    // PositionSmoother. Everything else the elision has to hold across -- the pause state, the
+    // smoothing mode, SillyMode -- can only change from an entity's Update, i.e. at a tick
+    // boundary, where UpdateHistory clears the flag again. (A settings change also runs
+    // ApplySettings, which rebuilds every state from scratch; the recorded mode is belt and
+    // braces for a framerate change flipping ObjectSmoothing without going through it.)
+    private bool _tickStable;
+    private bool _smoothedThisTick;
+    private SmoothingMode _smoothedMode;
+
+    // Overridden to false by states whose Smooth reads something outside the position history.
+    protected virtual bool AllowRedundantSmoothElision => true;
+
+    public bool SmoothIsRedundant(SmoothingMode mode) =>
+        _tickStable && _smoothedThisTick && _smoothedMode == mode;
+
+    // The part of the cross-object test that is decided by the object's type, worked out once
+    // rather than on every tick: whether the object is an Actor (pusher offsets, plus the player
+    // and held-holdable paths), a spinner filler (forwards its spinner's smoothed position), or a
+    // Booster's sprite (the carve-out that reads the booster's live dash/respawn state).
+    private bool _typeHasCrossObjectDependency;
+
+    public void RefreshStaticMover(object obj)
+    {
+        CachedStaticMover = obj is Entity entity ? entity.Get<StaticMover>() : null;
+    }
 
     public bool GetVisible(object obj) => GetVisible((T)obj);
 
@@ -200,7 +276,22 @@ public abstract class PositionSmoothingState<T> : IPositionSmoothingState
             if (!GetVisible((T)obj))
                 WasInvisible = true;
 
+            // Resolved here rather than at construction because the state is created from
+            // Tracker.EntityAdded, which Monocle raises *before* Entity.Added(scene) -- so the
+            // entity's components have not attached to the scene yet at that point. By the first
+            // AfterUpdate they have, and every later attach/detach comes through
+            // MotionSmoothingHandler's component hooks.
+            RefreshStaticMover(obj);
+
+            // Fixed for the object's lifetime.
+            MayBeSpinnerFiller = obj.GetType() == typeof(Entity);
+            _typeHasCrossObjectDependency = MayBeSpinnerFiller
+                                            || obj is Actor
+                                            || obj is Sprite { Entity: Booster };
+
             _initialized = true;
+            _tickStable = false;
+            _smoothedThisTick = false;
             return;
         }
 
@@ -216,6 +307,19 @@ public abstract class PositionSmoothingState<T> : IPositionSmoothingState
 
         if (!GetVisible((T)obj))
             WasInvisible = true;
+
+        // A fresh tick invalidates whatever the last one computed, whether or not anything moved.
+        // Cheap tests first: the great majority of objects are ruled in or out by the two bools.
+        _smoothedThisTick = false;
+        _tickStable = AllowRedundantSmoothElision
+                      && !_typeHasCrossObjectDependency
+                      // Rides a platform: PositionSmoother follows the platform's offset instead,
+                      // which moves while this object's own history sits still.
+                      && CachedStaticMover == null
+                      && RealPositionHistory[0] == RealPositionHistory[1]
+                      && RealPositionHistory[1] == RealPositionHistory[2]
+                      && DrawPositionHistory[0] == DrawPositionHistory[1]
+                      && DrawPositionHistory[1] == DrawPositionHistory[2];
     }
 
     public void SetSmoothed(object obj) => SetSmoothed((T)obj);
@@ -224,6 +328,9 @@ public abstract class PositionSmoothingState<T> : IPositionSmoothingState
     public void Smooth(object obj, double elapsedSeconds, SmoothingMode mode)
     {
         Smooth((T)obj, elapsedSeconds, mode);
+
+        _smoothedThisTick = true;
+        _smoothedMode = mode;
     }
 
     public Vector2 GetLastDrawPosition(SmoothingMode mode)

@@ -143,7 +143,14 @@ public static class PositionSmoother
             // filler renders at old+offset → 1-px misalignment, visible as jitter.
             //
             // Forwarding spinner.SmoothedRealPosition sidesteps that entirely.
-            if (CrystalSpinnerFillerTracker.Instance != null)
+            //
+            // The lookup itself is gated on the state's MayBeSpinnerFiller: vanilla's filler is a
+            // plain `new Entity(...)`, so anything of a more derived type cannot be one and can
+            // skip the table probe. CrystalSpinnerFillerTracker watches for the (never observed,
+            // but cheap to guard) case of a filler that isn't a plain Entity and turns the gate
+            // off if it ever sees one.
+            if (CrystalSpinnerFillerTracker.Instance != null
+                && (state.MayBeSpinnerFiller || CrystalSpinnerFillerTracker.HasNonPlainFillers))
             {
                 var spinner = CrystalSpinnerFillerTracker.Instance.GetSpinnerForFiller(entity);
                 if (spinner != null
@@ -153,14 +160,23 @@ public static class PositionSmoother
                     // unchanged history, and the oscillation-detector mutations are
                     // double-call-safe (sign matches PrevSign on the second call).
                     // Needed because CalculateSmoothedPositions iterates states in
-                    // ConditionalWeakTable order, which is undefined; the filler may
-                    // be smoothed before its spinner.
-                    spinnerState.Smooth(spinner, elapsedSeconds, mode);
+                    // an order that doesn't follow the scene; the filler may be
+                    // smoothed before its spinner.
+                    //
+                    // Skipped when the spinner's own value is already settled for this tick, which
+                    // is the common case: a room's spinners are overwhelmingly stationary, and
+                    // without this every filler drags its spinner through a second full smoothing
+                    // pass on every drawn frame.
+                    if (!spinnerState.SmoothIsRedundant(mode))
+                        spinnerState.Smooth(spinner, elapsedSeconds, mode);
+
                     return spinnerState.SmoothedRealPosition;
                 }
             }
 
-            var mover = entity.Get<StaticMover>();
+            // Cached rather than Entity.Get<StaticMover>()'d: that is a linear scan of the
+            // entity's ComponentList, and this runs for every smoothed object on every frame.
+            var mover = state.CachedStaticMover;
             if (mover is { Platform: not null })
             {
                 var moverState = MotionSmoothingHandler.Instance.GetState(mover.Platform);
