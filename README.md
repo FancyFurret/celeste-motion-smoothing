@@ -2,7 +2,7 @@
 
 [Download Motion Smoothing on GameBanana!](https://gamebanana.com/mods/514173)
 
-[Watch the demo video](https://www.youtube.com/watch?v=VOn4d2gQaKg)
+[Watch the demo video!](https://www.youtube.com/watch?v=VOn4d2gQaKg)
 
 A mod for Celeste that greatly improves the smoothness of the camera and Madeline, and also can raise the FPS above 60 without breaking physics. **You do not need a high refresh monitor to get most of the benefit of Motion Smoothing!** The higher fps options work by keeping the physics update at a fixed 60 FPS and smoothing the entity/camera/etc positions during render at 120+ FPS. Motion Smoothing should work with most modded maps, but please read the following for more on compatibility.
 
