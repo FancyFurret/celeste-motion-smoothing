@@ -45,9 +45,6 @@ public class PushSpriteSmoother : SmoothingStrategy<PushSpriteSmoother>
         base.SmoothObject(obj, state);
     }
 
-    // This table holds every entity in the room, so it is the one that benefits from dropping the
-    // ones that are off camera. See OffscreenCulling.
-    protected override bool CullsOffscreenObjects => true;
 
     public override void PreRender()
     {
@@ -354,9 +351,7 @@ public class PushSpriteSmoother : SmoothingStrategy<PushSpriteSmoother>
         var playerState = (hair.Entity is Player
             ? MotionSmoothingHandler.Instance.PlayerState
             : GetState(hair.Entity)) as IPositionSmoothingState;
-        // IsCulled: the non-player branch can land on an entity whose history stopped being
-        // maintained off camera, and there would be no smoothed position to take an offset from.
-        if (playerState is null or { IsCulled: true }) return Vector2.Zero;
+        if (playerState == null) return Vector2.Zero;
 
         // PlayerHair.Nodes[0] is computed in AfterUpdate from Sprite.RenderPosition (which reads
         // Sprite.Entity.Position — always integer for an Actor, since subpixels live in
@@ -381,11 +376,6 @@ public class PushSpriteSmoother : SmoothingStrategy<PushSpriteSmoother>
     private Vector2 GetOffset(object obj)
     {
         if (GetState(obj) is not IPositionSmoothingState state)
-            return Vector2.Zero;
-
-        // Off camera: its history stopped being maintained, so there is no smoothed position to
-        // offset by. Renders exactly where vanilla would put it -- which is off screen.
-        if (state.IsCulled)
             return Vector2.Zero;
 
 		if (MotionSmoothingModule.Settings.SillyMode)

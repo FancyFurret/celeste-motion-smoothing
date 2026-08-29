@@ -154,11 +154,7 @@ public static class PositionSmoother
             {
                 var spinner = CrystalSpinnerFillerTracker.Instance.GetSpinnerForFiller(entity);
                 if (spinner != null
-                    && MotionSmoothingHandler.Instance.GetState(spinner) is IPositionSmoothingState spinnerState
-                    // A culled spinner has no maintained position to forward. It sits where its
-                    // filler does, so the two are normally culled together and this never fires;
-                    // if they ever disagree, the filler falls through to smoothing itself.
-                    && !spinnerState.IsCulled)
+                    && MotionSmoothingHandler.Instance.GetState(spinner) is IPositionSmoothingState spinnerState)
                 {
                     // Idempotent — `Smooth` overwrites SmoothedRealPosition from
                     // unchanged history, and the oscillation-detector mutations are

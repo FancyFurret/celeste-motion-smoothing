@@ -1255,12 +1255,8 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 		// intercept — fall through to a normal Render instead of NRE'ing. This happens when
 		// another mod triggers a re-entrant gameplay render outside our smoothing setup, e.g.
 		// Mapping Utils' Profiling tab rendering the level through ImGuiHelper.
-		// Also not if that state is culled: RenderEntityAtSubpixelPosition would read a position
-		// that stopped being maintained when the object went off camera. A golden berry follows
-		// Madeline and so is never culled in practice; this is the belt to that braces.
 		var stateSource = self is Strawberry ? self : player;
-		return MotionSmoothingHandler.Instance.GetState(stateSource) is IPositionSmoothingState
-			{ IsCulled: false };
+		return MotionSmoothingHandler.Instance.GetState(stateSource) is IPositionSmoothingState;
 	}
 
 	// State carried from the pre delegate (BeginSubpixelEntityRender) to the matching post
