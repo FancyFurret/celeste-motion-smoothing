@@ -8,6 +8,13 @@ namespace Celeste.Mod.MotionSmoothing.Smoothing.States;
 
 public class EntitySmoothingState : PositionSmoothingState<Entity>
 {
+    // The state the great majority of a room's objects get, and the only one that is dropped while
+    // off camera. Nothing derives its own smoothed position from a plain entity's, except a crystal
+    // spinner's filler -- which sits at the spinner's own position, so the two are culled and
+    // restored together (and PositionSmoother falls back to the filler's own path if they ever
+    // disagree).
+    protected override bool CanBeCulled => true;
+
     protected override Vector2 GetRealPosition(Entity obj) => obj.Position;
     protected override void SetPosition(Entity obj, Vector2 position) => obj.Position = position;
     protected override bool GetVisible(Entity obj) => obj.Visible;

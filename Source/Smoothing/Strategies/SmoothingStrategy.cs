@@ -76,8 +76,16 @@ public abstract class SmoothingStrategy<T> : ToggleableFeature<T> where T : Smoo
         if (obj is Component) _componentStateCount--;
     }
 
+    // Whether this strategy drops objects that are off camera. Only the push-sprite table does:
+    // it holds every entity in the room, which is where the O(room) cost lives. The value table
+    // holds the camera, the level, screen wipes and menus -- a handful of objects, some of which
+    // aren't positioned in world space at all.
+    protected virtual bool CullsOffscreenObjects => false;
+
     public void UpdatePositions()
     {
+        var cull = CullsOffscreenObjects && OffscreenCulling.Active;
+
         // Indexed loops throughout: the snapshot is never structurally modified from inside these
         // callbacks, and indexing keeps a hypothetical future one from throwing mid-frame the way
         // a List enumerator would.
@@ -85,6 +93,12 @@ public abstract class SmoothingStrategy<T> : ToggleableFeature<T> where T : Smoo
         for (var i = 0; i < states.Count; i++)
         {
             var (obj, state) = states[i];
+
+            // A culled object costs one rectangle test here and one flag test in
+            // CalculateSmoothedPositions, and nothing else, however many of them there are.
+            if (cull && state.TryCull(obj))
+                continue;
+
             state.UpdateHistory(obj);
         }
     }

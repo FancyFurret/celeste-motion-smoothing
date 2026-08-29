@@ -1,5 +1,6 @@
 using System;
 using Celeste.Mod.MotionSmoothing.Smoothing.Targets;
+using Celeste.Mod.MotionSmoothing.Utilities;
 using Microsoft.Xna.Framework;
 using Monocle;
 
@@ -13,6 +14,11 @@ public interface ISmoothingState
     public void SetSmoothed(object obj);
     public void SetOriginal(object obj);
     public void Smooth(object obj, double elapsedSeconds, SmoothingMode mode);
+
+    // Asked once per update tick, before UpdateHistory, for strategies that cull (see
+    // SmoothingStrategy.CullsOffscreenObjects). Returns true if the object is far enough off camera
+    // that this state has stopped being maintained, in which case the caller skips it entirely.
+    public bool TryCull(object obj);
 
     // Whether calling Smooth again right now would provably reproduce the value it already holds,
     // so the caller can skip it. Only ever true *after* a Smooth for the current update tick has
@@ -100,6 +106,8 @@ public abstract class SmoothingState<TObject, TValue> : ISmoothingState<TValue>
     // There are only ever a handful of these (the camera zoom, a zip mover's percent, a screen
     // wipe), so there is nothing to gain from working out whether they could be skipped.
     public bool SmoothIsRedundant(SmoothingMode mode) => false;
+
+    public bool TryCull(object obj) => false;
 }
 
 // Positions get a fancier state object in order to deal with visibility, and draw vs exact positions
@@ -138,6 +146,11 @@ public interface IPositionSmoothingState : ISmoothingState
 
     // Called when a StaticMover is attached to or detached from the object.
     public void RefreshStaticMover(object obj);
+
+    // True while the object is off camera and this state is not being maintained. Anything that
+    // reads a smoothed position has to treat it as having none, rather than using whatever was left
+    // behind when it went off screen.
+    public bool IsCulled { get; }
 }
 
 public abstract class PositionSmoothingState<T> : IPositionSmoothingState
@@ -211,7 +224,39 @@ public abstract class PositionSmoothingState<T> : IPositionSmoothingState
         new((float)Math.Round(value.X), (float)Math.Round(value.Y));
 
     public bool SmoothIsRedundant(SmoothingMode mode) =>
-        _tickStable && _smoothedThisTick && _smoothedMode == mode;
+        _culled || (_tickStable && _smoothedThisTick && _smoothedMode == mode);
+
+    // --- Off-camera culling --------------------------------------------------------------------
+    //
+    // Overridden by the one state that covers the bulk of a room -- plain entities, which is what
+    // spinners, their fillers and their borders all get. The rest stay on the walk unconditionally,
+    // because their smoothed position is read by *other* objects that may well be on screen:
+    // Platforms carry static movers and push actors, Actors are the player and what she holds, and
+    // component states belong to boosters. There are never many of any of them.
+    protected virtual bool CanBeCulled => false;
+
+    public bool IsCulled => _culled;
+    private bool _culled;
+
+    public bool TryCull(object obj)
+    {
+        if (!CanBeCulled || obj is not Entity entity || OffscreenCulling.IsOnScreen(entity))
+        {
+            _culled = false;
+            return false;
+        }
+
+        // Off camera by a wide margin, so do no work at all for it -- and drop _initialized so that
+        // nothing reads a history that has stopped being updated. Coming back on screen then
+        // rebuilds from the object's real position, which is the same clean start a newly created
+        // state gets, and the same thing that already happens when an entity that was invisible
+        // becomes visible again.
+        _culled = true;
+        _initialized = false;
+        _tickStable = false;
+        _smoothedThisTick = false;
+        return true;
+    }
 
     // The part of the cross-object test that is decided by the object's type, worked out once
     // rather than on every tick: whether the object is an Actor (pusher offsets, plus the player

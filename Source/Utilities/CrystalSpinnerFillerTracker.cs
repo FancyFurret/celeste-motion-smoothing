@@ -67,17 +67,98 @@ public class CrystalSpinnerFillerTracker : ToggleableFeature<CrystalSpinnerFille
         }
     }
 
+    public override void Disable()
+    {
+        // Hand the fillers and borders back before the hook that maintains them goes away, or a
+        // room left mid-cull keeps them hidden with nothing left to turn them back on.
+        RestoreVanillaVisibility();
+        base.Disable();
+    }
+
     protected override void Hook()
     {
         base.Hook();
         MotionSmoothingModule.DisableInlining(typeof(CrystalStaticSpinner), "AddSprite");
+        MotionSmoothingModule.DisableInlining(typeof(Level), "Update");
         On.Celeste.CrystalStaticSpinner.AddSprite += AddSpriteHook;
+        On.Celeste.Level.Update += LevelUpdateHook;
     }
 
     protected override void Unhook()
     {
         base.Unhook();
         On.Celeste.CrystalStaticSpinner.AddSprite -= AddSpriteHook;
+        On.Celeste.Level.Update -= LevelUpdateHook;
+    }
+
+    // --- Off-camera filler and border culling ---------------------------------------------------
+    //
+    // A crystal spinner hides itself when it leaves the camera, but the two entities it adds to the
+    // scene the first time it expands never go away and never stop drawing:
+    //
+    //   * `filler` (the tiles that bridge adjacent spinners) keeps Visible = true forever, so every
+    //     one of its images is pushed through SpriteBatch on every frame for the rest of the room,
+    //     hundreds of screens off camera included.
+    //   * `border` keeps Visible = true too. Its Render is a no-op while the spinner is hidden, but
+    //     the entity list still walks it, and under Motion Smoothing that walk carries the
+    //     push/pop and (in Fancy) the subpixel-interception delegates.
+    //
+    // Nothing ever un-expands, so the cost ratchets up as more of the room is scrolled past and
+    // only drops at a room transition, when the entities are finally removed. Vanilla absorbs it at
+    // 60fps. Motion Smoothing puts roughly five stacked detours on every sprite drawn, so the same
+    // content costs about three times as much -- which is what turns a room full of spinners from
+    // playable into half framerate.
+    //
+    // Both are made to follow what is actually on screen. Neither changes a pixel:
+    //
+    //   * The border exactly mirrors `spinner.Visible`, which is the test its own Render already
+    //     makes before drawing anything.
+    //   * The filler is hidden only when the spinner is outside a box far larger than the one the
+    //     spinner itself uses (FillerMargin vs. vanilla InView's 16px), and never while the spinner
+    //     is visible. A filler image sits at most 12px from the spinner -- half the 24px radius
+    //     AddSprite pairs them within -- so the margin clears the furthest drawn pixel twice over.
+
+    private const float FillerMargin = 64f;
+
+    private static void LevelUpdateHook(On.Celeste.Level.orig_Update orig, Level self)
+    {
+        orig(self);
+
+        // After orig, so the spinners have already decided their own visibility this tick. The
+        // camera rectangle is from the previous tick's Scene.AfterUpdate, which at a few pixels of
+        // camera movement is nowhere near the margin above.
+        if (Instance.Enabled && OffscreenCulling.Active)
+            CullOffscreenDecorations(self);
+    }
+
+    private static void CullOffscreenDecorations(Level level)
+    {
+        foreach (CrystalStaticSpinner spinner in level.Tracker.GetEntities<CrystalStaticSpinner>())
+        {
+            if (spinner.border != null)
+                spinner.border.Visible = spinner.Visible;
+
+            if (spinner.filler == null)
+                continue;
+
+            // `|| spinner.Visible` rather than the box alone: a spinner only re-checks its own view
+            // on a 0.25s interval, so it can still be Visible a little after leaving the box on a
+            // fast camera. This keeps the filler from disappearing out from under a spinner that is
+            // still drawing.
+            spinner.filler.Visible = spinner.Visible
+                                     || OffscreenCulling.IsWithin(spinner.Position, FillerMargin);
+        }
+    }
+
+    private static void RestoreVanillaVisibility()
+    {
+        if (Engine.Scene is not Level level) return;
+
+        foreach (CrystalStaticSpinner spinner in level.Tracker.GetEntities<CrystalStaticSpinner>())
+        {
+            if (spinner.border != null) spinner.border.Visible = true;
+            if (spinner.filler != null) spinner.filler.Visible = true;
+        }
     }
 
     private static void AddSpriteHook(On.Celeste.CrystalStaticSpinner.orig_AddSprite orig,

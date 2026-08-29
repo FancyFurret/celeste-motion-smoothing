@@ -136,6 +136,9 @@ public class MotionSmoothingHandler : ToggleableFeature<MotionSmoothingHandler>
         // if the game is not frozen and if the scene *actually* had a chance to update its positions
         if (Instance.Enabled)
         {
+            // Before the walks below, which cull against it.
+            OffscreenCulling.Refresh();
+
             Instance.ValueSmoother.UpdatePositions();
             Instance.PushSpriteSmoother.UpdatePositions();
 
