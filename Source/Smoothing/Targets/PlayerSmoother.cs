@@ -111,15 +111,36 @@ public static class PlayerSmoother
 
     private static Vector2 GetExtrapolatedPositionAndUpdateIsSmoothing(Player player, IPositionSmoothingState state, double elapsed)
     {
+        var computedSpeed = (state.RealPositionHistory[0] - state.RealPositionHistory[1]) * 60;
+
         var playerSpeed = player.Speed;
+
+        // Two states move Madeline without going through Speed, which they leave at zero for their
+        // whole duration:
+        //
+        //   * StCassetteFly -- the bubble that carries her somewhere (the Farewell key hub's, and
+        //     the one a cassette puts her in). Its coroutine assigns Position straight off a Bezier.
+        //   * StAttract -- the pull into a Badeline boost. AttractUpdate walks her over with
+        //     MoveToX/MoveToY, then snaps the last pixel and a half at the end.
+        //
+        // Speed is what this method uses as the proxy for "moving under her own power", so both
+        // read as standing still: IsSmoothing* come out false and Extrapolate pins her to the
+        // update-time position. In the bubble's case the same coroutine also drags the camera along
+        // behind her, and the camera *is* extrapolated -- so she slides backwards across each frame
+        // and snaps forward on every tick, a sawtooth as wide as a tick of camera travel (on a long
+        // curve, well over ten pixels). Attract is the same defect at 200 px/s.
+        //
+        // Interpolate never showed either, because it smooths her own motion unconditionally.
+        //
+        // Her recorded history is the only account of that motion, so stand it in for Speed.
+        if (player.StateMachine.State is Player.StCassetteFly or Player.StAttract)
+            playerSpeed = computedSpeed;
 
         // Checking this prevents the player from being incorrectly smoothed while standing still on
         // moving platforms. Per-axis so that moving only in X doesn't enable Y subpixel rendering
         // (and vice versa). The pusher overrides below add back the axis a moveblock is carrying us along.
         bool isNotStandingStillX = Math.Abs(playerSpeed.X) > 0.001;
         bool isNotStandingStillY = Math.Abs(playerSpeed.Y) > 0.001;
-        
-        var computedSpeed = (state.RealPositionHistory[0] - state.RealPositionHistory[1]) * 60;
 
         
 

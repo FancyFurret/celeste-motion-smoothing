@@ -1487,7 +1487,22 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
 		if (MotionSmoothingModule.Settings.SillyMode)
 		{
-			Engine.Instance.GraphicsDevice.SetRenderTarget(GameplayBuffers.Gameplay);
+			// The scratch target has to be a buffer that isn't already in play here. Level.Render
+			// calls Distort.Render with GameplayBuffers.Gameplay as the *source*, and in Silly Mode
+			// that resolves to LargeGameplayBuffer -- so binding GameplayBuffers.Gameplay as the
+			// target too (which resolves to the very same texture) made orig sample the surface it
+			// was drawing into. OpenGL let that slide and read the existing contents, so it looked
+			// right on macOS and Linux; D3D11 (the FNA3D driver Windows uses) refuses to have one
+			// resource bound as a render target and a shader resource at once, drops the sampler to
+			// null, and the distort pass writes nothing but transparent black. The gameplay still
+			// arrived on screen by way of the copy below, so on Windows the symptom was simply that
+			// distortion -- water, heat waves, anxiety -- did nothing at all.
+			//
+			// LargeTempA is the same size as the gameplay buffer, is what the subpixel branch below
+			// already borrows at this exact point in the frame, and is not read again until
+			// BloomRenderer/Glitch overwrite it later on.
+			Engine.Instance.GraphicsDevice.SetRenderTarget(renderer.LargeTempABuffer);
+			Engine.Instance.GraphicsDevice.Clear(Color.Transparent);
 
 			orig(source, map, hasDistortion);
 
@@ -1500,7 +1515,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
             }
 
 			Draw.SpriteBatch.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend, SamplerState.PointClamp, DepthStencilState.None, RasterizerState.CullNone, null, Matrix.Identity);
-			Draw.SpriteBatch.Draw(GameplayBuffers.Gameplay, Vector2.Zero, Color.White);
+			Draw.SpriteBatch.Draw(renderer.LargeTempABuffer, Vector2.Zero, Color.White);
 			Draw.SpriteBatch.End();
 
             _offsetWhenDrawnTo.Clear();
