@@ -878,8 +878,7 @@ public class MotionSmoothingSettings : EverestModuleSettings
 
         _sillyModeItem.AddDescription(
             menu,
-            "Smooths *everything* to an awful and glorious logical extreme (:\n" +
-			"The framerate can also be set *below* 60 in this mode.\n\n" +
+            "Smooths *everything* to an awful and glorious logical extreme (:\n\n" +
             "This setting is just for fun because it's technically possible; not\n" +
             "everything will be perfect. Playing with this enabled will get your\n" +
             "submissions rejected from Goldberries, the Hardlist, etc."
