@@ -2165,8 +2165,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
         }
 
         orig(self, texture, position, sourceRectangle, color);
-    
-}
+	}
 
     private static void SpriteBatch_Draw3(Action<SpriteBatch, Texture2D, Vector2, Rectangle?, Color, float, Vector2, float, SpriteEffects, float> orig, SpriteBatch self, Texture2D texture, Vector2 position, Rectangle? sourceRectangle, Color color, float rotation, Vector2 origin, float scale, SpriteEffects effects, float layerDepth)
     {
@@ -2184,8 +2183,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
         }
 
         orig(self, texture, position, sourceRectangle, color, rotation, origin, scale, effects, layerDepth);
-    
-}
+	}
 
     private static void SpriteBatch_Draw4(Action<SpriteBatch, Texture2D, Vector2, Rectangle?, Color, float, Vector2, Vector2, SpriteEffects, float> orig, SpriteBatch self, Texture2D texture, Vector2 position, Rectangle? sourceRectangle, Color color, float rotation, Vector2 origin, Vector2 scale, SpriteEffects effects, float layerDepth)
     {
@@ -2203,8 +2201,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
         }
 
         orig(self, texture, position, sourceRectangle, color, rotation, origin, scale, effects, layerDepth);
-    
-}
+	}
 
     private static void SpriteBatch_Draw6(Action<SpriteBatch, Texture2D, Rectangle, Rectangle?, Color> orig, SpriteBatch self, Texture2D texture, Rectangle destinationRectangle, Rectangle? sourceRectangle, Color color)
     {
@@ -2220,8 +2217,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
         }
 
         orig(self, texture, destinationRectangle, sourceRectangle, color);
-    
-}
+	}
 
     private static void SpriteBatch_Draw7(Action<SpriteBatch, Texture2D, Rectangle, Rectangle?, Color, float, Vector2, SpriteEffects, float> orig, SpriteBatch self, Texture2D texture, Rectangle destinationRectangle, Rectangle? sourceRectangle, Color color, float rotation, Vector2 origin, SpriteEffects effects, float layerDepth)
     {
@@ -2239,8 +2235,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
         }
 
         orig(self, texture, destinationRectangle, sourceRectangle, color, rotation, origin, effects, layerDepth);
-    
-}
+	}
 
     
 
@@ -2254,7 +2249,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
         // Count first: both sets are usually empty, and this runs once per sprite drawn. Contains on
         // an empty set is always false, so the guard changes nothing but the hashing.
-        if (_offsetWhenDrawnTo.Count > 0 && _offsetWhenDrawnTo.Contains(_currentRenderTarget))
+		if (_offsetWhenDrawnTo.Count > 0 && _offsetWhenDrawnTo.Contains(_currentRenderTarget))
         {
             Vector2 offset = GetCameraOffset();
             return new Vector2(x + offset.X * scale, y + offset.Y * scale);
