@@ -1,5 +1,5 @@
 - Name: MotionSmoothing
-  Version: 1.6.5
+  Version: 1.6.6
   DLL: bin/MotionSmoothing.dll
   Dependencies:
     - Name: EverestCore
