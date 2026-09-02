@@ -2993,18 +2993,15 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 		_forceOffsetZoomDrawingToScreen = false;
 	}
 
+	// SpirialisHelper renders its timestop layers into its own 320x180 buffers and composites them
+	// 1:1, so none of them may be swapped for a large one for the duration.
+	//
+	// The other half of what this used to do -- opting those layers into push-sprite smoothing so
+	// the second copy of each entity doesn't desync from the first -- now lives on PushSpriteSmoother
+	// itself, which is enabled in every camera-smoothing mode rather than just this one.
 	private static void RenderTimestopEntitiesHook(orig_RenderTimestopEntities orig, object self)
 	{
 		_suppressLargeBuffers = true;
-
-		// SpirialisHelper draws the gameplay entities a second time here, into its own full-screen
-		// layer buffers, then composites them 1:1 over the level. PushSpriteSmoother skips object
-		// smoothing when drawing into an unrecognized (foreign) target, which would leave this
-		// second copy of the player -- most visibly a duplicate of her hair -- desynced from the
-		// main, smoothed copy (leading or trailing her depending on the object smoothing mode).
-		// These layers get no per-object offset re-applied at composite time, so smoothing into
-		// them lines the second copy back up with the first.
-		Strategies.PushSpriteSmoother.TreatForeignTargetAsGameplay = true;
 
 		try
 		{
@@ -3012,7 +3009,6 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 		}
 		finally
 		{
-			Strategies.PushSpriteSmoother.TreatForeignTargetAsGameplay = false;
 			_suppressLargeBuffers = false;
 		}
 	}

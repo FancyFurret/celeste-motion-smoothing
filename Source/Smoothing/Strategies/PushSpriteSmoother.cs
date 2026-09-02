@@ -18,9 +18,9 @@ public class PushSpriteSmoother : SmoothingStrategy<PushSpriteSmoother>
 	public static bool TemporarilyDisablePushSpriteSmoothing = false;
 
 	// Normally we skip smoothing while an object renders into its own scratch buffer (see
-	// IsRenderingToForeignTarget). HiresCameraSmoother sets this while SpirialisHelper re-renders
-	// the gameplay entities into its own full-screen "timestop" layer buffers, which it then
-	// composites 1:1 over the level. Those buffers aren't recognized gameplay/level targets, so
+	// IsRenderingToForeignTarget). RenderTimestopEntitiesHook below sets this while SpirialisHelper
+	// re-renders the gameplay entities into its own full-screen "timestop" layer buffers, which it
+	// then composites 1:1 over the level. Those buffers aren't recognized gameplay/level targets, so
 	// without this the second copy of the player -- most visibly her hair -- would stay pinned to
 	// her raw position while the main copy slides to its smoothed one. The layers get no per-object
 	// offset re-applied at composite time, so smoothing into them is correct.
@@ -142,6 +142,69 @@ public class PushSpriteSmoother : SmoothingStrategy<PushSpriteSmoother>
         IL.Monocle.EntityList.RenderOnly += EntityListRenderHook;
         IL.Monocle.EntityList.RenderOnlyFullMatch += EntityListRenderHook;
         IL.Monocle.EntityList.RenderExcept += EntityListRenderHook;
+
+        HookUnmaintainedMods();
+    }
+
+    // SpirialisHelper re-renders the gameplay entities into its own timestop layer buffers, which
+    // this strategy has to be told to smooth into. That is a push-sprite concern rather than a
+    // camera one, so it is installed from here, where it covers every camera-smoothing mode --
+    // it used to hang off HiresCameraSmoother, which left Fast and Off without it. What is left
+    // there is only the large-buffer suppression, which really is Fancy-only.
+    private void HookUnmaintainedMods()
+    {
+        EverestModuleMetadata spirialisHelper = new()
+        {
+            Name = "SpirialisHelper",
+            Version = new Version(1, 0, 8)
+        };
+
+        // No exact version check here because there was no public repo to take out a PR on
+        if (Everest.Loader.TryGetDependency(spirialisHelper, out _))
+        {
+            AddSpirialisHelperHooks();
+        }
+    }
+
+    private delegate void orig_RenderTimestopEntities(object self);
+
+    // noinlining necessary to avoid crashes when the jit attempts inline this method while jitting
+    // methods that use this function
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private void AddSpirialisHelperHooks()
+    {
+        Type t_TimeController = Type.GetType("Celeste.Mod.Spirialis.TimeController, Spirialis");
+        MethodInfo m_RenderTimestopEntities = t_TimeController?.GetMethod(
+            "RenderTimestopEntities",
+            BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic
+        );
+
+        if (m_RenderTimestopEntities != null)
+        {
+            AddHook(m_RenderTimestopEntities, RenderTimestopEntitiesHook);
+        }
+    }
+
+    // SpirialisHelper draws the gameplay entities a second time here, into its own full-screen
+    // layer buffers, then composites them 1:1 over the level. Smoothing is skipped when drawing
+    // into an unrecognized (foreign) target, which would leave this second copy of the player --
+    // most visibly a duplicate of her hair -- desynced from the main, smoothed copy (leading or
+    // trailing her depending on the object smoothing mode). See TreatForeignTargetAsGameplay.
+    //
+    // HiresCameraSmoother detours this same method for its own, separate reason. The two set
+    // independent flags, each around its own try/finally, so the nesting order doesn't matter.
+    private static void RenderTimestopEntitiesHook(orig_RenderTimestopEntities orig, object self)
+    {
+        TreatForeignTargetAsGameplay = true;
+
+        try
+        {
+            orig(self);
+        }
+        finally
+        {
+            TreatForeignTargetAsGameplay = false;
+        }
     }
 
     protected override void Unhook()

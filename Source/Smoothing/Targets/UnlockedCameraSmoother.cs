@@ -6,6 +6,9 @@ using Microsoft.Xna.Framework.Graphics;
 using Monocle;
 using MonoMod.Cil;
 using MonoMod.RuntimeDetour;
+using System;
+using System.Reflection;
+using System.Runtime.CompilerServices;
 
 namespace Celeste.Mod.MotionSmoothing.Smoothing.Targets;
 
@@ -46,6 +49,8 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
         AddHook(typeof(Calc).GetMethod(nameof(Calc.Floor), new[] { typeof(Vector2) })!, FloorHook);
         AddHook(typeof(Calc).GetMethod(nameof(Calc.Ceiling), new[] { typeof(Vector2) })!, CeilingHook);
         AddHook(typeof(Calc).GetMethod(nameof(Calc.Round), new[] { typeof(Vector2) })!, RoundHook);
+
+        HookUnmaintainedMods();
     }
 
     protected override void Unhook()
@@ -283,5 +288,80 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
         }
 
         return self;
+    }
+
+
+    // HiresCameraSmoother has its own copy of this for Fancy mode. The two mods' problems overlap
+    // but the solutions don't: Fancy fixes SpirialisHelper up through its SpriteBatch hooks, which
+    // don't exist here, so Fast needs its own.
+    private void HookUnmaintainedMods()
+    {
+        EverestModuleMetadata spirialisHelper = new()
+        {
+            Name = "SpirialisHelper",
+            Version = new Version(1, 0, 8)
+        };
+
+        // No exact version check here because there was no public repo to take out a PR on
+        if (Everest.Loader.TryGetDependency(spirialisHelper, out _))
+        {
+            AddSpirialisHelperHooks();
+        }
+    }
+
+    // noinlining necessary to avoid crashes when the jit attempts inline this method while jitting
+    // methods that use this function
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private void AddSpirialisHelperHooks()
+    {
+        Type t_TimeController = Type.GetType("Celeste.Mod.Spirialis.TimeController, Spirialis");
+
+        MethodInfo m_drawEntityLayer = t_TimeController?.GetMethod(
+            "drawEntityLayer",
+            BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic
+        );
+
+        if (m_drawEntityLayer != null)
+        {
+            AddILHook(m_drawEntityLayer, SpirialisDrawEntityLayerHook);
+        }
+    }
+
+    // SpirialisHelper composites its timestop layers over the finished level using its own copy of
+    // the tail of Level.Render -- it rebuilds `Matrix.CreateScale(6f) * Engine.ScreenMatrix` and the
+    // `Zoom * ((320 - ScreenPadding * 2) / 320)` scale inside its own method rather than reusing
+    // Level.Render's. LevelRenderHook only patches Level.Render, so the level moved with the
+    // smoothed camera and the layer drawn on top of it did not: it stayed on the unsmoothed
+    // whole-pixel grid, and it was missing the zoom-scale nudge as well, so it also drifted against
+    // the level by more the further from the origin you looked. Fancy mode never showed this
+    // because it shifts the layer through HiresCameraSmoother's SpriteBatch hooks instead
+    // (_forceOffsetZoomDrawingToScreen), which catch the draw wherever it is begun.
+    //
+    // These are the same two patches LevelRenderHook makes, against the same two expressions.
+    private static void SpirialisDrawEntityLayerHook(ILContext il)
+    {
+        var cursor = new ILCursor(il);
+
+        // Matrix matrix = Matrix.CreateScale(6f) * Engine.ScreenMatrix;
+        if (cursor.TryGotoNext(MoveType.Before,
+                instr => instr.MatchLdsfld(typeof(Engine).GetField(nameof(Engine.ScreenMatrix))!)))
+        {
+            cursor.EmitDelegate(GetScreenCameraMatrix);
+            cursor.EmitCall(typeof(Matrix).GetMethod("op_Multiply", new[] { typeof(Matrix), typeof(Matrix) })!);
+        }
+
+        // float scale = level.Zoom * ((320f - level.ScreenPadding * 2f) / 320f);
+        //
+        // Patched at the store rather than by local index the way LevelRenderHook does it: that one
+        // is against vanilla, this is another mod's private method with nothing to pin its numbering
+        // to. Multiplying the value while it is still on the stack needs no index at all. `Zoom` is
+        // matched exactly, so the ZoomTarget and ZoomFocusPoint reads earlier in the method don't
+        // catch, and the next store after it is the scale's.
+        if (cursor.TryGotoNext(MoveType.After, instr => instr.MatchLdfld<Level>(nameof(Level.Zoom)))
+            && cursor.TryGotoNext(MoveType.Before, instr => instr.MatchStloc(out _)))
+        {
+            cursor.EmitDelegate(GetCameraScale);
+            cursor.EmitMul();
+        }
     }
 }
