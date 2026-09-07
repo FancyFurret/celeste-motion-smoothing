@@ -165,6 +165,10 @@ public class MotionSmoothingModule : EverestModule
 
 		Settings.SillyMode = false;
 
+		// Before anything reads the settings: a file saved by an older version stores "no camera
+		// smoothing" as a third camera strategy rather than as Camera Smoothing off.
+		Settings.NormalizeLegacyCameraStrategy();
+
 		// A framerate below 60 is a deliberate curiosity rather than something to play on, so it
 		// lasts for the session that set it and no longer -- the same deal as Nasty Mode above.
 		// Otherwise someone sets 5fps, forgets, and comes back to a game that looks broken.
@@ -254,7 +258,7 @@ public class MotionSmoothingModule : EverestModule
         DebugRenderFix.Enable();
         DeltaTimeFix.Enable();
 
-        if (Settings.UnlockCameraStrategy == UnlockCameraStrategy.Hires)
+        if (Settings.RenderingMode == RenderingMode.Fancy)
         {
             UnlockedCameraSmoother.Disable();
             HiresCameraSmoother.Enable();
@@ -265,7 +269,10 @@ public class MotionSmoothingModule : EverestModule
             // deal with that than to start over with them.
             HiresCameraSmoother.InitializeLargeTextures();
 
-			HiresCameraSmoother.ZoomScale = Settings.HideStretchedEdges ? 181f / 180f : 1;
+			// With Camera Smoothing off nothing is offset, so there's no gap at the right and
+			// bottom edges to hide and no reason to pay for the zoom that hides it.
+			HiresCameraSmoother.ZoomScale =
+				Settings.CameraSmoothing && Settings.HideStretchedEdges ? 181f / 180f : 1;
 			HiresCameraSmoother.ZoomMatrix = Matrix.CreateScale(HiresCameraSmoother.ZoomScale);
 
 			if (Settings.RenderMadelineWithSubpixels && !Settings.SillyMode)
@@ -284,19 +291,25 @@ public class MotionSmoothingModule : EverestModule
 			}
         }
 
-        else if (Settings.UnlockCameraStrategy == UnlockCameraStrategy.Unlock)
-        {
-            HiresCameraSmoother.Disable();
-            UnlockedCameraSmoother.Enable();
-
-			UnlockedCameraSmoother.ZoomScale = Settings.HideStretchedEdges ? 181f / 180f : 1;
-			UnlockedCameraSmoother.ZoomMatrix = Matrix.CreateScale(UnlockedCameraSmoother.ZoomScale);
-        }
-        
         else
         {
-            UnlockedCameraSmoother.Disable();
             HiresCameraSmoother.Disable();
+
+            // Everything UnlockedCameraSmoother does is the fractional camera position -- the
+            // offset itself, the smoothed position the HUD and the talk prompts follow, the zoom
+            // that hides the gap it leaves -- so Camera Smoothing off is simply it standing down.
+            if (Settings.CameraSmoothing)
+            {
+                UnlockedCameraSmoother.Enable();
+
+				UnlockedCameraSmoother.ZoomScale = Settings.HideStretchedEdges ? 181f / 180f : 1;
+				UnlockedCameraSmoother.ZoomMatrix = Matrix.CreateScale(UnlockedCameraSmoother.ZoomScale);
+            }
+
+            else
+            {
+                UnlockedCameraSmoother.Disable();
+            }
         }
     }
 
@@ -362,7 +375,8 @@ public class MotionSmoothingModule : EverestModule
 
 	// auspicioushelper's layers come and go from room to room, and Fancy camera smoothing is
 	// incompatible with them -- see MotionSmoothingSettings.IsAuspiciousHelperLoaded, whose
-	// fallback to Fast the UnlockCameraStrategy getter already reports live. Nothing re-applies
+	// fallback to Fast the UnlockCameraStrategy getter (and so RenderingMode) already reports
+	// live. Nothing re-applies
 	// that on its own, though, so watch for the flip on every room load (transitions, respawns,
 	// teleports) and swap the camera smoother over when it happens.
 	private static void LevelLoadLevel(Level level, Player.IntroTypes playerIntro, bool isFromLoader)
@@ -674,15 +688,18 @@ public class MotionSmoothingModule : EverestModule
 
 	public static Vector2 GetCameraOffset()
     {
-        switch (Settings.UnlockCameraStrategy)
+        // Nothing is offset with Camera Smoothing off, whichever renderer is drawing.
+        if (!Settings.CameraSmoothing) return Vector2.Zero;
+
+        switch (Settings.RenderingMode)
         {
-            case UnlockCameraStrategy.Hires:
+            case RenderingMode.Fancy:
                 return HiresCameraSmoother.GetCameraOffset();
 
-            case UnlockCameraStrategy.Unlock:
+            case RenderingMode.Fast:
                 return UnlockedCameraSmoother.GetCameraOffset();
 
-            case UnlockCameraStrategy.Off:
+            case RenderingMode.Off:
                 return Vector2.Zero;
         }
 
@@ -691,15 +708,20 @@ public class MotionSmoothingModule : EverestModule
 
 	public static Matrix GetLevelZoomMatrix()
 	{
-		switch (Settings.UnlockCameraStrategy)
+		// The zoom only exists to hide the gap the offset leaves, so with Camera Smoothing off
+		// there is nothing for it to do -- and UnlockedCameraSmoother's copy is stale besides,
+		// since ApplySettings stands the whole feature down rather than rescaling it.
+		if (!Settings.CameraSmoothing) return Matrix.Identity;
+
+		switch (Settings.RenderingMode)
 		{
-			case UnlockCameraStrategy.Hires:
+			case RenderingMode.Fancy:
 				return HiresCameraSmoother.ZoomMatrix;
 
-			case UnlockCameraStrategy.Unlock:
+			case RenderingMode.Fast:
 				return UnlockedCameraSmoother.ZoomMatrix;
 
-			case UnlockCameraStrategy.Off:
+			case RenderingMode.Off:
 				return Matrix.Identity;
 		}
 
@@ -740,7 +762,7 @@ public class MotionSmoothingModule : EverestModule
 
 	public static void ReloadLargeTextures()
 	{
-		if (Settings.UnlockCameraStrategy == UnlockCameraStrategy.Hires && GameplayBuffers.Gameplay is VirtualRenderTarget)
+		if (Settings.RenderingMode == RenderingMode.Fancy && GameplayBuffers.Gameplay is VirtualRenderTarget)
 		{
 			HiresCameraSmoother.InitializeLargeTextures();
 		}

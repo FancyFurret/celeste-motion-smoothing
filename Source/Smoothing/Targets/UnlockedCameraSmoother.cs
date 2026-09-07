@@ -1,4 +1,4 @@
-using Celeste.Mod.MotionSmoothing.Interop;
+﻿using Celeste.Mod.MotionSmoothing.Interop;
 using Celeste.Mod.MotionSmoothing.Smoothing.States;
 using Celeste.Mod.MotionSmoothing.Utilities;
 using Microsoft.Xna.Framework;
@@ -69,6 +69,13 @@ public class UnlockedCameraSmoother : ToggleableFeature<UnlockedCameraSmoother>
     public static Vector2 GetCameraOffset()
     {
         if (CelesteTasInterop.CenterCamera)
+            return Vector2.Zero;
+
+        // The fractional camera position is the whole of what this smoother does, so with Camera
+        // Smoothing off there is nothing to hand out. ApplySettings stands the feature down
+        // entirely in that case, which unhooks everything below; this is here so that the interop
+        // accessors and anything else holding on to the static agree with it.
+        if (!MotionSmoothingModule.Settings.CameraSmoothing)
             return Vector2.Zero;
 
         if (Engine.Scene is Level level)

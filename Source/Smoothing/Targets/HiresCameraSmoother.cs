@@ -1,4 +1,4 @@
-using Celeste.Mod.MotionSmoothing.Interop;
+﻿using Celeste.Mod.MotionSmoothing.Interop;
 using Celeste.Mod.MotionSmoothing.Smoothing.States;
 using Celeste.Mod.MotionSmoothing.Utilities;
 using Microsoft.Xna.Framework;
@@ -431,6 +431,15 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
         orig(self);
     }
 
+    // The sub-pixel offset the whole composite is drawn at: the fractional part of the smoothed
+    // camera position, negated, so that flooring the position and then shifting by this lands back
+    // where the camera really is.
+    //
+    // With Camera Smoothing off it is zero, because SmoothedCameraPosition below is already on the
+    // pixel grid -- the gameplay layer is drawn unshifted, the level buffer has no gap at its right
+    // and bottom edges for HideStretchedLevelEdges to fill, and every buffer that lines itself up
+    // against the offset is left alone. Everything else Fancy mode does -- the hi-res background
+    // and foreground, Madeline's own subpixel position -- is untouched by this.
     public static Vector2 GetCameraOffset()
     {
         if (CelesteTasInterop.CenterCamera)
@@ -438,12 +447,24 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
         if (Engine.Scene is Level level)
         {
-            var cameraState = (MotionSmoothingHandler.Instance.GetState(level.Camera) as IPositionSmoothingState)!;
+            var smoothed = SmoothedRealCameraPosition(level);
 
-            return cameraState.SmoothedRealPosition.Floor() - cameraState.SmoothedRealPosition;
+            return smoothed.Floor() - smoothed;
         }
 
         return Vector2.Zero;
+    }
+
+    // The camera position the level is rendered from. Camera Smoothing off pins it to the pixel
+    // grid -- which is exactly what CameraSmoothingState.SetSmoothed writes back for everything
+    // that isn't rendering, so the camera still advances every drawn frame, just in whole pixels.
+    private static Vector2 SmoothedRealCameraPosition(Level level)
+    {
+        var cameraState = (MotionSmoothingHandler.Instance.GetState(level.Camera) as IPositionSmoothingState)!;
+
+        return MotionSmoothingModule.Settings.CameraSmoothing
+            ? cameraState.SmoothedRealPosition
+            : cameraState.SmoothedRealPosition.Floor();
     }
 
     public static float GetCameraScale()
@@ -455,8 +476,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
     {
         if (Engine.Scene is Level level)
         {
-            var cameraState = (MotionSmoothingHandler.Instance.GetState(level.Camera) as IPositionSmoothingState)!;
-            return cameraState.SmoothedRealPosition;
+            return SmoothedRealCameraPosition(level);
         }
 
         return Vector2.Zero;
@@ -466,7 +486,6 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
     {
         // Camera's UpdateMatrices method ALSO floors the position, so manually create the matrix here, and set
         // the private fields instead of using the public properties.
-        var cameraState = (MotionSmoothingHandler.Instance.GetState(level.Camera) as IPositionSmoothingState)!;
         var camera = level.Camera;
 
         UnsmoothedCameraPosition = camera.position;
@@ -498,7 +517,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
                             new Vector2((int)Math.Floor(camera.origin.X), (int)Math.Floor(camera.origin.Y)), 0.0f));
         UnsmoothedCameraInverse = Matrix.Invert(UnsmoothedCameraMatrix);
 
-        SmoothedCameraPosition = cameraState.SmoothedRealPosition;
+        SmoothedCameraPosition = SmoothedRealCameraPosition(level);
 		SmoothedCameraMatrix = Matrix.Identity *
 						Matrix.CreateTranslation(new Vector3(-SmoothedCameraPosition, 0.0f)) *
 						Matrix.CreateRotationZ(camera.angle) *
@@ -726,6 +745,14 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
     private static void HideStretchedLevelEdges()
     {
         if (HiresRenderer.Instance is not { } renderer)
+        {
+            return;
+        }
+
+        // With Camera Smoothing off the gameplay isn't offset, so every gap below works out to
+        // zero and nothing is drawn -- but the buffer copy that sets it up is a full-size blit,
+        // and this runs twice a frame.
+        if (!MotionSmoothingModule.Settings.CameraSmoothing)
         {
             return;
         }

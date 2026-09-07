@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using Celeste.Mod.MotionSmoothing.Interop;
 using Celeste.Mod.MotionSmoothing.Smoothing.Targets;
 using Microsoft.Xna.Framework;
@@ -114,7 +114,7 @@ public class CameraSmoothingState : PositionSmoothingState<Camera>
 {
     private Vector2 _lastSmoothedBeforePause;
     private bool _hasLastSmoothedBeforePause;
-    private UnlockCameraStrategy _lastSmoothedStrategy;
+    private (RenderingMode Mode, bool CameraSmoothing) _lastSmoothedMode;
 
     // Smooth is overridden below to read the camera-smoothing strategy and Madeline's position on
     // top of the position history, so it can produce a different answer from one drawn frame to
@@ -146,10 +146,11 @@ public class CameraSmoothingState : PositionSmoothingState<Camera>
     // moment of pause. Holding the last pre-pause smoothed position keeps the
     // rendered camera pinned where it was — for every camera-smoothing mode.
     //
-    // The cache is invalidated if the camera-smoothing strategy changes, because
-    // Fancy mode leaves camera.position fractional while Fast/Off floor it, so a
-    // cached value from one mode is not safe to reuse in another (a stale value
-    // routed through Fast's per-pixel offset path would shift the level visibly).
+    // The cache is invalidated if the rendering mode or Camera Smoothing changes,
+    // because Fancy mode leaves camera.position fractional while Fast -- and either
+    // one with Camera Smoothing off -- floors it, so a cached value from one mode is
+    // not safe to reuse in another (a stale value routed through Fast's per-pixel
+    // offset path would shift the level visibly).
     protected override void Smooth(Camera obj, double elapsedSeconds, SmoothingMode mode)
     {
         if (OverrideSmoothingMode.HasValue)
@@ -160,8 +161,9 @@ public class CameraSmoothingState : PositionSmoothingState<Camera>
         if (mode == SmoothingMode.Off)
             mode = SmoothingMode.Extrapolate;
 
-        var currentStrategy = MotionSmoothingModule.Settings.UnlockCameraStrategy;
-        if (_hasLastSmoothedBeforePause && _lastSmoothedStrategy != currentStrategy)
+        var currentMode = (MotionSmoothingModule.Settings.RenderingMode,
+            MotionSmoothingModule.Settings.CameraSmoothing);
+        if (_hasLastSmoothedBeforePause && _lastSmoothedMode != currentMode)
             _hasLastSmoothedBeforePause = false;
 
         if (MotionSmoothingHandler.Instance.WasPaused || Engine.Scene.Paused)
@@ -179,7 +181,7 @@ public class CameraSmoothingState : PositionSmoothingState<Camera>
             ApplyOffscreenSnap(obj);
 
             _lastSmoothedBeforePause = SmoothedRealPosition;
-            _lastSmoothedStrategy = currentStrategy;
+            _lastSmoothedMode = currentMode;
             _hasLastSmoothedBeforePause = true;
         }
     }

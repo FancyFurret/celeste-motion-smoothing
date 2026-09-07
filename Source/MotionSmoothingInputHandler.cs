@@ -69,60 +69,50 @@ public class MotionSmoothingInputHandler : ToggleableFeature<MotionSmoothingInpu
 
 
 
+            // Cycles the same three values it always has -- they're Rendering Mode's now that the
+            // master toggle and the choice of renderer are one setting. The "enable smoothing
+            // first" guard this used to carry is gone with them: Off is one of the three.
             else if (MotionSmoothingModule.Settings.ButtonChangeCameraSmoothingMode.Pressed)
             {
-                // Covers every way smoothing can be off: the player's own setting, a map deciding
-                // it, and SpeedrunTool's state restore. Checked before the lock below because
-                // it's the more actionable of the two -- and a map that turns smoothing off can't
-                // also be deciding Camera Smoothing, so the two never both apply.
-                if (!MotionSmoothingModule.Settings.Enabled)
+                // The setter refuses while a map is deciding either half of the mode, so say why
+                // rather than leaving the hotkey looking broken.
+                if (MotionSmoothingSettings.RenderingModeLocked)
                 {
                     MotionSmoothingMessage.Show(
                         "motion_smoothing_unlock_strategy",
-                        "Enable Motion Smoothing to change Camera Smoothing",
+                        "Rendering Mode is set by this map",
                         y: 1020f
                     );
 
                     return;
                 }
 
-                if (MapSmoothingSuggestions.IsLocked(MapSmoothingOption.CameraSmoothingMode))
-                {
-                    MotionSmoothingMessage.Show(
-                        "motion_smoothing_unlock_strategy",
-                        "Camera Smoothing is set by this map",
-                        y: 1020f
-                    );
+                Logger.Log(LogLevel.Info, "MotionSmoothingInputHandler", "Cycling rendering mode");
 
-                    return;
+                if (MotionSmoothingModule.Settings.RenderingMode == RenderingMode.Fancy)
+                {
+                    MotionSmoothingModule.Settings.RenderingMode = RenderingMode.Fast;
                 }
 
-                Logger.Log(LogLevel.Info, "MotionSmoothingInputHandler", "Toggling unlock strategy");
-
-                if (MotionSmoothingModule.Settings.UnlockCameraStrategy == UnlockCameraStrategy.Hires)
+                else if (MotionSmoothingModule.Settings.RenderingMode == RenderingMode.Fast)
                 {
-                    MotionSmoothingModule.Settings.UnlockCameraStrategy = UnlockCameraStrategy.Unlock;
-                }
-
-                else if (MotionSmoothingModule.Settings.UnlockCameraStrategy == UnlockCameraStrategy.Unlock)
-                {
-                    MotionSmoothingModule.Settings.UnlockCameraStrategy = UnlockCameraStrategy.Off;
+                    MotionSmoothingModule.Settings.RenderingMode = RenderingMode.Off;
                 }
 
                 else
                 {
-                    MotionSmoothingModule.Settings.UnlockCameraStrategy = UnlockCameraStrategy.Hires;
+                    MotionSmoothingModule.Settings.RenderingMode = RenderingMode.Fancy;
                 }
 
-				var strategyString = MotionSmoothingModule.Settings.UnlockCameraStrategy == UnlockCameraStrategy.Hires
+				var modeString = MotionSmoothingModule.Settings.RenderingMode == RenderingMode.Fancy
 					? "Fancy"
-					: MotionSmoothingModule.Settings.UnlockCameraStrategy == UnlockCameraStrategy.Unlock
+					: MotionSmoothingModule.Settings.RenderingMode == RenderingMode.Fast
 						? "Fast"
 						: "Off";
 
                 MotionSmoothingMessage.Show(
                     "motion_smoothing_unlock_strategy",
-                    $"Camera Smoothing: {strategyString}",
+                    $"Rendering Mode: {modeString}",
                     y: 1020f
                 );
             }

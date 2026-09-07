@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Reflection;
@@ -26,10 +26,22 @@ public enum UpdateMode
     Dynamic
 }
 
+// The camera-smoothing strategy, and with it the renderer that draws the level. Off is only ever
+// read now: it's how a settings file written before Camera Smoothing became a setting of its own
+// stores "no camera smoothing", and how a map still asks for it. See RenderingMode below.
 public enum UnlockCameraStrategy
 {
     Hires,
     Unlock,
+    Off
+}
+
+// What the player picks: the master switch and the choice of renderer, in one setting. Ordered so
+// the index doubles as the menu slider's, with the option auspicioushelper rules out first.
+public enum RenderingMode
+{
+    Fancy,
+    Fast,
     Off
 }
 
@@ -41,6 +53,7 @@ public class MotionSmoothingSettings : EverestModuleSettings
     private bool _tasMode = false;
     private int _frameRate = 120;
     private UnlockCameraStrategy _unlockCameraStrategy = UnlockCameraStrategy.Hires;
+    private bool _cameraSmoothing = true;
     private bool _renderMadelineWithSubpixels = true;
     private bool _renderBackgroundHires = true;
     private bool _renderForegroundHires = true;
@@ -61,8 +74,8 @@ public class MotionSmoothingSettings : EverestModuleSettings
 
     private FrameRateTextMenuItem _frameRateMenuItem;
 
-    private TextMenu.Item _enabledItem;
-    private TextMenu.Item _cameraStrategyItem;
+    private TextMenu.Item _renderingModeItem;
+    private TextMenu.Item _cameraSmoothingItem;
     private TextMenu.Item _renderMadelineWithSubpixelsItem;
     private TextMenu.Item _renderBackgroundHiresItem;
     private TextMenu.Item _renderForegroundHiresItem;
@@ -132,8 +145,8 @@ public class MotionSmoothingSettings : EverestModuleSettings
             _frameRateMenuItem.SetValue(FrameRate);
         }
 
-        SetItemValue(_enabledItem, Enabled);
-        SetItemValue(_cameraStrategyItem, (int)UnlockCameraStrategy);
+        SetItemValue(_renderingModeItem, (int)RenderingMode);
+        SetItemValue(_cameraSmoothingItem, CameraSmoothing);
         SetItemValue(_framerateIncreaseMethodItem, (int)FramerateIncreaseMethod);
         SetItemValue(_renderMadelineWithSubpixelsItem, RenderMadelineWithSubpixels);
         SetItemValue(_renderBackgroundHiresItem, RenderBackgroundHires);
@@ -141,22 +154,22 @@ public class MotionSmoothingSettings : EverestModuleSettings
     }
 
     // Centralizes the "non-interactive based on other settings" logic. While the mod is
-    // disabled, every other setting is forced off; while it's enabled, items fall back to
-    // their dependency on the camera smoothing strategy. Safe to call before every item
-    // exists: SetItemState ignores nulls, so the Create*Entry methods can call this as
+    // off, every other setting is forced off; while it's on, items fall back to their
+    // dependency on the rendering mode and on camera smoothing. Safe to call before every
+    // item exists: SetItemState ignores nulls, so the Create*Entry methods can call this as
     // they're built up.
     private void RefreshMenuItemStates()
     {
-        bool masterDisabled = !Enabled;
+        bool masterDisabled = RenderingMode == RenderingMode.Off;
 
         // A map is deciding these, so the player can't. MapSmoothingSuggestions drops its
         // overrides when Use Suggested Map Settings goes off, so this needs no extra gating.
-        SetItemState(_enabledItem, false, MapSmoothingSuggestions.IsLocked(MapSmoothingOption.Enabled));
+        SetItemState(_renderingModeItem, false, RenderingModeLocked);
 
-        // These only depend on the master Enabled toggle.
+        // These only depend on the mod being on at all.
         SetItemState(_frameRateMenuItem, masterDisabled,
             MapSmoothingSuggestions.IsLocked(MapSmoothingOption.FrameRate));
-        SetItemState(_cameraStrategyItem, masterDisabled,
+        SetItemState(_cameraSmoothingItem, masterDisabled,
             MapSmoothingSuggestions.IsLocked(MapSmoothingOption.CameraSmoothingMode));
         // Object Smoothing only means something above 60fps -- below that the getter reports Off
         // whatever the item says.
@@ -165,21 +178,154 @@ public class MotionSmoothingSettings : EverestModuleSettings
             MapSmoothingSuggestions.ForcesDynamicUpdateMode);
         SetItemState(_tasModeItem, masterDisabled);
 
-        // These additionally require the Fancy camera smoothing strategy.
-        bool cameraNotFancy = UnlockCameraStrategy != UnlockCameraStrategy.Hires;
-        SetItemState(_renderMadelineWithSubpixelsItem, masterDisabled || cameraNotFancy,
+        // These additionally require the Fancy rendering mode.
+        bool notFancy = RenderingMode != RenderingMode.Fancy;
+        SetItemState(_renderMadelineWithSubpixelsItem, masterDisabled || notFancy,
             MapSmoothingSuggestions.IsLocked(MapSmoothingOption.RenderMadelineWithSubpixelPrecision));
-        SetItemState(_renderBackgroundHiresItem, masterDisabled || cameraNotFancy,
+        SetItemState(_renderBackgroundHiresItem, masterDisabled || notFancy,
             MapSmoothingSuggestions.IsLocked(MapSmoothingOption.SmoothBackground));
-        SetItemState(_renderForegroundHiresItem, masterDisabled || cameraNotFancy,
+        SetItemState(_renderForegroundHiresItem, masterDisabled || notFancy,
             MapSmoothingSuggestions.IsLocked(MapSmoothingOption.SmoothForeground));
-        SetItemState(_sillyModeItem, masterDisabled || cameraNotFancy);
+        SetItemState(_sillyModeItem, masterDisabled || notFancy);
 
-        // This is disabled only when camera smoothing is fully Off.
-        bool cameraOff = UnlockCameraStrategy == UnlockCameraStrategy.Off;
-        SetItemState(_hideStretchedEdgesItem, masterDisabled || cameraOff);
+        // Nothing offsets the gameplay layer with camera smoothing off, so there are no gaps at
+        // the screen edges left to hide.
+        SetItemState(_hideStretchedEdgesItem, masterDisabled || !CameraSmoothing);
     }
 
+    // The setting that replaced the old Enabled toggle: the master switch and the choice between
+    // the two renderers, in one place. It keeps no state of its own -- Off is Enabled false, and
+    // Fancy and Fast are the two camera strategies -- so a settings file written before the two
+    // were merged loads straight into it, and every existing read of Enabled still works.
+    [YamlIgnore]
+    public RenderingMode RenderingMode
+    {
+        get
+        {
+            // Enabled already folds in SpeedrunTool's force-disable and a map's suggestion, so this
+            // reports Off for those the same way it does for the player's own choice.
+            if (!Enabled) return RenderingMode.Off;
+
+            return UnlockCameraStrategy == UnlockCameraStrategy.Hires
+                ? RenderingMode.Fancy
+                : RenderingMode.Fast;
+        }
+        set
+        {
+            // Both halves have to move together, so this refuses while a map is deciding either one:
+            // the two setters below would each refuse on their own, which would leave the mode
+            // applied by halves. The lock lifts when the player leaves the map or turns off Use
+            // Suggested Map Settings, and nothing is locked while Everest deserializes at startup.
+            if (RenderingModeLocked) return;
+
+            // Off leaves the camera strategy alone rather than writing one over it, so that turning
+            // the mod back on -- from the menu, the hotkey, or a map -- comes back to Fancy or Fast
+            // exactly as the player left it.
+            if (value == RenderingMode.Off)
+            {
+                Enabled = false;
+                return;
+            }
+
+            // Strategy first: Enabled's setter re-applies everything, and it should see the strategy
+            // this mode is asking for rather than the one before it.
+            UnlockCameraStrategy = value == RenderingMode.Fancy
+                ? UnlockCameraStrategy.Hires
+                : UnlockCameraStrategy.Unlock;
+
+            // The strategy setter has already re-applied, so only take the Enabled path -- which
+            // also notifies the other mods watching it -- when it actually changes.
+            if (!_enabled) Enabled = true;
+        }
+    }
+
+    // A map deciding either half of Rendering Mode is deciding the whole of it.
+    public static bool RenderingModeLocked =>
+        MapSmoothingSuggestions.IsLocked(MapSmoothingOption.Enabled) ||
+        MapSmoothingSuggestions.IsLocked(MapSmoothingOption.CameraSmoothingMode);
+
+    // The player's own saved value, ignoring any map suggestion currently in force.
+    [SettingIgnore][YamlIgnore]
+    public RenderingMode UserRenderingMode => !_enabled
+        ? RenderingMode.Off
+        : _unlockCameraStrategy == UnlockCameraStrategy.Hires
+            ? RenderingMode.Fancy
+            : RenderingMode.Fast;
+
+    // Built by hand rather than left to Everest so that a map can lock it like the rest.
+    public void CreateRenderingModeEntry(TextMenu menu, bool inGame)
+    {
+        // A legend for the tint, above everything else because it explains items further down.
+        // Rendering Mode is the first property in the class, so this is the first thing after the
+        // section header. Only worth the line when there's something tinted to explain.
+        if (MapSmoothingSuggestions.AnyLocked)
+        {
+            menu.Add(new TextMenu.SubHeader(
+                "Settings shown in purple are being chosen by this map.",
+                topPadding: false
+            ));
+        }
+
+        bool auspiciousHelperLoaded = IsAuspiciousHelperLoaded;
+
+        // When auspicioushelper is loaded, Fancy is incompatible, so exclude it from the slider and
+        // clamp the current value if needed.
+        int minIndex = auspiciousHelperLoaded ? (int)RenderingMode.Fast : 0;
+        int maxIndex = Enum.GetValues(typeof(RenderingMode)).Length - 1;
+        int initialIndex = (int)RenderingMode;
+        if (initialIndex < minIndex)
+        {
+            initialIndex = minIndex;
+            RenderingMode = (RenderingMode)initialIndex;
+        }
+
+        var modeSlider = new LockableSlider(
+            "Rendering Mode",
+            index => (RenderingMode)index switch
+            {
+                RenderingMode.Fancy => "Fancy",
+                RenderingMode.Fast => "Fast",
+                _ => "Off"
+            },
+            minIndex,
+            maxIndex,
+            initialIndex
+        );
+
+        modeSlider.Change(index =>
+        {
+            RenderingMode = (RenderingMode)index;
+
+            RefreshMenuItemStates();
+        });
+
+        _renderingModeItem = modeSlider;
+
+        menu.Add(modeSlider);
+
+        RefreshMenuItemStates();
+
+        if (auspiciousHelperLoaded)
+        {
+            menu.Add(new TextMenu.SubHeader(
+                "Fancy mode is incompatible with this map.",
+                topPadding: false
+            ));
+        }
+
+        modeSlider.AddDescription(
+            menu,
+            "Fancy: Supports all features at the highest quality, but may impact performance\n" +
+			"on low-end systems.\n\n" +
+            "Fast: Has negligible performance impact, but makes the entire background jitter\n" +
+            "when Smooth Camera is on and does not support some features.\n\n" +
+            "Off: Disables Motion Smoothing entirely."
+        );
+    }
+
+    // No longer a setting the player picks directly -- Rendering Mode above is -- but still what
+    // everything downstream asks, and still what the settings file stores.
+    [SettingIgnore]
     public bool Enabled
     {
         get
@@ -211,30 +357,6 @@ public class MotionSmoothingSettings : EverestModuleSettings
         }
     }
 
-    // Built by hand rather than left to Everest so that a map can lock it like the rest.
-    public void CreateEnabledEntry(TextMenu menu, bool inGame)
-    {
-        // A legend for the tint, above everything else because it explains items further down.
-        // Enabled is the first property in the class, so this is the first thing after the section
-        // header. Only worth the line when there's something tinted to explain.
-        if (MapSmoothingSuggestions.AnyLocked)
-        {
-            menu.Add(new TextMenu.SubHeader(
-                "Settings shown in purple are being chosen by this map.",
-                topPadding: false
-            ));
-        }
-
-        var item = new LockableOnOff("Enabled", Enabled);
-        item.Change(value => Enabled = value);
-
-        _enabledItem = item;
-
-        menu.Add(item);
-
-        RefreshMenuItemStates();
-    }
-
     // The player's own saved value, ignoring any map suggestion currently in force.
     [SettingIgnore][YamlIgnore] public bool UserEnabled => _enabled;
 
@@ -262,6 +384,7 @@ public class MotionSmoothingSettings : EverestModuleSettings
     [DefaultButtonBinding(new Buttons(), Keys.F9)]
     public ButtonBinding ButtonChangeCameraSmoothingMode { get; set; }
 
+    [SettingIgnore]
     public UnlockCameraStrategy UnlockCameraStrategy
     {
         get
@@ -297,70 +420,75 @@ public class MotionSmoothingSettings : EverestModuleSettings
     // The player's own saved value, ignoring any map suggestion currently in force.
     [SettingIgnore][YamlIgnore] public UnlockCameraStrategy UserUnlockCameraStrategy => _unlockCameraStrategy;
 
-    public void CreateUnlockCameraStrategyEntry(TextMenu menu, bool inGame)
+    public bool CameraSmoothing
     {
-        bool auspiciousHelperLoaded = IsAuspiciousHelperLoaded;
-
-        // When auspicioushelper is loaded, Fancy (Hires) is incompatible, so
-        // exclude it from the slider and clamp the current value if needed.
-        int minIndex = auspiciousHelperLoaded ? (int)UnlockCameraStrategy.Unlock : 0;
-        int maxIndex = Enum.GetValues(typeof(UnlockCameraStrategy)).Length - 1;
-        int initialIndex = (int)UnlockCameraStrategy;
-        if (initialIndex < minIndex)
+        get
         {
-            initialIndex = minIndex;
-            UnlockCameraStrategy = (UnlockCameraStrategy)initialIndex;
+            // A map picks a camera mode rather than a toggle: its Off is this setting off, and its
+            // Fancy and Fast both say the camera is being smoothed. See MapSmoothingSuggestions.
+            if (MapSmoothingSuggestions.TryGetCameraSmoothing(out var mapStrategy))
+                return mapStrategy != UnlockCameraStrategy.Off;
+
+            // A settings file written before this was a setting of its own stores it as the third
+            // camera strategy. NormalizeLegacyCameraStrategy folds that away at startup; this
+            // covers the reads that happen before it gets the chance.
+            if (_unlockCameraStrategy == UnlockCameraStrategy.Off) return false;
+
+            return _cameraSmoothing;
         }
-
-        var strategySlider = new LockableSlider(
-            "Camera Smoothing",
-            index => {
-				if ((UnlockCameraStrategy)index == UnlockCameraStrategy.Hires)
-				{
-					return "Fancy";
-				}
-
-				if ((UnlockCameraStrategy)index == UnlockCameraStrategy.Unlock)
-				{
-					return "Fast";
-				}
-
-				return "Off";
-			},
-            minIndex,
-            maxIndex,
-            initialIndex
-        );
-
-        strategySlider.Change(index =>
+        set
         {
-            UnlockCameraStrategy = (UnlockCameraStrategy)index;
+            // A map is deciding this right now, so nothing else gets to: not the menu (whose
+            // item refuses input), not another mod reaching in through interop. The lock lifts when
+            // the player leaves the map or turns off Use Suggested Map Settings. Nothing is locked
+            // while Everest deserializes the settings at startup, so the saved value still loads.
+            if (MapSmoothingSuggestions.IsLocked(MapSmoothingOption.CameraSmoothingMode)) return;
+
+            _cameraSmoothing = value;
+            MotionSmoothingModule.Instance.ApplySettings();
+        }
+    }
+
+    // The player's own saved value, ignoring any map suggestion currently in force.
+    [SettingIgnore][YamlIgnore] public bool UserCameraSmoothing => _cameraSmoothing;
+
+    // A settings file from before Rendering Mode and Camera Smoothing were separate settings stores
+    // "no camera smoothing" as a third camera strategy. Fold it into the pair that means the same
+    // thing now -- Fast, with the camera left on the pixel grid -- so nothing downstream has to keep
+    // the old shape in mind, and so turning Camera Smoothing back on has a strategy to return to.
+    // Written straight to the fields: the setters would re-apply settings and re-lock against a map,
+    // neither of which exists yet when this runs.
+    public void NormalizeLegacyCameraStrategy()
+    {
+        if (_unlockCameraStrategy != UnlockCameraStrategy.Off) return;
+
+        _unlockCameraStrategy = UnlockCameraStrategy.Unlock;
+        _cameraSmoothing = false;
+    }
+
+    // Built by hand rather than left to Everest so that a map can lock it like the rest.
+    public void CreateCameraSmoothingEntry(TextMenu menu, bool inGame)
+    {
+        var item = new LockableOnOff("Smooth Camera", CameraSmoothing);
+
+        item.Change(value =>
+        {
+            CameraSmoothing = value;
 
             RefreshMenuItemStates();
         });
 
-        _cameraStrategyItem = strategySlider;
+        _cameraSmoothingItem = item;
 
-        menu.Add(strategySlider);
+        menu.Add(item);
 
         RefreshMenuItemStates();
 
-        if (auspiciousHelperLoaded)
-        {
-            menu.Add(new TextMenu.SubHeader(
-                "Fancy mode is incompatible with this map.",
-                topPadding: false
-            ));
-        }
-
-        strategySlider.AddDescription(
+        item.AddDescription(
             menu,
-            "Lets the camera move continuously: that is, half of a pixel could be shown on\n" +
-            "the side of the screen while the camera is moving. This is especially noticeable\n" +
-            "when the camera is moving slowly.\n\n" +
-            "Fancy: The highest quality result, but may impact performance on low-end systems.\n\n" +
-            "Fast: Has negligible performance impact, but makes the entire background jitter\n" +
-            "uncontrollably when moving." 
+            "Lets the camera move continuously: half of a pixel could be shown on the side of\n" +
+            "the screen while the camera is moving. This is especially noticeable when the\n" +
+            "camera is moving slowly."
         );
     }
 
@@ -410,7 +538,7 @@ public class MotionSmoothingSettings : EverestModuleSettings
 
         _renderMadelineWithSubpixelsItem.AddDescription(
             menu,
-            "Only applies if Camera Smoothing is set to Fancy. Turning this on lets Madeline\n" +
+            "Only supported in the Fancy rendering mode. Turning this on lets Madeline\n" +
             "be drawn at her exact subpixel position (i.e. offset from the pixel grid),\n" +
 			"which dramatically improves the clarity of her sprite while moving. There are\n" +
             "many safeguards in place to prevent subpixel information from being gleanable.\n" +
@@ -470,7 +598,7 @@ public class MotionSmoothingSettings : EverestModuleSettings
 
         _renderBackgroundHiresItem.AddDescription(
             menu,
-            "Only applies if Camera Smoothing is set to Fancy. Turning this on lets the\n" +
+            "Only supported in the Fancy rendering mode. Turning this on lets the\n" +
             "background draw unlocked from the pixel grid, which makes parallax\n" +
             "backgrounds substantially smoother. Turning this off may mildly *reduce*\n" +
             "performance, especially in levels with unusually complicated backgrounds."
@@ -523,7 +651,7 @@ public class MotionSmoothingSettings : EverestModuleSettings
 
         _renderForegroundHiresItem.AddDescription(
             menu,
-            "Only applies if Camera Smoothing is set to Fancy. Turning this on lets the\n" +
+            "Only supported in the Fancy rendering mode. Turning this on lets the\n" +
             "foreground draw unlocked from the pixel grid; for example, the snow in\n" +
             "chapter 7 will drift smoothly. Turning this off may moderately *reduce*\n" +
             "performance, especially in levels with unusually complicated foregrounds."
@@ -564,8 +692,7 @@ public class MotionSmoothingSettings : EverestModuleSettings
             "edges, since offsetting the gameplay leaves nothing to fill\n" +
             "the gap. This setting very slightly zooms in the level to hide\n" +
 			"these, but it can be turned off to stretch the level edges to\n" +
-            "the screen edges to cover the gaps instead. It's recommended to\n" +
-			"leave this on."
+            "the screen edges to cover the gaps instead."
         );
     }
 

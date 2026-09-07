@@ -12,7 +12,7 @@ Place a **Motion Smoothing Controller** in your map to suggest settings for it. 
 
 - **Motion Smoothing**: `On`, `Off`, or `User Default`. If you request `Off`, the remaining settings have no effect.
 
-- **Camera Smoothing**: `Fancy`, `Fast`, `Off`, or `User Default`.
+- **Camera Smoothing**: `Fancy`, `Fast`, `Off`, or `User Default`. In Mod Settings these are split across two options: `Fancy` and `Fast` set **Rendering Mode**, and `Off` means **Rendering Mode** `Fast` with **Camera Smoothing** turned off.
 
 - **Smooth Background**, **Smooth Foreground**, **Render Madeline with Subpixel Precision**: `On`, `Off`, or `User Default`. These only do anything under Fancy camera smoothing.
 
