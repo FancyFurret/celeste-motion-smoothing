@@ -1,5 +1,4 @@
-﻿using Celeste.Mod.MotionSmoothing.Maps;
-using Celeste.Mod.MotionSmoothing.Utilities;
+﻿using Celeste.Mod.MotionSmoothing.Utilities;
 using Monocle;
 
 namespace Celeste.Mod.MotionSmoothing;
@@ -42,46 +41,17 @@ public class MotionSmoothingInputHandler : ToggleableFeature<MotionSmoothingInpu
         {
             base.Update();
 
+            // The mod's one hotkey, cycling the three values of Rendering Mode.
             if (MotionSmoothingModule.Settings.ButtonToggleMotionSmoothingEnabled.Pressed)
-            {
-                // The setter refuses while a map is deciding this, so say why rather than
-                // leaving the hotkey looking broken.
-                if (MapSmoothingSuggestions.IsLocked(MapSmoothingOption.Enabled))
-                {
-                    MotionSmoothingMessage.Show(
-                        "motion_smoothing_enabled",
-                        "Motion Smoothing is set by this map",
-                        y: 980f
-                    );
-
-                    return;
-                }
-
-                Logger.Log(LogLevel.Info, "MotionSmoothingInputHandler", "Toggling motion smoothing");
-                MotionSmoothingModule.Settings.Enabled = !MotionSmoothingModule.Settings.Enabled;
-
-                MotionSmoothingMessage.Show(
-                    "motion_smoothing_enabled",
-                    MotionSmoothingModule.Settings.Enabled ? "Motion Smoothing Enabled" : "Motion Smoothing Disabled",
-                    y: 980f
-                );
-            }
-
-
-
-            // Cycles the same three values it always has -- they're Rendering Mode's now that the
-            // master toggle and the choice of renderer are one setting. The "enable smoothing
-            // first" guard this used to carry is gone with them: Off is one of the three.
-            else if (MotionSmoothingModule.Settings.ButtonChangeCameraSmoothingMode.Pressed)
             {
                 // The setter refuses while a map is deciding either half of the mode, so say why
                 // rather than leaving the hotkey looking broken.
                 if (MotionSmoothingSettings.RenderingModeLocked)
                 {
                     MotionSmoothingMessage.Show(
-                        "motion_smoothing_unlock_strategy",
+                        "motion_smoothing_rendering_mode",
                         "Rendering Mode is set by this map",
-                        y: 1020f
+                        y: 980f
                     );
 
                     return;
@@ -111,9 +81,9 @@ public class MotionSmoothingInputHandler : ToggleableFeature<MotionSmoothingInpu
 						: "Off";
 
                 MotionSmoothingMessage.Show(
-                    "motion_smoothing_unlock_strategy",
+                    "motion_smoothing_rendering_mode",
                     $"Rendering Mode: {modeString}",
-                    y: 1020f
+                    y: 980f
                 );
             }
         }

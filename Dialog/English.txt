@@ -1,1 +1,2 @@
 ﻿modoptions_motionsmoothing_tasmode=TAS Mode
+modoptions_motionsmoothing_buttonrenderingmode=Change Rendering Mode

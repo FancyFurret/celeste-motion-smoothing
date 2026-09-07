@@ -4,12 +4,9 @@ using ..Ahorn, Maple
 
 @mapdef Trigger "MotionSmoothing/MotionSmoothingController" MotionSmoothingController(x::Integer, y::Integer, width::Integer=16, height::Integer=16, motionSmoothing::String="NoPreference", frameRate::String="NoPreference", cameraSmoothingMode::String="NoPreference", smoothBackground::String="NoPreference", smoothForeground::String="NoPreference", renderMadelineWithSubpixels::String="NoPreference")
 
-const placements = Ahorn.PlacementDict(
-   "Motion Smoothing Controller (Motion Smoothing)" => Ahorn.EntityPlacement(
-      MotionSmoothingController,
-      "rectangle"
-   )
-)
+# The original controller, superseded by MotionSmoothingController2. It deliberately declares no
+# placements, so nothing new can be made with it, while the definition and editing options below
+# keep the triggers in maps that already place one working.
 
 # Keyed by the label shown in the editor; the values are what get written to the map, so
 # "NoPreference" stays as-is and already-placed triggers keep working.

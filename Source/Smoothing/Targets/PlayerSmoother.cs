@@ -86,13 +86,8 @@ public static class PlayerSmoother
         var smoothedPosition = GetExtrapolatedPositionAndUpdateIsSmoothing(player, state, elapsed);
 
         // If the player is about to dash, reset the states so the player position stops going in the wrong direction
-        if (
-            player.CanDash &&
-            (
-                MotionSmoothingHandler.Instance.AtDrawInputHandler.PressedThisUpdate(Input.Dash)
-                || MotionSmoothingHandler.Instance.AtDrawInputHandler.PressedThisUpdate(Input.CrouchDash)
-            )
-        ) {
+        if (IsAboutToDash(player))
+        {
             return sillyMode ? state.SmoothedRealPosition : state.OriginalDrawPosition;
         }
 
@@ -107,6 +102,47 @@ public static class PlayerSmoother
         }
 
         return smoothedPosition;
+    }
+
+
+    // Whether the next physics update will start a dash -- which is a place the extrapolation
+    // can't see her going, so Extrapolate above pins her to her update-time position instead of
+    // carrying her further along the way she was already moving.
+    //
+    // The state check is the point of this. Player.CanDash answers "she has a dash and the button
+    // is down", which is true no matter what she's doing, but only some of her states ever look at
+    // it: in the rest the press does nothing at all, and pinning her for it *was* the jitter --
+    // most visibly in StSummitLaunch, the ride between Chapter 7's checkpoints, where tapping dash
+    // stalled her for a frame in the middle of a fast, straight climb.
+    //
+    // The list is every vanilla Player update method that consumes a dash press. NormalUpdate,
+    // ClimbUpdate, SwimUpdate, RedDashUpdate, HitSquashUpdate, LaunchUpdate and StarFlyUpdate all
+    // act on CanDash; DashUpdate only does with the Super Dashing assist on; and BoostUpdate --
+    // sitting in a Badeline orb or a red booster -- takes the press on its own, spending no dash
+    // and checking no cooldown, so CanDash has no say in that one.
+    private static bool IsAboutToDash(Player player)
+    {
+        // The mod's own input handler rather than Input.Dash.Pressed: this runs at draw time,
+        // where a press that happened since the last update has yet to reach the buffered value.
+        var pressed =
+            MotionSmoothingHandler.Instance.AtDrawInputHandler.PressedThisUpdate(Input.Dash)
+            || MotionSmoothingHandler.Instance.AtDrawInputHandler.PressedThisUpdate(Input.CrouchDash);
+
+        if (!pressed) return false;
+
+        return player.StateMachine.State switch
+        {
+            Player.StNormal or Player.StClimb or Player.StSwim or Player.StRedDash
+                or Player.StHitSquash or Player.StLaunch or Player.StStarFly => player.CanDash,
+
+            Player.StDash => player.CanDash && (SaveData.Instance?.Assists.SuperDashing ?? false),
+
+            Player.StBoost => true,
+
+            // Everything else, vanilla or modded, ignores the press: StSummitLaunch, the intros,
+            // StDreamDash, StCassetteFly, StAttract, StFlingBird, StFrozen, StDummy and the rest.
+            _ => false
+        };
     }
 
     private static Vector2 GetExtrapolatedPositionAndUpdateIsSmoothing(Player player, IPositionSmoothingState state, double elapsed)

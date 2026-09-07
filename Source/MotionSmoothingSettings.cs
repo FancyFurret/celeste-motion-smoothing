@@ -170,7 +170,7 @@ public class MotionSmoothingSettings : EverestModuleSettings
         SetItemState(_frameRateMenuItem, masterDisabled,
             MapSmoothingSuggestions.IsLocked(MapSmoothingOption.FrameRate));
         SetItemState(_cameraSmoothingItem, masterDisabled,
-            MapSmoothingSuggestions.IsLocked(MapSmoothingOption.CameraSmoothingMode));
+            MapSmoothingSuggestions.IsLocked(MapSmoothingOption.CameraSmoothing));
         // Object Smoothing only means something above 60fps -- below that the getter reports Off
         // whatever the item says.
         SetItemState(_objectSmoothingItem, masterDisabled || FrameRate <= PhysicsFrameRate);
@@ -242,7 +242,7 @@ public class MotionSmoothingSettings : EverestModuleSettings
     // A map deciding either half of Rendering Mode is deciding the whole of it.
     public static bool RenderingModeLocked =>
         MapSmoothingSuggestions.IsLocked(MapSmoothingOption.Enabled) ||
-        MapSmoothingSuggestions.IsLocked(MapSmoothingOption.CameraSmoothingMode);
+        MapSmoothingSuggestions.IsLocked(MapSmoothingOption.CameraStrategy);
 
     // The player's own saved value, ignoring any map suggestion currently in force.
     [SettingIgnore][YamlIgnore]
@@ -378,19 +378,21 @@ public class MotionSmoothingSettings : EverestModuleSettings
         }
     }
 
+    // The mod's one hotkey: it cycles Rendering Mode, which is both the master switch and the
+    // choice of renderer. The property keeps its old name so that a player who has already bound
+    // this doesn't lose the binding -- Everest stores bindings under the property name -- and the
+    // label it shows comes from the dialog key instead.
+    [SettingName("modoptions_motionsmoothing_buttonrenderingmode")]
     [DefaultButtonBinding(new Buttons(), Keys.F8)]
     public ButtonBinding ButtonToggleMotionSmoothingEnabled { get; set; }
-
-    [DefaultButtonBinding(new Buttons(), Keys.F9)]
-    public ButtonBinding ButtonChangeCameraSmoothingMode { get; set; }
 
     [SettingIgnore]
     public UnlockCameraStrategy UnlockCameraStrategy
     {
         get
         {
-            // A map can ask for a specific strategy -- see MapSmoothingSuggestions.
-            var strategy = MapSmoothingSuggestions.TryGetCameraSmoothing(out var mapStrategy)
+            // A map can ask for a specific renderer -- see MapSmoothingSuggestions.
+            var strategy = MapSmoothingSuggestions.TryGetCameraStrategy(out var mapStrategy)
                 ? mapStrategy
                 : _unlockCameraStrategy;
 
@@ -410,7 +412,7 @@ public class MotionSmoothingSettings : EverestModuleSettings
             // The lock lifts when the player leaves the map or turns off Use Suggested Map
             // Settings. Nothing is locked while Everest deserializes the settings at startup, so
             // the saved value still loads.
-            if (MapSmoothingSuggestions.IsLocked(MapSmoothingOption.CameraSmoothingMode)) return;
+            if (MapSmoothingSuggestions.IsLocked(MapSmoothingOption.CameraStrategy)) return;
 
             _unlockCameraStrategy = value;
             MotionSmoothingModule.Instance.ApplySettings();
@@ -424,10 +426,8 @@ public class MotionSmoothingSettings : EverestModuleSettings
     {
         get
         {
-            // A map picks a camera mode rather than a toggle: its Off is this setting off, and its
-            // Fancy and Fast both say the camera is being smoothed. See MapSmoothingSuggestions.
-            if (MapSmoothingSuggestions.TryGetCameraSmoothing(out var mapStrategy))
-                return mapStrategy != UnlockCameraStrategy.Off;
+            if (MapSmoothingSuggestions.TryGet(MapSmoothingOption.CameraSmoothing, out bool mapValue))
+                return mapValue;
 
             // A settings file written before this was a setting of its own stores it as the third
             // camera strategy. NormalizeLegacyCameraStrategy folds that away at startup; this
@@ -442,7 +442,7 @@ public class MotionSmoothingSettings : EverestModuleSettings
             // item refuses input), not another mod reaching in through interop. The lock lifts when
             // the player leaves the map or turns off Use Suggested Map Settings. Nothing is locked
             // while Everest deserializes the settings at startup, so the saved value still loads.
-            if (MapSmoothingSuggestions.IsLocked(MapSmoothingOption.CameraSmoothingMode)) return;
+            if (MapSmoothingSuggestions.IsLocked(MapSmoothingOption.CameraSmoothing)) return;
 
             _cameraSmoothing = value;
             MotionSmoothingModule.Instance.ApplySettings();

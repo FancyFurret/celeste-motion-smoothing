@@ -2,8 +2,17 @@ mods.MotionSmoothing.name=Motion Smoothing
 
 # Motion Smoothing Controller
 # Applies its settings when Madeline enters it.
-triggers.MotionSmoothing/MotionSmoothingController.placements.name.controller=Motion Smoothing Controller
+triggers.MotionSmoothing/MotionSmoothingController2.placements.name.controller=Motion Smoothing Controller
 
+triggers.MotionSmoothing/MotionSmoothingController2.attributes.name.renderingMode=Rendering Mode
+triggers.MotionSmoothing/MotionSmoothingController2.attributes.name.cameraSmoothing=Camera Smoothing
+triggers.MotionSmoothing/MotionSmoothingController2.attributes.name.frameRate=Framerate
+triggers.MotionSmoothing/MotionSmoothingController2.attributes.name.smoothBackground=Smooth Background
+triggers.MotionSmoothing/MotionSmoothingController2.attributes.name.smoothForeground=Smooth Foreground
+triggers.MotionSmoothing/MotionSmoothingController2.attributes.name.renderMadelineWithSubpixels=Render Madeline with Subpixel Precision
+
+# The original controller. No placement entry: it can no longer be added to a map, only edited
+# where one already exists.
 triggers.MotionSmoothing/MotionSmoothingController.attributes.name.motionSmoothing=Motion Smoothing
 triggers.MotionSmoothing/MotionSmoothingController.attributes.name.frameRate=Framerate
 triggers.MotionSmoothing/MotionSmoothingController.attributes.name.cameraSmoothingMode=Camera Smoothing

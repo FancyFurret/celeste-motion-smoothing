@@ -2,14 +2,18 @@ using System;
 
 namespace Celeste.Mod.MotionSmoothing.Maps;
 
-// The settings a map can ask for.
+// The settings a map can ask for. These are the underlying variables rather than the two options
+// the mod settings show, because between them the controllers ask for things Rendering Mode alone
+// can't express -- the original one can say "smoothing on, renderer up to the player". Both
+// controllers translate into these; see MotionSmoothingController.
 public enum MapSmoothingOption
 {
     Enabled,
+    CameraStrategy,
+    CameraSmoothing,
     SmoothBackground,
     SmoothForeground,
     RenderMadelineWithSubpixelPrecision,
-    CameraSmoothingMode,
     FrameRate
 }
 
@@ -17,22 +21,28 @@ public enum MapSmoothingOption
 public class MapSmoothingSuggestion
 {
     public bool? Enabled;
+    public bool? CameraSmoothing;
     public bool? SmoothBackground;
     public bool? SmoothForeground;
     public bool? RenderMadelineWithSubpixelPrecision;
-    public UnlockCameraStrategy? CameraSmoothingMode;
+
+    // Which of the two renderers to use -- so only ever Hires or Unlock. Off has no meaning as a
+    // request: a controller asking for no camera smoothing sets CameraSmoothing above instead.
+    public UnlockCameraStrategy? CameraStrategy;
+
     public int? FrameRate;
 
     public bool IsEmpty =>
-        !Enabled.HasValue && !SmoothBackground.HasValue && !SmoothForeground.HasValue &&
-        !RenderMadelineWithSubpixelPrecision.HasValue && !CameraSmoothingMode.HasValue &&
-        !FrameRate.HasValue;
+        !Enabled.HasValue && !CameraSmoothing.HasValue && !SmoothBackground.HasValue &&
+        !SmoothForeground.HasValue && !RenderMadelineWithSubpixelPrecision.HasValue &&
+        !CameraStrategy.HasValue && !FrameRate.HasValue;
 
-    // The four options whose value is a plain on/off. CameraSmoothingMode and FrameRate aren't
-    // among them and always read back null here -- use their own fields for those.
+    // The five options whose value is a plain on/off. CameraStrategy and FrameRate aren't among
+    // them and always read back null here -- use their own fields for those.
     public bool? GetBoolean(MapSmoothingOption option) => option switch
     {
         MapSmoothingOption.Enabled => Enabled,
+        MapSmoothingOption.CameraSmoothing => CameraSmoothing,
         MapSmoothingOption.SmoothBackground => SmoothBackground,
         MapSmoothingOption.SmoothForeground => SmoothForeground,
         MapSmoothingOption.RenderMadelineWithSubpixelPrecision => RenderMadelineWithSubpixelPrecision,
@@ -41,7 +51,7 @@ public class MapSmoothingSuggestion
 
     public bool HasPreference(MapSmoothingOption option) => option switch
     {
-        MapSmoothingOption.CameraSmoothingMode => CameraSmoothingMode.HasValue,
+        MapSmoothingOption.CameraStrategy => CameraStrategy.HasValue,
         MapSmoothingOption.FrameRate => FrameRate.HasValue,
         _ => GetBoolean(option).HasValue
     };
@@ -51,12 +61,13 @@ public class MapSmoothingSuggestion
         switch (option)
         {
             case MapSmoothingOption.Enabled: Enabled = null; break;
+            case MapSmoothingOption.CameraSmoothing: CameraSmoothing = null; break;
             case MapSmoothingOption.SmoothBackground: SmoothBackground = null; break;
             case MapSmoothingOption.SmoothForeground: SmoothForeground = null; break;
             case MapSmoothingOption.RenderMadelineWithSubpixelPrecision:
                 RenderMadelineWithSubpixelPrecision = null;
                 break;
-            case MapSmoothingOption.CameraSmoothingMode: CameraSmoothingMode = null; break;
+            case MapSmoothingOption.CameraStrategy: CameraStrategy = null; break;
             case MapSmoothingOption.FrameRate: FrameRate = null; break;
         }
     }
@@ -64,10 +75,11 @@ public class MapSmoothingSuggestion
     public MapSmoothingSuggestion Clone() => new()
     {
         Enabled = Enabled,
+        CameraSmoothing = CameraSmoothing,
         SmoothBackground = SmoothBackground,
         SmoothForeground = SmoothForeground,
         RenderMadelineWithSubpixelPrecision = RenderMadelineWithSubpixelPrecision,
-        CameraSmoothingMode = CameraSmoothingMode,
+        CameraStrategy = CameraStrategy,
         FrameRate = FrameRate
     };
 }
@@ -76,7 +88,7 @@ public class MapSmoothingSuggestion
 // settings. The user's own saved values are never touched, which means (a) leaving the map restores
 // them with no bookkeeping, and (b) a crash inside a map can't leave the player's settings
 // rewritten. The settings getters consult this class, so every existing read of Settings.Enabled,
-// Settings.UnlockCameraStrategy and friends transparently sees the map's value, and the settings
+// Settings.CameraSmoothing and friends transparently sees the map's value, and the settings
 // *setters* drop the override, so a player who changes an option themselves takes control back.
 //
 // The suggestions come from MotionSmoothingController, which hands them over when Madeline touches
@@ -84,7 +96,11 @@ public class MapSmoothingSuggestion
 // the controller that asks for it.
 public static class MapSmoothingSuggestions
 {
+    // The original controller, kept loadable so maps that already place it keep working. New maps
+    // get ControllerV2EntityName instead -- it's the only one the editor plugins offer.
     public const string ControllerEntityName = "MotionSmoothing/MotionSmoothingController";
+
+    public const string ControllerV2EntityName = "MotionSmoothing/MotionSmoothingController2";
 
     private static readonly MapSmoothingOption[] FancyOnlyOptions =
     {
@@ -146,9 +162,9 @@ public static class MapSmoothingSuggestions
         return false;
     }
 
-    public static bool TryGetCameraSmoothing(out UnlockCameraStrategy value)
+    public static bool TryGetCameraStrategy(out UnlockCameraStrategy value)
     {
-        if (!_suspended && _active.CameraSmoothingMode is { } mapValue)
+        if (!_suspended && _active.CameraStrategy is { } mapValue)
         {
             value = mapValue;
             return true;
@@ -208,20 +224,21 @@ public static class MapSmoothingSuggestions
 
     // Turns requests that couldn't have any effect back into "no preference": with Motion
     // Smoothing requested off nothing else does anything, and the three Fancy-only options do
-    // nothing under Fast or Off camera smoothing. Applied to a controller's request once, when
-    // it's read, so that nothing downstream has to think about it -- including the menu, which
-    // would otherwise show an option as locked by a map that isn't really deciding it.
+    // nothing under the Fast renderer. Applied to a controller's request once, when it's read, so
+    // that nothing downstream has to think about it -- including the menu, which would otherwise
+    // show an option as locked by a map that isn't really deciding it.
     public static void DropInapplicable(MapSmoothingSuggestion suggestion)
     {
         if (suggestion.Enabled == false)
         {
-            suggestion.Clear(MapSmoothingOption.CameraSmoothingMode);
+            suggestion.Clear(MapSmoothingOption.CameraStrategy);
+            suggestion.Clear(MapSmoothingOption.CameraSmoothing);
             suggestion.Clear(MapSmoothingOption.FrameRate);
             foreach (var option in FancyOnlyOptions) suggestion.Clear(option);
             return;
         }
 
-        if (suggestion.CameraSmoothingMode is UnlockCameraStrategy.Unlock or UnlockCameraStrategy.Off)
+        if (suggestion.CameraStrategy == UnlockCameraStrategy.Unlock)
             foreach (var option in FancyOnlyOptions) suggestion.Clear(option);
     }
 

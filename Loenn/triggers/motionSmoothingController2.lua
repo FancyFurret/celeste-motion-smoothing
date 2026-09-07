@@ -1,13 +1,23 @@
 local trigger = {}
 
-trigger.name = "MotionSmoothing/MotionSmoothingController"
+trigger.name = "MotionSmoothing/MotionSmoothingController2"
 
--- The original controller, superseded by MotionSmoothingController2. It deliberately has no
--- placements, so nothing new can be made with it, but everything else is kept so that the triggers
--- in maps that already place one still draw and edit correctly.
---
--- Loenn draws triggers itself: a resizable translucent rectangle labelled with this text.
-trigger.triggerText = "Motion Smoothing Controller (old)"
+-- Loenn draws triggers itself: a resizable translucent rectangle labelled with this text. The
+-- default label is the humanized entity name, which would read "Motion Smoothing Controller2", so
+-- say it outright instead.
+trigger.triggerText = "Motion Smoothing Controller"
+
+trigger.placements = {
+    name = "controller",
+    data = {
+        renderingMode = "NoPreference",
+        cameraSmoothing = "NoPreference",
+        frameRate = "NoPreference",
+        smoothBackground = "NoPreference",
+        smoothForeground = "NoPreference",
+        renderMadelineWithSubpixels = "NoPreference"
+    }
+}
 
 local onOff = {
     options = {
@@ -44,11 +54,7 @@ trigger.fieldInformation = {
         editable = true,
         validator = isFrameRate
     },
-    motionSmoothing = onOff,
-    smoothBackground = onOff,
-    smoothForeground = onOff,
-    renderMadelineWithSubpixels = onOff,
-    cameraSmoothingMode = {
+    renderingMode = {
         options = {
             {"User Default", "NoPreference"},
             {"Fancy", "Fancy"},
@@ -56,14 +62,18 @@ trigger.fieldInformation = {
             {"Off", "Off"}
         },
         editable = false
-    }
+    },
+    cameraSmoothing = onOff,
+    smoothBackground = onOff,
+    smoothForeground = onOff,
+    renderMadelineWithSubpixels = onOff
 }
 
 trigger.fieldOrder = {
     "x", "y", "width", "height",
-    "motionSmoothing",
+    "renderingMode",
+    "cameraSmoothing",
     "frameRate",
-    "cameraSmoothingMode",
     "smoothBackground",
     "smoothForeground",
     "renderMadelineWithSubpixels"
