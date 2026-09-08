@@ -112,6 +112,10 @@ public class MotionSmoothingModule : EverestModule
 
         MapSmoothingSuggestions.Load();
 
+		// Stylegrounds are flagged hires in the map data, which is read once when the map is
+		// parsed -- long before, and regardless of whether, the Fancy renderer is ever switched on.
+		HiresStylegrounds.Load();
+
         DisableInlining(typeof(Scene), "Begin");
         On.Monocle.Scene.Begin += SceneBeginHook;
         Everest.Events.Level.OnPause += LevelPause;
@@ -136,6 +140,7 @@ public class MotionSmoothingModule : EverestModule
         DeltaTimeFix.Unload();
 
         MapSmoothingSuggestions.Unload();
+        HiresStylegrounds.Unload();
 
         On.Monocle.Scene.Begin -= SceneBeginHook;
         Everest.Events.Level.OnPause -= LevelPause;

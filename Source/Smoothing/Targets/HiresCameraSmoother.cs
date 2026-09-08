@@ -1,4 +1,5 @@
 ﻿using Celeste.Mod.MotionSmoothing.Interop;
+using Celeste.Mod.MotionSmoothing.Maps;
 using Celeste.Mod.MotionSmoothing.Smoothing.States;
 using Celeste.Mod.MotionSmoothing.Utilities;
 using Microsoft.Xna.Framework;
@@ -45,6 +46,34 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
     private static bool _allowParallaxOneBackgrounds = false;
     private static bool _currentlyRenderingForeground = false;
     private static BlendState _foregroundBlendState = BlendState.AlphaBlend;
+
+    // Set while a styleground flagged hires (see HiresStylegrounds) is rendering into one of our
+    // large buffers: its art is already at this scale, so it is drawn into the buffer at 1:1
+    // instead of being upscaled 6x along with everything authored at 320x180.
+    private static bool _renderingHiresBackdrop = false;
+
+    // Set alongside it when that styleground is a Parallax whose texture was replaced with a
+    // game-space view. See SpriteBatch_Draw3.
+    private static bool _undoHiresParallaxScaleFix = false;
+
+    // The floor mode to put back once the current hires styleground is done with.
+    private static DisableFloorFunctionsMode _floorModeBeforeHiresBackdrop;
+
+    // Set for the pass in which background stylegrounds are drawn small and upscaled in one go
+    // (Smooth Background off). A hires styleground can't go into the small buffer, so when one
+    // comes up mid-pass BeforeBackdropRender composites what's accumulated there into the large
+    // buffer, draws the hires styleground straight into it, and hands the small buffer back --
+    // cleared -- for whatever follows.
+    private static bool _backgroundSmallBufferPass = false;
+
+    // Whether that pass is currently parked on the large buffer for one or more hires
+    // stylegrounds, rather than filling the small one.
+    private static bool _backgroundPassOnLargeBuffer = false;
+
+    // Whether the small buffer has been composited into the large one at least once this pass. The
+    // first flush founds the large buffer's contents; every one after it, the pass's own closing
+    // composite included, has to blend over the hires art that has since been drawn there.
+    private static bool _backgroundSmallBufferFlushed = false;
 
     private enum ForegroundFlushGroup { AlphaBlend, Additive, Direct }
     private static ForegroundFlushGroup _currentFlushGroup = ForegroundFlushGroup.AlphaBlend;
@@ -692,6 +721,15 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
         _offsetWhenDrawnTo.Clear();
         _allowParallaxOneBackgrounds = false;
         _currentlyRenderingBackground = true;
+        // Reset for the same reason as _lastPlayerOffset below: the hires-styleground flags are
+        // cleared by the passes that set them, but a frame that never reached the clearing half --
+        // an exception inside a backdrop, another mod cutting Level.Render short -- would otherwise
+        // start the next one mid-transition.
+        _renderingHiresBackdrop = false;
+        _undoHiresParallaxScaleFix = false;
+        _backgroundSmallBufferPass = false;
+        _backgroundPassOnLargeBuffer = false;
+        _backgroundSmallBufferFlushed = false;
         _currentlyRenderingPlayerOnTopOfFlash = false;
         _disableFloorFunctions = DisableFloorFunctionsMode.Integer;
         _interceptDistortRender = false;
@@ -983,17 +1021,25 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
         _enableLargeLevelBuffer = false;
         _allowParallaxOneBackgrounds = false;
+
+        _backgroundSmallBufferPass = true;
+        _backgroundPassOnLargeBuffer = false;
+        _backgroundSmallBufferFlushed = false;
+
         orig(self, scene);
 
-        // Go to the large level buffer for compositing time.
-        Engine.Instance.GraphicsDevice.SetRenderTarget(renderer.LargeLevelBuffer);
-        Engine.Instance.GraphicsDevice.Clear(Color.Transparent);
+        _backgroundSmallBufferPass = false;
 
-        // Draw the background into GameplayBuffers.Level. It'll get upscaled for us automatically.
-        Draw.SpriteBatch.Begin(SpriteSortMode.Deferred, BlendState.Opaque, SamplerState.PointClamp, DepthStencilState.None, RasterizerState.CullNone, null, Matrix.Identity);
-        // Draw the non-parallax one backgrounds.
-        Draw.SpriteBatch.Draw(GameplayBuffers.Level, Vector2.Zero, Color.White);
-        Draw.SpriteBatch.End();
+        // Go to the large level buffer for compositing time, and draw the background into it from
+        // GameplayBuffers.Level -- it'll get upscaled for us automatically.
+        //
+        // Unless the pass ended parked on the large buffer for a hires styleground, in which case
+        // the small buffer has already been composited and hasn't been drawn into since. Doing it
+        // again would double up everything in it.
+        if (_backgroundPassOnLargeBuffer)
+            _backgroundPassOnLargeBuffer = false;
+        else
+            FlushBackgroundSmallBuffer(renderer);
 
 
         // Now draw the parallax-one backgrounds
@@ -1042,14 +1088,17 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 			cursor.Emit(OpCodes.Pop);                  // Stack: []
 			cursor.Emit(OpCodes.Br, skip);
 			
-			// Render path: handle foreground buffer transitions, then restore Scene
+			// Render path: handle buffer transitions, then restore Scene
 			cursor.MarkLabel(doRender);
 			cursor.Emit(OpCodes.Dup);                              // Stack: [Backdrop, Backdrop]
-			cursor.EmitDelegate(BeforeForegroundBackdropRender);   // Stack: [Backdrop]
+			cursor.EmitDelegate(BeforeBackdropRender);             // Stack: [Backdrop]
 			cursor.Emit(OpCodes.Ldloc, sceneLocal);                // Stack: [Backdrop, Scene]
 			
-			// Move past the callvirt to mark the skip label
+			// Move past the callvirt, then undo whatever the render needed. Emitted before the skip
+			// label is marked, so a backdrop that was filtered out jumps past this too -- it never
+			// ran the "before" half either.
 			cursor.GotoNext(MoveType.After, i => i.MatchCallvirt<Backdrop>("Render"));
+			cursor.EmitDelegate(AfterBackdropRender);
 			cursor.MarkLabel(skip);
 		}
     }
@@ -1097,7 +1146,82 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 		return ForegroundFlushGroup.Direct;
 	}
 
-	private static void BeforeForegroundBackdropRender(Backdrop backdrop)
+	// Runs immediately before each Backdrop.Render, for every renderer that walks a backdrop list
+	// -- ours and other mods' alike. Two jobs: put a hires styleground on a buffer that can hold it
+	// (see HiresStylegrounds), and keep the foreground's blend-state grouping in step.
+	private static void BeforeBackdropRender(Backdrop backdrop)
+	{
+		var hires = HiresStylegrounds.IsHires(backdrop);
+
+		if (_backgroundSmallBufferPass)
+			SetBackgroundPassBuffer(onLargeBuffer: hires);
+
+		BeforeForegroundBackdropRender(backdrop, hires);
+
+		// Checked after the transitions above, and against the target rather than the flag alone:
+		// another mod's renderer draws these same backdrops into buffers of its own, where there is
+		// no hires art to draw and the styleground's game-space view is exactly right as it is.
+		_renderingHiresBackdrop = hires && IsLargeTexture(_currentRenderTarget);
+		_undoHiresParallaxScaleFix = _renderingHiresBackdrop && HiresStylegrounds.HasGameSpaceView(backdrop);
+
+		if (!_renderingHiresBackdrop) return;
+
+		// Hires art is drawn at hires resolution, so it should land on hires pixels rather than
+		// being snapped to whole game ones.
+		_floorModeBeforeHiresBackdrop = _disableFloorFunctions;
+		_disableFloorFunctions = DisableFloorFunctionsMode.Rational;
+	}
+
+	private static void AfterBackdropRender()
+	{
+		if (!_renderingHiresBackdrop) return;
+
+		_disableFloorFunctions = _floorModeBeforeHiresBackdrop;
+
+		_renderingHiresBackdrop = false;
+		_undoHiresParallaxScaleFix = false;
+	}
+
+	// Moves the background small-buffer pass between the small level buffer it normally fills and
+	// the large one a hires styleground has to go into. Going up composites what has accumulated so
+	// far, so ordering is preserved; coming back down hands over a cleared buffer, since everything
+	// that was in it is now in the large one. Consecutive hires stylegrounds cost one transition
+	// between them, not one each.
+	private static void SetBackgroundPassBuffer(bool onLargeBuffer)
+	{
+		if (onLargeBuffer == _backgroundPassOnLargeBuffer) return;
+		if (HiresRenderer.Instance is not { } renderer) return;
+
+		// Only ever move our own level buffers around. Another mod's renderer (StylegroundMasks'
+		// DummyBackdropRenderer, say) can walk the same backdrop list into a buffer of its own
+		// while this pass is open, and where it puts things is none of our business.
+		if (_currentRenderTarget != GameplayBuffers.Level.Target
+			&& _currentRenderTarget != renderer.LargeLevelBuffer.Target)
+			return;
+
+		bool spriteBatchActive = (bool)_beginCalledField.GetValue(Draw.SpriteBatch);
+		var savedParams = _lastSpriteBatchBeginParams;
+		if (spriteBatchActive) Draw.SpriteBatch.End();
+
+		if (onLargeBuffer)
+		{
+			// Leaves the large buffer selected.
+			FlushBackgroundSmallBuffer(renderer);
+		}
+
+		else
+		{
+			Engine.Instance.GraphicsDevice.SetRenderTarget(GameplayBuffers.Level);
+			Engine.Instance.GraphicsDevice.Clear(Color.Transparent);
+		}
+
+		_backgroundPassOnLargeBuffer = onLargeBuffer;
+
+		if (spriteBatchActive && savedParams is var (sm, bs, ss, ds, rs, eff, mx))
+			Draw.SpriteBatch.Begin(sm, bs, ss, ds, rs, eff, mx);
+	}
+
+	private static void BeforeForegroundBackdropRender(Backdrop backdrop, bool hires)
 	{
 		if (!_currentlyRenderingForeground || HiresRenderer.Instance is not { } renderer)
 			return;
@@ -1110,7 +1234,11 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
 		// Non-SpriteBatch backdrops manage their own rendering and blend states,
 		// so we can't predict their blend state — render them directly.
-		var newGroup = !backdrop.UseSpritebatch
+		//
+		// A hires styleground is Direct for a different reason: Direct is the group that renders
+		// straight to the level buffer, which by foreground time is the large one, and that is the
+		// only buffer its art fits in. The transition in and back out is the same flush either way.
+		var newGroup = hires || !backdrop.UseSpritebatch
 			? ForegroundFlushGroup.Direct
 			: GetFlushGroup(_foregroundBlendState);
 
@@ -1143,6 +1271,31 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
 		if (spriteBatchActive && savedParams is var (sm, bs, ss, ds, rs, eff, mx))
 			Draw.SpriteBatch.Begin(sm, bs, ss, ds, rs, eff, mx);
+	}
+
+	// Composites the small level buffer into the large one and leaves the large one selected. The
+	// first call founds its contents, so it clears and draws over them opaquely: the small buffer
+	// starts out filled with the level's background colour, and that is what everything else is
+	// laid on top of. Later calls blend, because by then a hires styleground has drawn into the
+	// large buffer and overwriting would erase it.
+	private static void FlushBackgroundSmallBuffer(HiresRenderer renderer)
+	{
+		bool spriteBatchActive = (bool)_beginCalledField.GetValue(Draw.SpriteBatch);
+		if (spriteBatchActive) Draw.SpriteBatch.End();
+
+		Engine.Instance.GraphicsDevice.SetRenderTarget(renderer.LargeLevelBuffer);
+
+		if (!_backgroundSmallBufferFlushed)
+			Engine.Instance.GraphicsDevice.Clear(Color.Transparent);
+
+		Draw.SpriteBatch.Begin(SpriteSortMode.Deferred,
+			_backgroundSmallBufferFlushed ? BlendState.AlphaBlend : BlendState.Opaque,
+			SamplerState.PointClamp, DepthStencilState.None, RasterizerState.CullNone,
+			null, Matrix.Identity);
+		Draw.SpriteBatch.Draw(GameplayBuffers.Level, Vector2.Zero, Color.White);
+		Draw.SpriteBatch.End();
+
+		_backgroundSmallBufferFlushed = true;
 	}
 
 	private static void FlushForegroundSmallBuffer(HiresRenderer renderer, ForegroundFlushGroup group)
@@ -2209,6 +2362,16 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 			}
         }
 
+		// The other direction: a hires styleground's Parallax draws through a game-space view of
+		// its texture, which carries a 1/6 ScaleFix so the art comes out the right size everywhere
+		// that *isn't* drawing it hires. Here it is, so that comes back off and the full-resolution
+		// source rectangle the view hands over is drawn one texel to one hires pixel. PushSpriteHook
+		// takes care of the rest -- cancelling the buffer's 6x and scaling the position into it.
+		else if (_undoHiresParallaxScaleFix)
+		{
+			scale *= Scale;
+		}
+
         orig(self, texture, position, sourceRectangle, color, rotation, origin, scale, effects, layerDepth);
 	}
 
@@ -2226,6 +2389,12 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 				sourceRectangle = new Rectangle((int) (Scale * rect.X), (int) (Scale * rect.Y), (int) (Scale * rect.Width), (int) (Scale * rect.Height));
 			}
         }
+
+		// See SpriteBatch_Draw3.
+		else if (_undoHiresParallaxScaleFix)
+		{
+			scale *= Scale;
+		}
 
         orig(self, texture, position, sourceRectangle, color, rotation, origin, scale, effects, layerDepth);
 	}
@@ -2312,7 +2481,11 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
         // `texture` is settled from here on, so resolve this once and share it with the branch
         // below. Both reads are memoized anyway; the local keeps the two in obvious agreement.
-        var textureIsLarge = IsLargeTexture(texture);
+        //
+        // A hires styleground's art counts too: it is already at this scale, so it wants exactly
+        // what a natively large texture gets -- the destination position scaled into the buffer and
+        // the buffer's own 6x cancelled, so it lands one texel to one hires pixel.
+        var textureIsLarge = IsLargeTexture(texture) || _renderingHiresBackdrop;
 
         // If you're drawing the small version of this texture, no you're not!
         if (changedTexture)

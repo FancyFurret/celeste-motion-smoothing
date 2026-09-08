@@ -20,6 +20,18 @@ Place a **Motion Smoothing Controller** in your map to suggest settings for it. 
 
 The player's own saved settings are preserrved and come back when they leave the map. When a map is deciding a setting, it's shown in purple and can't be changed in Mod Settings, but a player can turn off **Use Suggested Map Settings** there, which overrides the map's settings.
 
+## High-Resolution Stylegrounds
+
+Image stylegrounds have a **High Resolution** checkbox in Lönn. Tick it when the styleground's texture is drawn at six times the usual resolution — 1920x1080 for a full screen instead of 320x180 — and the Fancy rendering mode will draw it at its own resolution instead of nearest-neighbour upscaling a 320x180 one. That's how you get a sky, a gradient, or a vignette that stays sharp no matter where the camera is between two pixels.
+
+Everything else about the styleground is unchanged. Its X, Y, scroll, speed, fade, loop and blend mode are all still in normal 320x180 game coordinates, so a 1920x1080 texture behaves exactly like the 320x180 one you'd have drawn instead — same position, same scroll rate, tiling every 320 pixels. Only the pixels are finer.
+
+The texture's width and height must both be multiples of 6; if they aren't, the styleground is drawn as an ordinary one and a warning goes in the log.
+
+Under the Fast and Off rendering modes, with Motion Smoothing disabled, or when another mod renders the styleground into a buffer of its own, it's drawn scaled down to its normal size instead — so the map still looks right everywhere, just not as sharp.
+
+This only applies to image stylegrounds. Effect stylegrounds draw whatever they like at whatever resolution they like, so there's nothing for the flag to mean; if you're writing one and want to draw at the hires scale, use `MotionSmoothing.GetCurrentRenderTargetScale` (see below) instead.
+
 ## Implementation Details for Mod Authors
 
 The primary feature that can affect compatibility with other mods is camera smoothing: rendering the gameplay offset by a fraction of a pixel to greatly improve smoothness. The Fast mode works by drawing the entire level buffer at a fractional offset when upscaling to the screen. While this correctly offsets the gameplay layer, it has the unfortunate drawback of making the background jitter, since unless a background object has parallax one (moving in lockstep with the camera), every time the camera moves a whole pixel, the background will effectively snap a whole pixel back. The solution is to do the offsetting in the compositing step, which is the Fancy mode; the remainder of this guide explains how this works.

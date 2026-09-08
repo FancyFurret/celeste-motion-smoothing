@@ -19,3 +19,7 @@ triggers.MotionSmoothing/MotionSmoothingController.attributes.name.cameraSmoothi
 triggers.MotionSmoothing/MotionSmoothingController.attributes.name.smoothBackground=Smooth Background
 triggers.MotionSmoothing/MotionSmoothingController.attributes.name.smoothForeground=Smooth Foreground
 triggers.MotionSmoothing/MotionSmoothingController.attributes.name.renderMadelineWithSubpixels=Render Madeline with Subpixel Precision
+
+# Added to image stylegrounds by Loenn/libraries/motionSmoothingStylegrounds.lua.
+style.parallax.attribute.motionSmoothingHires=High Resolution
+style.parallax.description.motionSmoothingHires=Whether this styleground's texture is drawn at six times the usual resolution (1920x1080 for a full screen instead of 320x180).\nMotion Smoothing's Fancy rendering mode then draws it at its own resolution rather than scaling a 320x180 one up, so it stays sharp.\nEverywhere else it is drawn scaled down to its normal size. The texture's width and height must both be multiples of 6.
