@@ -1,3 +1,3 @@
 ﻿modoptions_motionsmoothing_tasmode=TAS Mode
 modoptions_motionsmoothing_buttonrenderingmode=Change Rendering Mode
-MOTIONSMOOTHING_HIRES_AUSPICIOUSHELPER_POSTCARD={big}Oh No!{/big}{n}This map has a {#ff1144}high resolution styleground{#}, which Motion Smoothing can only draw in Fancy rendering mode.{n}It also uses features from a mod {#ff1144}incompatible with Fancy mode{#}, so it cannot load.
+MOTIONSMOOTHING_HIRES_AUSPICIOUSHELPER_POSTCARD={big}Oh No!{/big}{n}This map has a {#ff1144}high resolution styleground{#}, which Motion Smoothing can only draw in Fancy rendering mode. It also uses features from a mod {#ff1144}incompatible with Fancy mode{#}, so it cannot load.
