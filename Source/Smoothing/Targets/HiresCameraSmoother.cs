@@ -72,9 +72,6 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
     // See BeforeBackdropRender and SpriteBatch_Draw3.
     private static float _hiresBackdropScaleCorrection = 1f;
 
-    // The floor mode to put back once the current hires styleground is done with.
-    private static DisableFloorFunctionsMode _floorModeBeforeHiresBackdrop;
-
     // Set for the pass in which background stylegrounds are drawn small and upscaled in one go
     // (Smooth Background off). A hires styleground can't go into the small buffer, so when one
     // comes up mid-pass BeforeBackdropRender composites what's accumulated there into the large
@@ -1193,19 +1190,21 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 				? Scale
 				: Scale / HiresStylegrounds.AuthoredScale;
 
-		if (!_renderingHiresBackdrop) return;
-
-		// Hires art is drawn at hires resolution, so it should land on hires pixels rather than
-		// being snapped to whole game ones.
-		_floorModeBeforeHiresBackdrop = _disableFloorFunctions;
-		_disableFloorFunctions = DisableFloorFunctionsMode.Rational;
+		// Deliberately no floor mode of its own. Whether a styleground may sit between whole game
+		// pixels is a property of the layer it's on, not of how detailed its art is: with Smooth
+		// Background or Smooth Foreground off, everything on that layer steps a whole pixel at a
+		// time, and a hires styleground gliding past neighbours that are stepping would look worse
+		// than either does on its own. Inheriting the pass's mode gets all of it right at once --
+		// including the parallax-one backgrounds, which are drawn in a pass of their own that stays
+		// sub-pixel even with Smooth Background off, because they are pinned to the camera.
+		//
+		// This costs the hires styleground nothing but the sub-pixel motion. Its art is still drawn
+		// at full resolution either way.
 	}
 
 	private static void AfterBackdropRender()
 	{
 		if (!_renderingHiresBackdrop) return;
-
-		_disableFloorFunctions = _floorModeBeforeHiresBackdrop;
 
 		_renderingHiresBackdrop = false;
 		_hiresBackdropScaleCorrection = 1f;
