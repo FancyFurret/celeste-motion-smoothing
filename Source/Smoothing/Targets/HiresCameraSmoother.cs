@@ -39,6 +39,21 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 	// A blunt tool for fixing weird mods like SpirialisHelper. When this is enabled,
 	// spritebatch.begin will use the 181/180 scale matrix.
 	private static bool _forceOffsetZoomDrawingToScreen = false;
+
+	// Which render target counts as "the screen" while the flag above is set. Captured from
+	// whatever Level.Render is compositing into at the moment SpirialisHelper starts drawing its
+	// timestop layers, rather than assumed to be null.
+	//
+	// It is null in a vanilla frame -- Level.Render's tail binds the backbuffer and Spirialis draws
+	// its layers straight onto it. But CelesteNet IL-patches every GraphicsDevice.SetRenderTarget in
+	// Level.Render to route a null target into its own screen-sized FakeRT, so it can blur the
+	// finished frame behind its UI. With both mods loaded the layers are still going to the screen,
+	// just by way of that buffer, and a `== null` test here reported "not the screen" and dropped
+	// both the zoom matrix and the camera offset from the composite -- leaving Spirialis' second
+	// copy of every entity on the unsmoothed whole-pixel grid while the level underneath it moved.
+	// Comparing against the captured target instead is null == null without CelesteNet and
+	// FakeRT == FakeRT with it, and works the same for any other mod that redirects the composite.
+	private static Texture _forceOffsetZoomScreenTarget = null;
 	private static bool _suppressLargeBuffers = false;
     private static bool _currentlyRenderingBackground = false;
 	private static bool _currentlyRenderingGameplay = false;
@@ -52,9 +67,10 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
     // instead of being upscaled 6x along with everything authored at 320x180.
     private static bool _renderingHiresBackdrop = false;
 
-    // Set alongside it when that styleground is a Parallax whose texture was replaced with a
-    // game-space view. See SpriteBatch_Draw3.
-    private static bool _undoHiresParallaxScaleFix = false;
+    // What to multiply the current hires styleground's drawn scale by, when it is a Parallax
+    // drawing through a game-space view of its texture. 1 for everything else. See
+    // SpriteBatch_Draw3 and HiresStylegrounds.ApplyGameSpaceView.
+    private static float _hiresBackdropScaleCorrection = 1f;
 
     // The floor mode to put back once the current hires styleground is done with.
     private static DisableFloorFunctionsMode _floorModeBeforeHiresBackdrop;
@@ -726,7 +742,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
         // an exception inside a backdrop, another mod cutting Level.Render short -- would otherwise
         // start the next one mid-transition.
         _renderingHiresBackdrop = false;
-        _undoHiresParallaxScaleFix = false;
+        _hiresBackdropScaleCorrection = 1f;
         _backgroundSmallBufferPass = false;
         _backgroundPassOnLargeBuffer = false;
         _backgroundSmallBufferFlushed = false;
@@ -1162,7 +1178,9 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 		// another mod's renderer draws these same backdrops into buffers of its own, where there is
 		// no hires art to draw and the styleground's game-space view is exactly right as it is.
 		_renderingHiresBackdrop = hires && IsLargeTexture(_currentRenderTarget);
-		_undoHiresParallaxScaleFix = _renderingHiresBackdrop && HiresStylegrounds.HasGameSpaceView(backdrop);
+		_hiresBackdropScaleCorrection = _renderingHiresBackdrop
+			? HiresStylegrounds.ScaleCorrection(backdrop)
+			: 1f;
 
 		if (!_renderingHiresBackdrop) return;
 
@@ -1179,7 +1197,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 		_disableFloorFunctions = _floorModeBeforeHiresBackdrop;
 
 		_renderingHiresBackdrop = false;
-		_undoHiresParallaxScaleFix = false;
+		_hiresBackdropScaleCorrection = 1f;
 	}
 
 	// Moves the background small-buffer pass between the small level buffer it normally fills and
@@ -2299,7 +2317,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
             }
         }
 
-		else if (_forceOffsetZoomDrawingToScreen && _currentRenderTarget == null)
+		else if (IsForceOffsetZoomScreenTarget())
 		{
 			transformMatrix = transformMatrix * ZoomMatrix;
 		}
@@ -2363,13 +2381,14 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
         }
 
 		// The other direction: a hires styleground's Parallax draws through a game-space view of
-		// its texture, which carries a 1/6 ScaleFix so the art comes out the right size everywhere
-		// that *isn't* drawing it hires. Here it is, so that comes back off and the full-resolution
-		// source rectangle the view hands over is drawn one texel to one hires pixel. PushSpriteHook
-		// takes care of the rest -- cancelling the buffer's 6x and scaling the position into it.
-		else if (_undoHiresParallaxScaleFix)
+		// its texture, which carries a ScaleFix so the art comes out at its game-space size
+		// everywhere that *isn't* drawing it hires. Here it is, so that scale comes back out and the
+		// full-resolution source rectangle the view hands over is drawn one texel to one hires
+		// pixel. PushSpriteHook does the rest -- cancelling the buffer's 6x and scaling the position
+		// into it.
+		else if (_hiresBackdropScaleCorrection != 1f)
 		{
-			scale *= Scale;
+			scale *= _hiresBackdropScaleCorrection;
 		}
 
         orig(self, texture, position, sourceRectangle, color, rotation, origin, scale, effects, layerDepth);
@@ -2391,9 +2410,9 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
         }
 
 		// See SpriteBatch_Draw3.
-		else if (_undoHiresParallaxScaleFix)
+		else if (_hiresBackdropScaleCorrection != 1f)
 		{
-			scale *= Scale;
+			scale *= _hiresBackdropScaleCorrection;
 		}
 
         orig(self, texture, position, sourceRectangle, color, rotation, origin, scale, effects, layerDepth);
@@ -2435,9 +2454,18 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
     
 
+    // Whether the current draw is the one _forceOffsetZoomDrawingToScreen is meant to catch: a
+    // SpirialisHelper timestop layer going to the screen. The flag has to stay part of the test --
+    // _forceOffsetZoomScreenTarget is null while it is clear, and so is _currentRenderTarget for
+    // every ordinary draw to the backbuffer.
+    private static bool IsForceOffsetZoomScreenTarget()
+    {
+        return _forceOffsetZoomDrawingToScreen && _currentRenderTarget == _forceOffsetZoomScreenTarget;
+    }
+
     private static Vector2 GetCurrentDrawingOffset(Texture sourceTexture, float x, float y, float scale)
     {
-        if (_forceOffsetZoomDrawingToScreen && _currentRenderTarget == null)
+        if (IsForceOffsetZoomScreenTarget())
         {
             Vector2 offset = GetCameraOffset();
             return new Vector2(x + offset.X * 1, y + offset.Y * 1);
@@ -3186,11 +3214,24 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 		}
 	}
 
+	// Spirialis composites its timestop layers into whatever Level.Render has bound at this point,
+	// which is the screen -- or, with CelesteNet connected, the buffer standing in for it. Whichever
+	// it is, it is what is bound right now, so record it and treat draws to it as draws to the
+	// screen for as long as the composite lasts. See _forceOffsetZoomScreenTarget.
 	private static void DrawTimeStopEntitiesHook(orig_DrawTimeStopEntities orig, object self)
 	{
 		_forceOffsetZoomDrawingToScreen = true;
-		orig(self);
-		_forceOffsetZoomDrawingToScreen = false;
+		_forceOffsetZoomScreenTarget = _currentRenderTarget;
+
+		try
+		{
+			orig(self);
+		}
+		finally
+		{
+			_forceOffsetZoomDrawingToScreen = false;
+			_forceOffsetZoomScreenTarget = null;
+		}
 	}
 
 	// SpirialisHelper renders its timestop layers into its own 320x180 buffers and composites them

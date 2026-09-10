@@ -22,13 +22,15 @@ The player's own saved settings are preserrved and come back when they leave the
 
 ## High-Resolution Stylegrounds
 
-Image stylegrounds have a **High Resolution** checkbox in Lönn. Tick it when the styleground's texture is drawn at six times the usual resolution — 1920x1080 for a full screen instead of 320x180 — and the Fancy rendering mode will draw it at its own resolution instead of nearest-neighbour upscaling a 320x180 one. That's how you get a sky, a gradient, or a vignette that stays sharp no matter where the camera is between two pixels.
+Image stylegrounds have a **High Resolution** checkbox in Lönn. Tick it when the styleground's texture is drawn at six times the usual resolution — 1920x1080 for a full screen instead of 320x180 — and it will be drawn at its own resolution rather than being scaled up, so it stays sharp no matter where the camera is between two pixels.
 
 Everything else about the styleground is unchanged. Its X, Y, scroll, speed, fade, loop and blend mode are all still in normal 320x180 game coordinates, so a 1920x1080 texture behaves exactly like the 320x180 one you'd have drawn instead — same position, same scroll rate, tiling every 320 pixels. Only the pixels are finer.
 
-The texture's width and height must both be multiples of 6; if they aren't, the styleground is drawn as an ordinary one and a warning goes in the log.
+Any texture size works. A size that isn't a multiple of 6 is rounded to the nearest whole game pixel for the purposes of position and tiling, which can leave up to half a game pixel of seam between tiles of a looping styleground; the art itself is always drawn at exactly one texel per screen pixel.
 
-Under the Fast and Off rendering modes, with Motion Smoothing disabled, or when another mod renders the styleground into a buffer of its own, it's drawn scaled down to its normal size instead — so the map still looks right everywhere, just not as sharp.
+Only the Fancy rendering mode can draw one of these at its own resolution — in the other modes it comes out downsampled to its normal size, which throws away the whole point of it — so **a map that has one forces Fancy on** for as long as the player is in it. Their own rendering mode is left untouched underneath and comes back when they leave, and Mod Settings says "Fancy mode must be enabled in this map" under the option. This isn't a suggested map setting — it can't be turned off with **Use Suggested Map Settings**, because the styleground simply cannot be drawn any other way.
+
+That means a map with a high resolution styleground **cannot also use auspicioushelper's material layers**, which force Fancy mode *off* for the opposite reason. A map that does both is refused with a postcard rather than being played with one of the two quietly losing.
 
 This only applies to image stylegrounds. Effect stylegrounds draw whatever they like at whatever resolution they like, so there's nothing for the flag to mean; if you're writing one and want to draw at the hires scale, use `MotionSmoothing.GetCurrentRenderTargetScale` (see below) instead.
 

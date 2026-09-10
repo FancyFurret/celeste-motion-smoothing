@@ -218,6 +218,11 @@ public class MotionSmoothingSettings : EverestModuleSettings
             // Suggested Map Settings, and nothing is locked while Everest deserializes at startup.
             if (RenderingModeLocked) return;
 
+            // A map with a hires styleground has to stay in Fancy. The getter would report Fancy
+            // whatever were written here, so refusing keeps the player's own saved mode intact for
+            // when they leave rather than quietly overwriting it with the one the map insists on.
+            if (HiresStylegrounds.RequiresFancy && value != RenderingMode.Fancy) return;
+
             // Off leaves the camera strategy alone rather than writing one over it, so that turning
             // the mod back on -- from the menu, the hotkey, or a map -- comes back to Fancy or Fast
             // exactly as the player left it.
@@ -267,15 +272,21 @@ public class MotionSmoothingSettings : EverestModuleSettings
         }
 
         bool auspiciousHelperLoaded = IsAuspiciousHelperLoaded;
+        bool fancyRequired = HiresStylegrounds.RequiresFancy;
 
-        // When auspicioushelper is loaded, Fancy is incompatible, so exclude it from the slider and
-        // clamp the current value if needed.
+        // Two maps' worth of constraint, from opposite directions. auspicioushelper's material
+        // layers can't be rendered in Fancy, so it comes off the bottom of the slider; a hires
+        // styleground can't be rendered in anything else, so it's the only value left. They never
+        // both apply -- a map that would trip both is refused outright, see HiresStylegrounds.
         int minIndex = auspiciousHelperLoaded ? (int)RenderingMode.Fast : 0;
-        int maxIndex = Enum.GetValues(typeof(RenderingMode)).Length - 1;
+        int maxIndex = fancyRequired
+            ? (int)RenderingMode.Fancy
+            : Enum.GetValues(typeof(RenderingMode)).Length - 1;
         int initialIndex = (int)RenderingMode;
-        if (initialIndex < minIndex)
+        if (initialIndex < minIndex) initialIndex = minIndex;
+        if (initialIndex > maxIndex) initialIndex = maxIndex;
+        if (initialIndex != (int)RenderingMode)
         {
-            initialIndex = minIndex;
             RenderingMode = (RenderingMode)initialIndex;
         }
 
@@ -313,6 +324,14 @@ public class MotionSmoothingSettings : EverestModuleSettings
             ));
         }
 
+        else if (fancyRequired)
+        {
+            menu.Add(new TextMenu.SubHeader(
+                "Fancy mode must be enabled in this map.",
+                topPadding: false
+            ));
+        }
+
         modeSlider.AddDescription(
             menu,
             "Fancy: Supports all features at the highest quality, but may impact performance\n" +
@@ -334,6 +353,13 @@ public class MotionSmoothingSettings : EverestModuleSettings
             // (see MapSmoothingSuggestions) stands in for the player's saved value while they're
             // inside that map.
             if (_forceDisabled) return false;
+
+            // A hires styleground has no meaning outside Fancy mode, so a map with one has the mod
+            // on for as long as the player is in it. This sits above the map-suggestion layer
+            // because it isn't a suggestion: a map that turned smoothing off *and* had a hires
+            // styleground would render the styleground six times too large.
+            if (HiresStylegrounds.RequiresFancy) return true;
+
             if (MapSmoothingSuggestions.TryGet(MapSmoothingOption.Enabled, out bool mapSmoothing))
                 return mapSmoothing;
 
@@ -391,6 +417,11 @@ public class MotionSmoothingSettings : EverestModuleSettings
     {
         get
         {
+            // The other half of forcing Fancy. Above the map suggestion for the same reason
+            // Enabled's is; the two forces can't both apply, because HiresStylegrounds refuses a
+            // map that would trip auspicioushelper's as well.
+            if (HiresStylegrounds.RequiresFancy) return UnlockCameraStrategy.Hires;
+
             // A map can ask for a specific renderer -- see MapSmoothingSuggestions.
             var strategy = MapSmoothingSuggestions.TryGetCameraStrategy(out var mapStrategy)
                 ? mapStrategy

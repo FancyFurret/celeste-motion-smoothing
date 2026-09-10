@@ -1,4 +1,5 @@
-﻿using Celeste.Mod.MotionSmoothing.Utilities;
+﻿using Celeste.Mod.MotionSmoothing.Maps;
+using Celeste.Mod.MotionSmoothing.Utilities;
 using Monocle;
 
 namespace Celeste.Mod.MotionSmoothing;
@@ -51,6 +52,19 @@ public class MotionSmoothingInputHandler : ToggleableFeature<MotionSmoothingInpu
                     MotionSmoothingMessage.Show(
                         "motion_smoothing_rendering_mode",
                         "Rendering Mode is set by this map",
+                        y: 980f
+                    );
+
+                    return;
+                }
+
+                // Not a map suggestion but a hard requirement of the map's art -- see
+                // HiresStylegrounds -- so there's nothing to cycle to.
+                if (HiresStylegrounds.RequiresFancy)
+                {
+                    MotionSmoothingMessage.Show(
+                        "motion_smoothing_rendering_mode",
+                        "Fancy mode must be enabled in this map",
                         y: 980f
                     );
 
