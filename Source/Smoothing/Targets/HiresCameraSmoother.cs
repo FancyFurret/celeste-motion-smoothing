@@ -67,9 +67,9 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
     // instead of being upscaled 6x along with everything authored at 320x180.
     private static bool _renderingHiresBackdrop = false;
 
-    // What to multiply the current hires styleground's drawn scale by, when it is a Parallax
-    // drawing through a game-space view of its texture. 1 for everything else. See
-    // SpriteBatch_Draw3 and HiresStylegrounds.ApplyGameSpaceView.
+    // What to multiply the current hires styleground's drawn scale by, so that art authored at the
+    // hires scale lands at the scale the buffer is actually at. 1 when nothing hires is rendering.
+    // See BeforeBackdropRender and SpriteBatch_Draw3.
     private static float _hiresBackdropScaleCorrection = 1f;
 
     // The floor mode to put back once the current hires styleground is done with.
@@ -1178,9 +1178,20 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 		// another mod's renderer draws these same backdrops into buffers of its own, where there is
 		// no hires art to draw and the styleground's game-space view is exactly right as it is.
 		_renderingHiresBackdrop = hires && IsLargeTexture(_currentRenderTarget);
-		_hiresBackdropScaleCorrection = _renderingHiresBackdrop
-			? HiresStylegrounds.ScaleCorrection(backdrop)
-			: 1f;
+		// Both cases end at "however many buffer pixels there are to a game pixel", which is Scale
+		// -- and Scale is not always six. ExCameraDynamics and ZoomOutHelper blow the vanilla
+		// buffers up to show more of the room, and HiresRenderer.Create then picks a smaller hires
+		// factor to match, so this has to be read live rather than baked when the map was parsed.
+		//
+		// A Parallax drawing through a game-space view has already had its texels turned into game
+		// pixels by the view's ScaleFix, so game pixels to buffer pixels is all that's left of the
+		// journey. Anything else is drawing its art raw, so it starts at the scale the art was
+		// authored at and has the whole way to go.
+		_hiresBackdropScaleCorrection = !_renderingHiresBackdrop
+			? 1f
+			: HiresStylegrounds.HasGameSpaceView(backdrop)
+				? Scale
+				: Scale / HiresStylegrounds.AuthoredScale;
 
 		if (!_renderingHiresBackdrop) return;
 
@@ -2380,12 +2391,11 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 			}
         }
 
-		// The other direction: a hires styleground's Parallax draws through a game-space view of
-		// its texture, which carries a ScaleFix so the art comes out at its game-space size
-		// everywhere that *isn't* drawing it hires. Here it is, so that scale comes back out and the
-		// full-resolution source rectangle the view hands over is drawn one texel to one hires
-		// pixel. PushSpriteHook does the rest -- cancelling the buffer's 6x and scaling the position
-		// into it.
+		// The other direction: a hires styleground's art is at a scale of its own, and this takes it
+		// to the buffer's -- one texel to one buffer pixel when the buffer is at the scale the art
+		// was authored at, and proportionally smaller when something has zoomed the buffers out to
+		// see more of the room than they were drawn for. PushSpriteHook does the rest, cancelling
+		// the buffer's own scale-up and scaling the position into it.
 		else if (_hiresBackdropScaleCorrection != 1f)
 		{
 			scale *= _hiresBackdropScaleCorrection;

@@ -28,6 +28,8 @@ Everything else about the styleground is unchanged. Its X, Y, scroll, speed, fad
 
 Any texture size works. A size that isn't a multiple of 6 is rounded to the nearest whole game pixel for the purposes of position and tiling, which can leave up to half a game pixel of seam between tiles of a looping styleground; the art itself is always drawn at exactly one texel per screen pixel.
 
+A mod that zooms the camera out by enlarging the buffers — ExCameraDynamics, ZoomOutHelper — works with these: the styleground stays the same size in game pixels and keeps tiling correctly, but its art is drawn proportionally smaller, since the buffer is showing more of the room in the same number of pixels. Zoomed out far enough it ends up no sharper than an ordinary styleground.
+
 Only the Fancy rendering mode can draw one of these at its own resolution — in the other modes it comes out downsampled to its normal size, which throws away the whole point of it — so **a map that has one forces Fancy on** for as long as the player is in it. Their own rendering mode is left untouched underneath and comes back when they leave, and Mod Settings says "Fancy mode must be enabled in this map" under the option. This isn't a suggested map setting — it can't be turned off with **Use Suggested Map Settings**, because the styleground simply cannot be drawn any other way.
 
 That means a map with a high resolution styleground **cannot also use auspicioushelper's material layers**, which force Fancy mode *off* for the opposite reason. A map that does both is refused with a postcard rather than being played with one of the two quietly losing.

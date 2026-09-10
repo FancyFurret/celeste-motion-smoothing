@@ -327,7 +327,7 @@ public class MotionSmoothingSettings : EverestModuleSettings
         else if (fancyRequired)
         {
             menu.Add(new TextMenu.SubHeader(
-                "This map requires Fancy mode to be enabled",
+                "This map requires Fancy mode to be enabled.",
                 topPadding: false
             ));
         }

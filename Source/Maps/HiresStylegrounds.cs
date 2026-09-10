@@ -35,15 +35,22 @@ public static class HiresStylegrounds
     // property and nothing else is going to reserve a name this specific.
     public const string Attribute = "motionSmoothingHires";
 
+    // What "high resolution" means: art drawn at six times 320x180. A constant rather than
+    // HiresCameraSmoother.Scale, which is how many buffer pixels there currently are to a game
+    // pixel -- normally six as well, but a third of that while ExCameraDynamics or ZoomOutHelper
+    // have the buffers blown up to see more of the room. That number moves; what the mapper drew
+    // does not, and this is read while the map is being parsed, long before either is in play.
+    public const float AuthoredScale = 6f;
+
     private static Hook _parseBackdropHook;
 
     // Weakly keyed: a map's MapData owns these Backdrops, and nothing here should be what keeps
     // one alive.
     private static readonly ConditionalWeakTable<Backdrop, object> Flagged = new();
 
-    // The factor Fancy mode multiplies a hires Parallax's drawn scale by, boxed once here rather
-    // than recomputed per draw. See ApplyGameSpaceView.
-    private static readonly ConditionalWeakTable<Backdrop, object> ScaleCorrections = new();
+    // The subset of those that got the game-space view below, which is every flagged Parallax whose
+    // art is big enough to have one.
+    private static readonly ConditionalWeakTable<Backdrop, object> GameSpaceViews = new();
 
     // Whether the level the player is in has a hires styleground anywhere in it. Read by the
     // settings on every access, so it's a field rather than a walk of the backdrop lists.
@@ -95,13 +102,12 @@ public static class HiresStylegrounds
     public static bool IsHires(Backdrop backdrop) =>
         backdrop != null && Flagged.TryGetValue(backdrop, out _);
 
-    // What to multiply this styleground's drawn scale by to undo the ScaleFix its game-space view
-    // carries, so its art lands at one texel per hires pixel. 1 for anything that hasn't got one --
-    // a backdrop type other than Parallax, which draws whatever it likes at whatever size it likes.
-    public static float ScaleCorrection(Backdrop backdrop) =>
-        backdrop != null && ScaleCorrections.TryGetValue(backdrop, out var correction)
-            ? (float)correction
-            : 1f;
+    // Whether this backdrop is a Parallax drawing through the game-space view below, whose ScaleFix
+    // has to be undone when it's drawn hires. False for a backdrop type other than Parallax, which
+    // draws whatever it likes at whatever size it likes. See
+    // HiresCameraSmoother.BeforeBackdropRender for what each case is worth.
+    public static bool HasGameSpaceView(Backdrop backdrop) =>
+        backdrop != null && GameSpaceViews.TryGetValue(backdrop, out _);
 
     // Whether the level the player is in has to be rendered in Fancy mode. The settings getters
     // consult this, so every existing read of Settings.Enabled and Settings.RenderingMode sees the
@@ -159,11 +165,11 @@ public static class HiresStylegrounds
 
         // Rounded rather than required to divide exactly. There's no reason a mapper's image has to
         // be a whole number of game pixels across, and whatever it rounds to is simply the size the
-        // styleground behaves as; the correction below keeps the art itself at one texel per hires
-        // pixel either way. A looping texture whose width isn't a multiple of the scale can leave up
-        // to half a game pixel of seam between tiles, which is the only thing the rounding costs.
-        var width = Math.Max(1, (int)Math.Round(texture.Width / HiresCameraSmoother.Scale));
-        var height = Math.Max(1, (int)Math.Round(texture.Height / HiresCameraSmoother.Scale));
+        // styleground behaves as, and the art is drawn to fill exactly that either way. A looping
+        // texture whose width isn't a multiple of the authored scale can leave up to half a game
+        // pixel of seam between tiles, which is the only thing the rounding costs.
+        var width = Math.Max(1, (int)Math.Round(texture.Width / AuthoredScale));
+        var height = Math.Max(1, (int)Math.Round(texture.Height / AuthoredScale));
 
         // A view that reports the size it already is isn't a view at all, and Parallax would take
         // its other render path for one -- which measures its source rectangle in game pixels
@@ -186,12 +192,11 @@ public static class HiresStylegrounds
         // rectangle is in texels; the two only differ if the styleground's texture is itself a view
         // of a bigger one, which a hand-drawn hires backdrop won't be. The setter writes the factor
         // relative to the parent's own ScaleFix, which the getter multiplies back in.
-        var gameSpaceScale = width / (float)view.ClipRect.Width;
-        view.ScaleFix = gameSpaceScale / texture.ScaleFix;
+        view.ScaleFix = width / (float)view.ClipRect.Width / texture.ScaleFix;
 
         parallax.Texture = view;
 
-        ScaleCorrections.AddOrUpdate(backdrop, 1f / gameSpaceScale);
+        GameSpaceViews.AddOrUpdate(backdrop, null);
 
         return true;
     }
@@ -204,17 +209,27 @@ public static class HiresStylegrounds
         // or removes a styleground partway through a map is then accounted for.
         _currentLevelHasHires = HasHires(level.Background) || HasHires(level.Foreground);
 
-        if (!_currentLevelHasHires || !MotionSmoothingSettings.IsAuspiciousHelperLoaded) return;
+        RefuseIfConflicting(level);
+    }
 
-        // Both forces are in play and they point opposite ways. Checked here rather than before the
-        // map loads because whether auspicioushelper has a material layer active is only knowable
-        // once its entities exist -- which also means a map whose layers only appear partway
-        // through is refused at the room they appear in rather than at its first.
+    // Both forces in play at once, pointing opposite ways. Returns whether the map was refused.
+    //
+    // Called from the room load above and again from MotionSmoothingModule every frame, because
+    // whether auspicioushelper has a material layer active is only knowable once its entities are
+    // awake -- which they are not yet when a room load fires, and a room entered by transition can
+    // bring one in several frames later still. Cheap to ask repeatedly: for a map with no hires
+    // styleground in it, which is every map but a handful, it is one field read.
+    public static bool RefuseIfConflicting(Level level)
+    {
+        if (!_currentLevelHasHires || !MotionSmoothingSettings.IsAuspiciousHelperLoaded) return false;
+
         Logger.Log(LogLevel.Warn, nameof(MotionSmoothingModule),
             $"{level.Session.Area.GetSID()} has a hires styleground and an active auspicioushelper " +
             "material layer, which need Fancy mode on and off at the same time. Refusing the map.");
 
         Refuse(level.Session);
+
+        return true;
     }
 
     private static void LevelExit(Level level, LevelExit exit, LevelExit.Mode mode, Session session,
@@ -235,8 +250,8 @@ public static class HiresStylegrounds
     }
 
     // Hands the player straight back to a LevelEnter, which shows the postcard below and then
-    // returns them to the overworld. Nothing of the level is drawn in between: this runs inside
-    // Level.LoadLevel, while the screen wipe that brought us here is still covering everything.
+    // returns them to the overworld. The scene swap lands at the end of the update this was called
+    // from, so the level is never drawn again after this point.
     private static void Refuse(Session session)
     {
         _currentLevelHasHires = false;

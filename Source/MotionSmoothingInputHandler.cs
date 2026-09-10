@@ -64,7 +64,7 @@ public class MotionSmoothingInputHandler : ToggleableFeature<MotionSmoothingInpu
                 {
                     MotionSmoothingMessage.Show(
                         "motion_smoothing_rendering_mode",
-                        "This map requires Fancy mode to be enabled.",
+                        "This map requires Fancy mode to be enabled",
                         y: 980f
                     );
 

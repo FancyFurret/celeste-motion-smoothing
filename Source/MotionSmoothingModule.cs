@@ -120,7 +120,8 @@ public class MotionSmoothingModule : EverestModule
         On.Monocle.Scene.Begin += SceneBeginHook;
         Everest.Events.Level.OnPause += LevelPause;
         Everest.Events.Level.OnUnpause += LevelUnpause;
-        Everest.Events.Level.OnLoadLevel += LevelLoadLevel;
+        DisableInlining(typeof(Level), "Update");
+        On.Celeste.Level.Update += LevelUpdateHook;
 
         DisableMacOSVSync();
     }
@@ -145,7 +146,7 @@ public class MotionSmoothingModule : EverestModule
         On.Monocle.Scene.Begin -= SceneBeginHook;
         Everest.Events.Level.OnPause -= LevelPause;
         Everest.Events.Level.OnUnpause -= LevelUnpause;
-        Everest.Events.Level.OnLoadLevel -= LevelLoadLevel;
+        On.Celeste.Level.Update -= LevelUpdateHook;
 
         foreach (var hook in _unmaintainedModHooks)
             hook.Dispose();
@@ -375,17 +376,32 @@ public class MotionSmoothingModule : EverestModule
         Instance.ApplyFramerate();
     }
 
-	// Whether auspicioushelper had a layer active as of the last room we looked at.
+	// Whether auspicioushelper had a layer active as of the last frame we looked at.
 	private bool _auspiciousHelperActive;
 
-	// auspicioushelper's layers come and go from room to room, and Fancy camera smoothing is
-	// incompatible with them -- see MotionSmoothingSettings.IsAuspiciousHelperLoaded, whose
-	// fallback to Fast the UnlockCameraStrategy getter (and so RenderingMode) already reports
-	// live. Nothing re-applies
-	// that on its own, though, so watch for the flip on every room load (transitions, respawns,
-	// teleports) and swap the camera smoother over when it happens.
-	private static void LevelLoadLevel(Level level, Player.IntroTypes playerIntro, bool isFromLoader)
+	// auspicioushelper's layers come and go, and Fancy camera smoothing is incompatible with them
+	// -- see MotionSmoothingSettings.IsAuspiciousHelperLoaded, whose fallback to Fast the
+	// UnlockCameraStrategy getter (and so RenderingMode) already reports live. Nothing re-applies
+	// that on its own, so watch for the flip here and swap the camera smoother over when it happens.
+	//
+	// Every frame rather than on every room load, which is where this used to be. A room load fires
+	// before the entities it just added are awake, so a layer that belongs to the room being entered
+	// isn't active yet when it does -- and a room entered by transition can bring one in several
+	// frames later still, while the transition coroutine (which runs from here) is still going. The
+	// check itself is a delegate call returning a bool.
+	//
+	// Checked after the update rather than before it so that a layer an entity created this frame is
+	// already counted, whether auspicioushelper marks one active from Awake or from its own Update.
+	private static void LevelUpdateHook(On.Celeste.Level.orig_Update orig, Level self)
 	{
+		orig(self);
+
+		// A hires styleground needs Fancy as badly as a material layer needs it off, so a map with
+		// both is refused outright rather than reconfigured -- and then there is nothing to apply
+		// settings for. Asked unconditionally rather than only on the flip, so that a layer already
+		// active when the map was entered is caught too.
+		if (HiresStylegrounds.RefuseIfConflicting(self)) return;
+
 		var active = MotionSmoothingSettings.IsAuspiciousHelperLoaded;
 		if (active == Instance._auspiciousHelperActive) return;
 
