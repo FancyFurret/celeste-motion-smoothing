@@ -2780,7 +2780,11 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
             return false;
         if (target.MultiSampleCount != 0)
             return false;
-        if (device.DepthStencilState.DepthBufferEnable || device.DepthStencilState.StencilEnable)
+        // With no depth/stencil attachment, both tests always pass regardless of the
+        // currently bound state. This is common when a backdrop inherits Default.
+        if (target.DepthStencilFormat != DepthFormat.None
+            && (device.DepthStencilState.DepthBufferEnable
+                || device.DepthStencilState.StencilEnable))
             return false;
 
         Viewport viewport = device.Viewport;
