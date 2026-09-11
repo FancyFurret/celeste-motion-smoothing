@@ -119,6 +119,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
     private static readonly FieldInfo _beginCalledField = typeof(SpriteBatch)
 	.GetField("beginCalled", BindingFlags.NonPublic | BindingFlags.Instance);
+    private static SpriteSortMode? _drawSpriteBatchSortMode;
     private static (SpriteSortMode, BlendState, SamplerState, DepthStencilState, RasterizerState, Effect, Matrix)? _lastSpriteBatchBeginParams;
 
 	// This maps references to all external textures (i.e. created by other mods)
@@ -2060,8 +2061,9 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
     {
         if (_inGpuPrimitiveDraw)
         {
-            // Private scratch pass: retain Fancy's logical target. No active game batch
-            // is permitted at entry, so there is nothing to restart here.
+            // Private scratch pass: retain Fancy's logical target. A queued non-immediate
+            // Draw.SpriteBatch is deliberately left open; it will rebind its own GPU state
+            // when it eventually flushes. Immediate batches never enter the atlas path.
             orig(self, renderTargetBindings);
             return;
         }
@@ -2121,7 +2123,9 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
     private static void SpriteBatch_Begin(orig_SpriteBatch_Begin orig, SpriteBatch self, SpriteSortMode sortMode, BlendState blendState,
         SamplerState samplerState, DepthStencilState depthStencilState, RasterizerState rasterizerState, Effect effect, Matrix transformMatrix)
     {
-        _lastSpriteBatchBeginParams = (sortMode, blendState, samplerState, depthStencilState, rasterizerState, effect, transformMatrix);
+        bool isDrawSpriteBatch = ReferenceEquals(self, Draw.SpriteBatch);
+        if (isDrawSpriteBatch)
+            _lastSpriteBatchBeginParams = (sortMode, blendState, samplerState, depthStencilState, rasterizerState, effect, transformMatrix);
 
         
 
@@ -2147,9 +2151,11 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 		else if (IsForceOffsetZoomScreenTarget())
 		{
 			transformMatrix = transformMatrix * ZoomMatrix;
-		}
+        }
 
         orig(self, sortMode, blendState, samplerState, depthStencilState, rasterizerState, effect, transformMatrix);
+        if (isDrawSpriteBatch)
+            _drawSpriteBatchSortMode = sortMode;
     }
 
 
@@ -2650,7 +2656,15 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 	private static void SpriteBatch_End(Action<SpriteBatch> orig, SpriteBatch self)
 	{
 		_currentlyScaling = false;
-		orig(self);
+		try
+		{
+			orig(self);
+		}
+		finally
+		{
+			if (ReferenceEquals(self, Draw.SpriteBatch))
+				_drawSpriteBatchSortMode = null;
+		}
 	}
 
 
@@ -2738,7 +2752,20 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
             return false;
         if (!GpuPrimitiveAtlasPixelator.SupportsMatrix(matrix))
             return false;
-        if ((bool)_beginCalledField.GetValue(Draw.SpriteBatch))
+        // A non-immediate SpriteBatch only queues sprites until End(), where FNA's
+        // FlushBatch rebinds all of the batch's GPU state. The private atlas pass can
+        // therefore switch away and back without ending the batch: queued sprites stay
+        // untouched and are still submitted after this immediate primitive, matching
+        // GFX.DrawVertices' original ordering.
+        //
+        // Immediate mode is different. Its sprites are submitted as each Draw occurs,
+        // and it relies on state prepared by Begin(). The atlas pass replaces that state
+        // (including vertex/index buffers and the effect), so a following sprite could
+        // render incorrectly. Keep that case on the normal high-resolution fallback.
+        bool spriteBatchActive = (bool)_beginCalledField.GetValue(Draw.SpriteBatch);
+        if (spriteBatchActive
+            && (!_drawSpriteBatchSortMode.HasValue
+                || _drawSpriteBatchSortMode.Value == SpriteSortMode.Immediate))
             return false;
 
         GraphicsDevice device = Engine.Graphics.GraphicsDevice;
