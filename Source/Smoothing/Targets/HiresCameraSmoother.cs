@@ -117,8 +117,12 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
     }
     private static DisableFloorFunctionsMode _disableFloorFunctions = DisableFloorFunctionsMode.Integer;
 
-    private static readonly FieldInfo _beginCalledField = typeof(SpriteBatch)
-	.GetField("beginCalled", BindingFlags.NonPublic | BindingFlags.Instance);
+    // Direct access to SpriteBatch.beginCalled. This is read from several per-draw hot
+    // paths, where FieldInfo.GetValue would box a bool on every call.
+    [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "beginCalled")]
+    private static extern ref bool SpriteBatchBeginCalled(SpriteBatch batch);
+
+    private static bool SpriteBatchActive => SpriteBatchBeginCalled(Draw.SpriteBatch);
     private static SpriteSortMode? _drawSpriteBatchSortMode;
     private static (SpriteSortMode, BlendState, SamplerState, DepthStencilState, RasterizerState, Effect, Matrix)? _lastSpriteBatchBeginParams;
 
@@ -241,7 +245,12 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
     public static void DestroyLargeTextures()
 	{
-        _gpuPrimitiveAtlasPixelator.Dispose();
+        // The primitive atlas is a fixed-size scratch surface that outlives any single
+        // level's buffers, and EnsureResources already rebuilds it if the graphics device
+        // changes. Tearing it down here would just churn it on every level transition, so
+        // it is released in Unhook instead -- but this is a good point to let a path that
+        // faulted earlier have another go.
+        _gpuPrimitiveAtlasPixelator.ClearFault();
         DestroyExternalLargeTextures();
 
         _internalLargeTextures.Clear();
@@ -455,6 +464,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 		DisableHiresDistort();
 
         DestroyLargeTextures();
+        _gpuPrimitiveAtlasPixelator.Dispose();
     }
 
 	private static void GameplayBuffers_Create(On.Celeste.GameplayBuffers.orig_Create orig)
@@ -1225,7 +1235,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 			&& _currentRenderTarget != renderer.LargeLevelBuffer.Target)
 			return;
 
-		bool spriteBatchActive = (bool)_beginCalledField.GetValue(Draw.SpriteBatch);
+		bool spriteBatchActive = SpriteBatchActive;
 		var savedParams = _lastSpriteBatchBeginParams;
 		if (spriteBatchActive) Draw.SpriteBatch.End();
 
@@ -1271,7 +1281,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 		if (newGroup == _currentFlushGroup)
 			return;
 
-		bool spriteBatchActive = (bool)_beginCalledField.GetValue(Draw.SpriteBatch);
+		bool spriteBatchActive = SpriteBatchActive;
 		var savedParams = _lastSpriteBatchBeginParams;
 		if (spriteBatchActive) Draw.SpriteBatch.End();
 
@@ -1306,7 +1316,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 	// large buffer and overwriting would erase it.
 	private static void FlushBackgroundSmallBuffer(HiresRenderer renderer)
 	{
-		bool spriteBatchActive = (bool)_beginCalledField.GetValue(Draw.SpriteBatch);
+		bool spriteBatchActive = SpriteBatchActive;
 		if (spriteBatchActive) Draw.SpriteBatch.End();
 
 		Engine.Instance.GraphicsDevice.SetRenderTarget(renderer.LargeLevelBuffer);
@@ -1326,7 +1336,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
 	private static void FlushForegroundSmallBuffer(HiresRenderer renderer, ForegroundFlushGroup group)
 	{
-		bool spriteBatchActive = (bool)_beginCalledField.GetValue(Draw.SpriteBatch);
+		bool spriteBatchActive = SpriteBatchActive;
 		if (spriteBatchActive) Draw.SpriteBatch.End();
 
 		var flushBlendState = group == ForegroundFlushGroup.Additive
@@ -2089,7 +2099,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
             }
         }
 
-        bool needToRestartSpriteBatch = _currentRenderTarget != renderTargetBindings[0].RenderTarget && (bool)_beginCalledField.GetValue(Draw.SpriteBatch);
+        bool needToRestartSpriteBatch = _currentRenderTarget != renderTargetBindings[0].RenderTarget && SpriteBatchActive;
 
         _currentRenderTarget = renderTargetBindings[0].RenderTarget;
 
@@ -2383,7 +2393,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
             // and so now it ought not to.
 			if (_currentlyScaling || _currentRenderTarget == null)
 			{
-                if ((bool)_beginCalledField.GetValue(Draw.SpriteBatch))
+                if (SpriteBatchActive)
                 {
                     if (_lastSpriteBatchBeginParams is var (sortMode, blendState, samplerState, depthStencilState, rasterizerState, effect, matrix))
                     {
@@ -2456,7 +2466,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 			}
 			
 
-            if ((bool)_beginCalledField.GetValue(Draw.SpriteBatch))
+            if (SpriteBatchActive)
             {
                 // Since we're drawing something large into the new large buffer,
                 // we ditch the scale exactly like above. However, at this point,
@@ -2619,7 +2629,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
         // none of this will be hooked.
         Engine.Instance.GraphicsDevice.SetRenderTarget(largeTarget);
 
-        bool inSpriteBatch = (bool)_beginCalledField.GetValue(Draw.SpriteBatch);
+        bool inSpriteBatch = SpriteBatchActive;
 
         if (inSpriteBatch && _lastSpriteBatchBeginParams is var (sortMode, blendState, samplerState, depthStencilState, rasterizerState, effect, matrix))
         {
@@ -2738,11 +2748,14 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
         context = default;
 
         if (_inGpuPrimitiveDraw || _renderingHiresBackdrop
+            || _gpuPrimitiveAtlasPixelator.Faulted
             || MotionSmoothingModule.Settings.SillyMode
-            || HiresRenderer.Instance is not { } renderer)
+            || HiresRenderer.Instance is null)
             return false;
-        if (renderer.LargeLevelBuffer?.Target is not RenderTarget2D largeLevel
-            || !ReferenceEquals(_currentRenderTarget, largeLevel))
+        // Every large buffer is rendered at Scale, so primitives drawn into any of them
+        // need rasterizing on the logical low-resolution grid -- not just the level
+        // buffer. Anything at its native size is already pixelated by the GPU.
+        if (!IsLargeTexture(_currentRenderTarget))
             return false;
 
         if ((effect != null && !ReferenceEquals(effect, GFX.FxPrimitive))
@@ -2762,7 +2775,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
         // and it relies on state prepared by Begin(). The atlas pass replaces that state
         // (including vertex/index buffers and the effect), so a following sprite could
         // render incorrectly. Keep that case on the normal high-resolution fallback.
-        bool spriteBatchActive = (bool)_beginCalledField.GetValue(Draw.SpriteBatch);
+        bool spriteBatchActive = SpriteBatchActive;
         if (spriteBatchActive
             && (!_drawSpriteBatchSortMode.HasValue
                 || _drawSpriteBatchSortMode.Value == SpriteSortMode.Immediate))
@@ -2774,7 +2787,9 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
         device.GetRenderTargetsNoAllocEXT(_gpuPrimitiveRenderTargets);
         if (_gpuPrimitiveRenderTargets[0].RenderTarget is not RenderTarget2D target)
             return false;
-        if (!ReferenceEquals(target, largeLevel))
+        // The tracked logical target has to agree with what is actually bound, otherwise
+        // the large-texture test above was answered about the wrong surface.
+        if (!ReferenceEquals(target, _currentRenderTarget))
             return false;
         if (target.RenderTargetUsage != RenderTargetUsage.PreserveContents)
             return false;

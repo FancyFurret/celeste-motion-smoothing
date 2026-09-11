@@ -21,6 +21,15 @@ internal sealed class GpuPrimitiveAtlasPixelator : IDisposable
     // A triangle clipped against an axis-aligned rectangle produces at most seven vertices.
     private const int ClipBufferCapacity = 8;
     private static readonly Matrix AtlasProjection = CreatePixelToClipMatrix(AtlasWidth, AtlasHeight);
+    // dest = src*0 + dest*0, so covered pixels become zero no matter what the pixel shader
+    // emits. Used to blank a page region without depending on FxPrimitive's output.
+    private static readonly BlendState ZeroBlend = new()
+    {
+        ColorSourceBlend = Blend.Zero,
+        ColorDestinationBlend = Blend.Zero,
+        AlphaSourceBlend = Blend.Zero,
+        AlphaDestinationBlend = Blend.Zero
+    };
 
     private RenderTarget2D _atlas;
     private BasicEffect _composite;
@@ -30,9 +39,29 @@ internal sealed class GpuPrimitiveAtlasPixelator : IDisposable
     private VertexPositionColorTexture[] _compositeVertices = Array.Empty<VertexPositionColorTexture>();
     private readonly VertexPositionColor[] _clipA = new VertexPositionColor[ClipBufferCapacity];
     private readonly VertexPositionColor[] _clipB = new VertexPositionColor[ClipBufferCapacity];
+    private readonly VertexPositionColor[] _pageClearQuad = new VertexPositionColor[6];
     private readonly List<PrimitiveGroup> _groups = new();
     private readonly List<AtlasPlacement> _placements = new();
     private int _clippedVertexCount;
+    private int _pageUsedWidth;
+    private int _pageUsedHeight;
+
+    /// <summary>
+    /// Set when a draw failed against the graphics device. The path retires itself rather
+    /// than letting the exception escape through the hooked GFX.DrawVertices, and stays
+    /// retired until <see cref="Dispose"/> releases the resources.
+    /// </summary>
+    internal bool Faulted { get; private set; }
+
+    /// <summary>
+    /// Lets a faulted path try again without discarding the atlas. Called at level
+    /// transitions, so a one-off device problem doesn't cost pixelation for the whole
+    /// session while a genuinely broken device still retires after one logged failure.
+    /// </summary>
+    internal void ClearFault()
+    {
+        Faulted = false;
+    }
 
     internal static bool SupportsMatrix(Matrix matrix)
     {
@@ -104,6 +133,7 @@ internal sealed class GpuPrimitiveAtlasPixelator : IDisposable
         Matrix finalWorld = matrix * Matrix.CreateScale(scale)
             * CreatePixelToClipMatrix(viewport.Width, viewport.Height);
 
+        bool anyPageComposited = false;
         try
         {
             EnsureResources(device);
@@ -113,21 +143,45 @@ internal sealed class GpuPrimitiveAtlasPixelator : IDisposable
                 int nextGroup = PackPage(groupIndex);
                 RasterizePage(device);
                 CompositePage(device, targets, viewport, scale);
+                anyPageComposited = true;
                 groupIndex = nextGroup;
             }
         }
+        catch (Exception e)
+        {
+            // This runs inside a hooked GFX.DrawVertices, so an escaping graphics
+            // exception would take the game down mid-frame. Retire the path instead and
+            // let every later call fall back to the normal high-resolution draw.
+            Faulted = true;
+            Logger.Log(LogLevel.Error, "MotionSmoothingModule",
+                $"GPU primitive atlas disabled after a draw failure: {e}");
+            // Pages already composited are on the target. Claiming the draw avoids
+            // blending the same geometry a second time through the fallback.
+            return anyPageComposited;
+        }
         finally
         {
-            device.SetRenderTargets(targets);
-            device.Viewport = viewport;
-            device.ScissorRectangle = scissor;
-            device.DepthStencilState = depth;
-            device.RasterizerState = RasterizerState.CullNone;
-            device.BlendState = BlendState.AlphaBlend;
-            GFX.FxPrimitive.Parameters["World"].SetValue(finalWorld);
-            GFX.FxPrimitive.CurrentTechnique.Passes[0].Apply();
-            device.Textures[0] = texture;
-            device.SamplerStates[0] = sampler;
+            // An exception thrown from here would replace the one being handled above and
+            // still escape into the game's render loop, so restoration is best-effort.
+            try
+            {
+                device.SetRenderTargets(targets);
+                device.Viewport = viewport;
+                device.ScissorRectangle = scissor;
+                device.DepthStencilState = depth;
+                device.RasterizerState = RasterizerState.CullNone;
+                device.BlendState = BlendState.AlphaBlend;
+                GFX.FxPrimitive.Parameters["World"].SetValue(finalWorld);
+                GFX.FxPrimitive.CurrentTechnique.Passes[0].Apply();
+                device.Textures[0] = texture;
+                device.SamplerStates[0] = sampler;
+            }
+            catch (Exception e)
+            {
+                Faulted = true;
+                Logger.Log(LogLevel.Error, "MotionSmoothingModule",
+                    $"GPU primitive atlas failed to restore render state: {e}");
+            }
         }
 
         return true;
@@ -330,6 +384,7 @@ internal sealed class GpuPrimitiveAtlasPixelator : IDisposable
         int cursorY = TilePadding;
         int rowHeight = 0;
         int groupIndex = firstGroup;
+        bool wrapped = false;
 
         while (groupIndex < _groups.Count)
         {
@@ -342,6 +397,7 @@ internal sealed class GpuPrimitiveAtlasPixelator : IDisposable
                 cursorX = TilePadding;
                 cursorY += rowHeight;
                 rowHeight = 0;
+                wrapped = true;
             }
             if (cursorY + packedHeight > AtlasHeight)
                 break;
@@ -353,6 +409,11 @@ internal sealed class GpuPrimitiveAtlasPixelator : IDisposable
             rowHeight = Math.Max(rowHeight, packedHeight);
             groupIndex++;
         }
+
+        // Every tile sits inside this box, padding included: tiles begin at TilePadding
+        // and the cursors advance past each tile's trailing padding.
+        _pageUsedWidth = Math.Min(wrapped ? AtlasWidth : cursorX, AtlasWidth);
+        _pageUsedHeight = Math.Min(cursorY + rowHeight, AtlasHeight);
 
         // CanFitEveryGroupOnEmptyPage guarantees that a fresh page always consumes
         // at least one group, so pagination cannot stall here.
@@ -385,13 +446,36 @@ internal sealed class GpuPrimitiveAtlasPixelator : IDisposable
         // next page makes that same resource a render target again.
         device.Textures[0] = null;
         device.SetRenderTarget(_atlas);
-        device.Clear(Color.Transparent);
         device.RasterizerState = RasterizerState.CullNone;
         device.DepthStencilState = DepthStencilState.None;
-        device.BlendState = BlendState.AlphaBlend;
         GFX.FxPrimitive.Parameters["World"].SetValue(AtlasProjection);
         GFX.FxPrimitive.CurrentTechnique.Passes[0].Apply();
+
+        // Blank only what this page packs. GraphicsDevice.Clear would cost a megapixel of
+        // fill on every call, even for a page holding a handful of small tiles. ZeroBlend
+        // makes the result independent of what the shader writes, so the vertex colors
+        // here are irrelevant.
+        device.BlendState = ZeroBlend;
+        WriteQuad(_pageClearQuad, 0f, 0f, _pageUsedWidth, _pageUsedHeight);
+        device.DrawUserPrimitives(PrimitiveType.TriangleList, _pageClearQuad, 0, 2);
+
+        device.BlendState = BlendState.AlphaBlend;
         device.DrawUserPrimitives(PrimitiveType.TriangleList, _rasterVertices, 0, count / 3);
+    }
+
+    private static void WriteQuad(VertexPositionColor[] target, float left, float top,
+        float right, float bottom)
+    {
+        Vector3 topLeft = new(left, top, 0f);
+        Vector3 topRight = new(right, top, 0f);
+        Vector3 bottomRight = new(right, bottom, 0f);
+        Vector3 bottomLeft = new(left, bottom, 0f);
+        target[0] = new VertexPositionColor(topLeft, Color.Transparent);
+        target[1] = new VertexPositionColor(topRight, Color.Transparent);
+        target[2] = new VertexPositionColor(bottomRight, Color.Transparent);
+        target[3] = new VertexPositionColor(topLeft, Color.Transparent);
+        target[4] = new VertexPositionColor(bottomRight, Color.Transparent);
+        target[5] = new VertexPositionColor(bottomLeft, Color.Transparent);
     }
 
     private void CompositePage(GraphicsDevice device, RenderTargetBinding[] targets,
@@ -429,9 +513,11 @@ internal sealed class GpuPrimitiveAtlasPixelator : IDisposable
         device.BlendState = BlendState.AlphaBlend;
         device.DepthStencilState = DepthStencilState.None;
         device.RasterizerState = RasterizerState.CullNone;
-        device.SamplerStates[0] = SamplerState.PointClamp;
         _composite.Texture = _atlas;
         _composite.CurrentTechnique.Passes[0].Apply();
+        // After Apply, so that an effect which commits its own sampler state cannot leave
+        // the atlas being filtered. Point sampling is what makes the tiles read as pixels.
+        device.SamplerStates[0] = SamplerState.PointClamp;
         device.DrawUserPrimitives(PrimitiveType.TriangleList, _compositeVertices, 0, count / 3);
     }
 
@@ -502,12 +588,31 @@ internal sealed class GpuPrimitiveAtlasPixelator : IDisposable
             && float.IsFinite(matrix.M43) && float.IsFinite(matrix.M44);
     }
 
+    /// <summary>
+    /// Releases the graphics resources and the scratch buffers. The instance stays usable:
+    /// the next <see cref="TryDraw"/> rebuilds whatever it needs, and a previous fault is
+    /// cleared so a transient device problem gets another chance.
+    /// </summary>
     public void Dispose()
     {
         _atlas?.Dispose();
         _atlas = null;
         _composite?.Dispose();
         _composite = null;
+        Faulted = false;
+
+        // These grow to the worst case a session has seen and never shrink on their own.
+        // Clipping can emit up to five triangles per input triangle, so a heavy scene can
+        // strand several megabytes here for the rest of the run.
+        _clippedVertices = Array.Empty<VertexPositionColor>();
+        _rasterVertices = Array.Empty<VertexPositionColor>();
+        _expandedIndexedVertices = Array.Empty<VertexPositionColor>();
+        _compositeVertices = Array.Empty<VertexPositionColorTexture>();
+        _clippedVertexCount = 0;
+        _groups.Clear();
+        _groups.TrimExcess();
+        _placements.Clear();
+        _placements.TrimExcess();
     }
 
     private enum ClipAxis
