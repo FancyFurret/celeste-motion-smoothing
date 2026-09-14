@@ -72,6 +72,7 @@ public class MotionSmoothingModule : EverestModule
     private MotionSmoothingInputHandler InputHandler { get; } = new();
     private DebugRenderFix DebugRenderFix { get; } = new();
     private DeltaTimeFix DeltaTimeFix { get; } = new();
+    private HairStabilizer HairStabilizer { get; } = new();
 
     public override void Load()
     {
@@ -107,6 +108,7 @@ public class MotionSmoothingModule : EverestModule
         InputHandler.Load();
         DebugRenderFix.Load();
         DeltaTimeFix.Load();
+        HairStabilizer.Load();
 
         InputHandler.Enable();
 
@@ -139,6 +141,7 @@ public class MotionSmoothingModule : EverestModule
         InputHandler.Unload();
         DebugRenderFix.Unload();
         DeltaTimeFix.Unload();
+        HairStabilizer.Unload();
 
         MapSmoothingSuggestions.Unload();
         HiresStylegrounds.Unload();
@@ -221,10 +224,16 @@ public class MotionSmoothingModule : EverestModule
             UpdateAtDraw.Disable();
             DebugRenderFix.Disable();
             DeltaTimeFix.Disable();
+            HairStabilizer.Disable();
             return;
         }
 
-
+        // Purely visual, and nothing to do with the framerate or the renderer, so it's the one
+        // feature that isn't tied to being in a level: PlayerHair can show up outside one.
+        if (Settings.StabilizeHair)
+            HairStabilizer.Enable();
+        else
+            HairStabilizer.Disable();
 
         // If the game speed is modified, or the framerate is below 60, then we have to use dynamic
         // mode -- see UseDecoupledGameTick.

@@ -60,6 +60,7 @@ public class MotionSmoothingSettings : EverestModuleSettings
 	private bool _hideStretchedEdges = true;
     private SmoothingMode _smoothingMode = SmoothingMode.Extrapolate;
     private UpdateMode _updateMode = UpdateMode.Interval;
+    private bool _stabilizeHair = true;
 
 	private bool _sillyMode = false;
 
@@ -82,6 +83,7 @@ public class MotionSmoothingSettings : EverestModuleSettings
 	private TextMenu.Item _hideStretchedEdgesItem;
     private TextMenu.Item _objectSmoothingItem;
     private TextMenu.Item _framerateIncreaseMethodItem;
+    private TextMenu.Item _stabilizeHairItem;
     private TextMenu.Item _tasModeItem;
 
 	private TextMenu.Item _sillyModeItem;
@@ -177,6 +179,7 @@ public class MotionSmoothingSettings : EverestModuleSettings
         SetItemState(_framerateIncreaseMethodItem, masterDisabled,
             MapSmoothingSuggestions.ForcesDynamicUpdateMode);
         SetItemState(_tasModeItem, masterDisabled);
+        SetItemState(_stabilizeHairItem, masterDisabled);
 
         // These additionally require the Fancy rendering mode.
         bool notFancy = RenderingMode != RenderingMode.Fancy;
@@ -577,6 +580,8 @@ public class MotionSmoothingSettings : EverestModuleSettings
         );
     }
 
+
+
     public static bool IsAuspiciousHelperLoaded
     {
         get
@@ -901,6 +906,42 @@ public class MotionSmoothingSettings : EverestModuleSettings
             "based on their velocities.\n\n" +
             "Interpolate: Uses the last two physics frames to compute the exact positions\n" +
             "in between. More technically correct, but adds 1-2 frames of input delay."
+        );
+    }
+
+
+
+	public bool StabilizeHair
+    {
+        get => _stabilizeHair;
+        set
+        {
+            _stabilizeHair = value;
+            MotionSmoothingModule.Instance.ApplySettings();
+        }
+    }
+
+    public void CreateStabilizeHairEntry(TextMenu menu, bool inGame)
+    {
+        _stabilizeHairItem = new TextMenu.OnOff(
+            "Stabilize Madeline's Hair",
+            _stabilizeHair
+        );
+
+        (_stabilizeHairItem as TextMenu.OnOff).Change(value =>
+        {
+            StabilizeHair = value;
+        });
+
+        menu.Add(_stabilizeHairItem);
+
+        RefreshMenuItemStates();
+
+        _stabilizeHairItem.AddDescription(
+            menu,
+            "Madeline's hair is normally rendered in a way that can make its edges flicker when\n" +
+            "they should stay still, like holding left or right when falling. This fixes that\n" +
+            "flicker and makes her hair render smoothly."
         );
     }
 
