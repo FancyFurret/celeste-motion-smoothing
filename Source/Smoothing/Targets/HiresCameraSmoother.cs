@@ -3139,24 +3139,6 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 				AddZoomOutHelperPrototypeHook();
 			}
 		}
-
-        
-
-        Version strawberryJamVersion = new Version(1, 0, 12);
-
-        EverestModuleMetadata strawberryJam = new() {
-			Name = "StrawberryJam2021",
-			Version = strawberryJamVersion
-		};
-
-		// Check for exact version so we don't hook anything if the mod updates
-		if (Everest.Loader.TryGetDependency(strawberryJam, out var strawberryJamModule))
-		{
-			if (strawberryJamModule.Metadata.Version.Equals(strawberryJamVersion))
-			{
-				AddStrawberryJamHook();
-			}
-		}
 	}
 
 
@@ -3300,22 +3282,6 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 	}
 
 
-
-	private delegate void orig_ResizeVanillaBuffers(float zoomTarget);
-	private static void ResizeVanillaBuffersHook(orig_ResizeVanillaBuffers orig, float zoomTarget)
-	{
-		orig(zoomTarget);
-		InitializeLargeTextures();
-	}
-
-	private delegate void orig_ResizeBufferToZoom(VirtualRenderTarget target);
-	private static void ResizeBufferToZoomHook(orig_ResizeBufferToZoom orig, VirtualRenderTarget target)
-	{
-		target = MotionSmoothingModule.GetResizableBuffer(target);
-		orig(target);
-	}
-
-
     [MethodImpl(MethodImplOptions.NoInlining)]
 	private void AddZoomOutHelperPrototypeHook()
 	{
@@ -3373,38 +3339,6 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
         orig(target, padding);
     }
-
-
-    [MethodImpl(MethodImplOptions.NoInlining)]
-	private void AddFlaglinesAndSuchHook()
-	{
-		Type t_CustomGodrays = Type.GetType("FlaglinesAndSuch.CustomGodrays, FlaglinesAndSuch");
-		MethodInfo m_Update = t_CustomGodrays?.GetMethod(
-			"Update",
-			BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic
-		);
-
-		if (m_Update != null)
-		{
-			AddILHook(m_Update, GodraysUpdateHook);
-		}
-	}
-
-
-    [MethodImpl(MethodImplOptions.NoInlining)]
-	private void AddStrawberryJamHook()
-	{
-		Type t_HexagonalGodray = Type.GetType("Celeste.Mod.StrawberryJam2021.Effects.HexagonalGodray, StrawberryJam2021");
-		MethodInfo m_Update = t_HexagonalGodray?.GetMethod(
-			"Update",
-			BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic
-		);
-
-		if (m_Update != null)
-		{
-			AddILHook(m_Update, GodraysUpdateHook);
-		}
-	}
 
 
 	// Returns the scale (typically 6) of the upscaled buffer we're currently drawing into,
