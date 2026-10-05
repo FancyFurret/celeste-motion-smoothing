@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using Celeste.Mod.MotionSmoothing.Smoothing;
@@ -52,7 +53,7 @@ public class ActorPushTracker : ToggleableFeature<ActorPushTracker>
         if (state is not IPositionSmoothingState posState)
             return false;
 
-        if (!GetPusherOffset(actor, elapsedSeconds, out var offset, out pusherVelocity))
+        if (!GetPusherOffset(actor, elapsedSeconds, out var offset, out pusherVelocity, out var blockedX, out var blockedY))
             return false;
 
         // SillyMode: base against the unrounded historical position so a pusher-carried
@@ -62,6 +63,16 @@ public class ActorPushTracker : ToggleableFeature<ActorPushTracker>
             ? posState.GetLastRealPosition(mode)
             : posState.GetLastDrawPosition(mode);
         pushed = basePos + offset;
+
+        // On an axis the pusher can't carry the actor along, the actor's own history is the
+        // only account of where it's going -- the same smoothing it would get with no pusher.
+        if (blockedX || blockedY)
+        {
+            var own = SmoothingMath.Smooth(posState.RealPositionHistory, elapsedSeconds, mode);
+            if (blockedX) pushed.X = own.X;
+            if (blockedY) pushed.Y = own.Y;
+        }
+
         return true;
     }
 
@@ -72,9 +83,19 @@ public class ActorPushTracker : ToggleableFeature<ActorPushTracker>
 
     public bool GetPusherOffset(Actor actor, double elapsedSeconds, out Vector2 offset, out Vector2 pusherVelocity)
     {
+        return GetPusherOffset(actor, elapsedSeconds, out offset, out pusherVelocity, out _, out _);
+    }
+
+    // blockedX/Y report the axes the pusher's motion was dropped from because something solid
+    // stands in the actor's way; offset and pusherVelocity are zero on those axes.
+    private bool GetPusherOffset(Actor actor, double elapsedSeconds, out Vector2 offset, out Vector2 pusherVelocity,
+        out bool blockedX, out bool blockedY)
+    {
         var pushed = false;
         offset = Vector2.Zero;
         pusherVelocity = Vector2.Zero;
+        blockedX = false;
+        blockedY = false;
 
         if (!_pushers.TryGetValue(actor, out var pushers) || pushers == null)
             return false;
@@ -86,7 +107,26 @@ public class ActorPushTracker : ToggleableFeature<ActorPushTracker>
                 continue;
 
             pushed = true;
-            offset += GetSolidOffset(state, pusher, elapsedSeconds, out var velocity);
+            var solidOffset = GetSolidOffset(state, pusher, elapsedSeconds, out var velocity);
+
+            // A rider carried into a wall stays put while the platform keeps sliding under it, so
+            // the platform's motion is no longer the actor's. Drawing it there anyway slides the
+            // actor into the wall across each frame and snaps it back on every update.
+            if (IsBlocked(actor, pusher, new Vector2(Math.Sign(velocity.X), 0)))
+            {
+                solidOffset.X = 0;
+                velocity.X = 0;
+                blockedX = true;
+            }
+
+            if (IsBlocked(actor, pusher, new Vector2(0, Math.Sign(velocity.Y))))
+            {
+                solidOffset.Y = 0;
+                velocity.Y = 0;
+                blockedY = true;
+            }
+
+            offset += solidOffset;
             pusherVelocity += velocity;
 
 			// Only allow at most one pusher per frame
@@ -94,6 +134,48 @@ public class ActorPushTracker : ToggleableFeature<ActorPushTracker>
         }
 
         return pushed;
+    }
+
+    // Whether the actor's next pixel in `direction` is taken by something that would stop
+    // Actor.MoveHExact/MoveVExact, which is all a pusher carries its riders with. Runs while the
+    // scene holds its update-time positions -- the smoothed ones aren't set until after every
+    // state has been smoothed. The pusher is set aside the same way Solid.MoveHExact sets it aside
+    // while carrying, or a rider would always be "blocked" by the platform it's standing on.
+    private static bool IsBlocked(Actor actor, Entity pusher, Vector2 direction)
+    {
+        if (direction == Vector2.Zero || actor.Scene == null)
+            return false;
+
+        var wasCollidable = pusher.Collidable;
+        pusher.Collidable = false;
+
+        try
+        {
+            var at = actor.Position + direction;
+            var blocker = actor.CollideFirst<Solid>(at);
+
+            // Something moving along with the pusher (a wall of the same moving structure) only
+            // stands in the way for as long as the update takes to move it.
+            if (blocker != null && !IsMovingAlong(blocker, direction))
+                return true;
+
+            // Moving down, jumpthrus the actor isn't already inside also stop it.
+            return direction.Y > 0 && actor.CollideFirstOutside<JumpThru>(at) is { } jumpThru
+                && !IsMovingAlong(jumpThru, direction);
+        }
+        finally
+        {
+            pusher.Collidable = wasCollidable;
+        }
+    }
+
+    private static bool IsMovingAlong(Entity entity, Vector2 direction)
+    {
+        if (MotionSmoothingHandler.Instance.GetState(entity) is not IPositionSmoothingState { Changed: true } state)
+            return false;
+
+        var delta = state.RealPositionHistory[0] - state.RealPositionHistory[1];
+        return Vector2.Dot(delta, direction) > 0;
     }
 
     public Vector2 GetSolidOffset(ISmoothingState state, object obj, double elapsedSeconds)
