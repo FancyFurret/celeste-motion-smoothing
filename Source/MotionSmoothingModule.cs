@@ -614,6 +614,21 @@ public class MotionSmoothingModule : EverestModule
 				break;
 			}
 		}
+
+		// GhostModForTas tags its replayer entity both HUD and SubHUD, so its ghost names and
+		// comparer list are drawn twice a frame. The camera smoothers zoom the HUD pass to hide the
+		// stretched level edges but leave SubHUD alone, which pulls the two copies apart. No exact
+		// version check: the hooks only reroute while the entity still carries both tags, so they
+		// stand down on their own if a later version picks just one.
+		EverestModuleMetadata ghostModForTas = new() {
+			Name = "GhostModForTas",
+			Version = new Version(1, 2, 18)
+		};
+
+		if (Everest.Loader.TryGetDependency(ghostModForTas, out _))
+		{
+			AddGhostModForTasHooks();
+		}
 	}
 
 
@@ -696,6 +711,101 @@ public class MotionSmoothingModule : EverestModule
 		// automatically when the entity is collected. Re-running every Update keeps it correct
 		// across room reloads and whether the indicator was placed by a map or by VioletHelper.
 		MotionSmoothingExports.TieToPlayer(self);
+	}
+
+
+
+	private delegate void orig_ComponentRender(Component self);
+	private delegate void orig_HudRendererRenderContent(HudRenderer self, Scene scene);
+
+	// Whether HudRenderer is the pass currently rendering, as opposed to Everest's SubHudRenderer.
+	private static bool _renderingHud;
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	private void AddGhostModForTasHooks()
+	{
+		Type t_GhostRankingList = Type.GetType("Celeste.Mod.GhostModForTas.Plugin.GhostRankingList, GhostModForTas");
+		Type t_GhostNames = Type.GetType("Celeste.Mod.GhostModForTas.Plugin.GhostNames, GhostModForTas");
+
+		MethodInfo m_RankingListRender = t_GhostRankingList?.GetMethod("Render", BindingFlags.Instance | BindingFlags.Public, Type.EmptyTypes);
+		MethodInfo m_NamesRender = t_GhostNames?.GetMethod("Render", BindingFlags.Instance | BindingFlags.Public, Type.EmptyTypes);
+
+		if (m_RankingListRender == null || m_NamesRender == null)
+		{
+			return;
+		}
+
+		MethodInfo m_HudRenderContent = typeof(HudRenderer).GetMethod(nameof(HudRenderer.RenderContent), [typeof(Scene)]);
+
+		TryDisableInlining(m_HudRenderContent);
+		_unmaintainedModHooks.Add(new Hook(m_HudRenderContent, GhostModHudRendererRenderContentHook));
+
+		TryDisableInlining(m_RankingListRender);
+		_unmaintainedModHooks.Add(new Hook(m_RankingListRender, GhostRankingListRenderHook));
+
+		TryDisableInlining(m_NamesRender);
+		_unmaintainedModHooks.Add(new Hook(m_NamesRender, GhostNamesRenderHook));
+	}
+
+	private static void GhostModHudRendererRenderContentHook(orig_HudRendererRenderContent orig, HudRenderer self, Scene scene)
+	{
+		_renderingHud = true;
+
+		try
+		{
+			orig(self, scene);
+		}
+		finally
+		{
+			_renderingHud = false;
+		}
+	}
+
+	private static bool IsDrawnInBothHudPasses(Component component)
+	{
+		return component.Entity is { } entity && entity.TagCheck(Tags.HUD) && entity.TagCheck(TagsExt.SubHUD);
+	}
+
+	// Each component is drawn only in the pass that suits it, and drawn twice there: the two copies
+	// normally land exactly on top of each other, so their translucent backgrounds and outlines
+	// stack, and drawing once would visibly lighten them.
+
+	// The comparer list is pinned to a corner of the screen, so it belongs in the unzoomed SubHUD
+	// pass -- zoomed, the right-aligned list gets pushed partly off the edge.
+	private static void GhostRankingListRenderHook(orig_ComponentRender orig, Component self)
+	{
+		if (!IsDrawnInBothHudPasses(self))
+		{
+			orig(self);
+			return;
+		}
+
+		if (_renderingHud)
+		{
+			return;
+		}
+
+		orig(self);
+		orig(self);
+	}
+
+	// The names follow the ghosts and Madeline in world space, so they belong in the zoomed HUD
+	// pass, which lines up with the zoomed level the same way talk prompts do.
+	private static void GhostNamesRenderHook(orig_ComponentRender orig, Component self)
+	{
+		if (!IsDrawnInBothHudPasses(self))
+		{
+			orig(self);
+			return;
+		}
+
+		if (!_renderingHud)
+		{
+			return;
+		}
+
+		orig(self);
+		orig(self);
 	}
 
 
