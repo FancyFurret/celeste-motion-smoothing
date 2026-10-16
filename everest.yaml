@@ -1,9 +1,17 @@
-- Name: MotionSmoothing
+- DLL: bin/MotionSmoothing.dll
+  Name: MotionSmoothing
   Version: 1.8.1
-  DLL: bin/MotionSmoothing.dll
   Dependencies:
+    - Name: BrokemiaHelper
+      Version: 1.8.5
+    - Name: Everest
+      Version: 1.6623.0
     - Name: EverestCore
       Version: 1.4673.0
+    - Name: GlassHelper
+      Version: 1.0.2
+    - Name: GravityHelper
+      Version: 1.2.29
   OptionalDependencies:
     - Name: SpeedrunTool
       Version: 3.22.0

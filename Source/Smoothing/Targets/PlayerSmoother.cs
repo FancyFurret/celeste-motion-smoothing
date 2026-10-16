@@ -105,6 +105,25 @@ public static class PlayerSmoother
     }
 
 
+    // Runs on frames drawn while the game is frozen (Celeste.Freeze), where nothing is re-smoothed
+    // and Madeline stays wherever the last frame before the freeze put her -- in Extrapolate, up to
+    // a tick ahead of where she actually is. That's right if she carries on the way she was going
+    // once it ends, but a dash pressed during the freeze starts from her real position, so without
+    // this she'd be held ahead and then pulled back. Leaving a dream block is where this shows:
+    // the exit freezes for 0.05s, right when a dash out of it gets pressed.
+    public static void PinDuringFreeze(Player player, IPositionSmoothingState state)
+    {
+        if (MotionSmoothingModule.Settings.ObjectSmoothing != SmoothingMode.Extrapolate
+            || MotionSmoothingModule.Settings.SillyMode)
+            return;
+
+        if (Engine.Scene is not Level { Transitioning: false, Paused: false })
+            return;
+
+        if (IsAboutToDash(player))
+            state.PinToOriginalDrawPosition();
+    }
+
     // Whether the next physics update will start a dash -- which is a place the extrapolation
     // can't see her going, so Extrapolate above pins her to her update-time position instead of
     // carrying her further along the way she was already moving.
@@ -120,13 +139,23 @@ public static class PlayerSmoother
     // act on CanDash; DashUpdate only does with the Super Dashing assist on; and BoostUpdate --
     // sitting in a Badeline orb or a red booster -- takes the press on its own, spending no dash
     // and checking no cooldown, so CanDash has no say in that one.
+    //
+    // Leaving a dream block is the one place a press from *before* the last update still counts.
+    // StDreamDash ignores the press, so it sits in the input buffer -- CanDash below sees it -- and
+    // the exit tick then freezes the game for 0.05s. Without this, the frame drawn before the
+    // freeze is extrapolated a full tick ahead and held there for the whole freeze, and the dash
+    // that starts afterwards (from where she actually is, with Speed zeroed) pulls her back by up
+    // to four pixels. PreviousState only stays StDreamDash until her next state change, and in
+    // StNormal an unconsumed buffered press can only survive an update she didn't get to use it
+    // in, so this doesn't reach anything else.
     private static bool IsAboutToDash(Player player)
     {
         // The mod's own input handler rather than Input.Dash.Pressed: this runs at draw time,
         // where a press that happened since the last update has yet to reach the buffered value.
         var pressed =
             MotionSmoothingHandler.Instance.AtDrawInputHandler.PressedThisUpdate(Input.Dash)
-            || MotionSmoothingHandler.Instance.AtDrawInputHandler.PressedThisUpdate(Input.CrouchDash);
+            || MotionSmoothingHandler.Instance.AtDrawInputHandler.PressedThisUpdate(Input.CrouchDash)
+            || player.StateMachine.PreviousState == Player.StDreamDash;
 
         if (!pressed) return false;
 

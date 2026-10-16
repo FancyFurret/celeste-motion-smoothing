@@ -29,6 +29,7 @@ public class MotionSmoothingHandler : ToggleableFeature<MotionSmoothingHandler>
     private readonly Stopwatch _timer = Stopwatch.StartNew();
     private long _lastTicks;
     private bool _positionsWereUpdated;
+    private bool _lastUpdateWasFrozen;
 
     public override void Load()
     {
@@ -152,6 +153,8 @@ public class MotionSmoothingHandler : ToggleableFeature<MotionSmoothingHandler>
     private static void EngineUpdateHook(On.Monocle.Engine.orig_Update orig, Engine self, GameTime gameTime)
     {
         Instance._positionsWereUpdated = false;
+        // Engine.Update skips the scene entirely while this is running down.
+        Instance._lastUpdateWasFrozen = Engine.FreezeTimer > 0f;
         orig(self, gameTime);
     }
 
@@ -177,6 +180,12 @@ public class MotionSmoothingHandler : ToggleableFeature<MotionSmoothingHandler>
             {
                 Instance.ValueSmoother.CalculateSmoothedPositions(elapsedSeconds, mode);
                 Instance.PushSpriteSmoother.CalculateSmoothedPositions(elapsedSeconds, mode);
+            }
+            // The game is frozen (Celeste.Freeze). Everything holds where it was last drawn, except
+            // that Madeline is re-pinned if she's about to dash.
+            else if (Instance._lastUpdateWasFrozen && Instance.Player is { } player && Instance.PlayerState is { } playerState)
+            {
+                PlayerSmoother.PinDuringFreeze(player, playerState);
             }
 
             Instance.ValueSmoother.PreRender();
@@ -331,7 +340,12 @@ public class MotionSmoothingHandler : ToggleableFeature<MotionSmoothingHandler>
         // if (component.Entity is FinalBossBeam)
         //     return;
 
-        if (component.Entity is Booster)
+        // Only the Booster's own sprite: that's the one Booster.Update moves after Madeline, and
+        // which ComponentSmoothingState reconstructs from her position. Anything else a Booster
+        // subclass adds stays where it was put -- GlassHelper's ReverseBooster draws its twist
+        // around the bubble with a second Sprite, and giving that the same treatment slid it away
+        // from Madeline whenever she dashed out.
+        if (component.Entity is Booster booster && component == booster.sprite)
             PushSpriteSmoother.SmoothObject(component, GetPushSpriteSmootherState(component));
     }
 

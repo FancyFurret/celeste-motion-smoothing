@@ -994,6 +994,22 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
 	private static void BackdropRenderer_Update(On.Celeste.BackdropRenderer.orig_Update orig, BackdropRenderer self, Scene scene)
 	{
+		// Backdrops that bake their positions during Update (Godrays, via GodraysUpdateHook) only
+		// get sub-pixel positions when their layer is actually being drawn sub-pixel. With Smooth
+		// Foreground or Smooth Background off, the layer steps a whole pixel at a time, and the
+		// floors have to stay whole-pixel too -- otherwise Chapter 6's godrays glide on their own
+		// while the rest of the foreground steps.
+		bool smoothLayer = scene is not Level level
+			|| (self == level.Background
+				? MotionSmoothingModule.Settings.RenderBackgroundHires
+				: self != level.Foreground || MotionSmoothingModule.Settings.RenderForegroundHires);
+
+		if (!smoothLayer)
+		{
+			orig(self, scene);
+			return;
+		}
+
         _disableFloorFunctions = DisableFloorFunctionsMode.Rational;
 
 		orig(self, scene);

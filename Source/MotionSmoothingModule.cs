@@ -78,9 +78,6 @@ public class MotionSmoothingModule : EverestModule
     {
 		typeof(MotionSmoothingExports).ModInterop();
 
-		HookUnmaintainedMods();
-
-
 		// Normally we'd do this in Initialize, but SpeedrunTool
 		// crashes on loading a state if we don't do it here.
 		EverestModuleMetadata speedrunTool = new() {
@@ -160,6 +157,13 @@ public class MotionSmoothingModule : EverestModule
 
 	public override void Initialize()
 	{
+		// Here rather than in Load: none of the mods this hooks are dependencies, so nothing makes
+		// Everest load them before us. Zips load before folders, and a mod whose own dependencies
+		// load later (GhostModForTas waits on CelesteTAS) is held back until they do -- either way
+		// it could still be missing when Load ran, the version check failed, and the hooks were
+		// quietly never installed. Initialize only runs once every mod has loaded.
+		HookUnmaintainedMods();
+
         CelesteTasInterop.Load();
 
 		EverestModuleMetadata auspicioushelper = new() {

@@ -118,6 +118,10 @@ public interface IPositionSmoothingState : ISmoothingState
     public Vector2 GetLastRealPosition(SmoothingMode mode);
     public Vector2 GetSmoothedOffset(SmoothingMode mode);
 
+    // Drops the smoothed position back onto the update-time draw position without a full Smooth.
+    // For frames drawn while the game is frozen, when Smooth isn't run at all.
+    public void PinToOriginalDrawPosition();
+
     public bool IgnoreSubpixelMotionX { get; set; }
     public bool IgnoreSubpixelMotionY { get; set; }
     public int XDeltaSignChanges { get; set; }
@@ -398,6 +402,11 @@ public abstract class PositionSmoothingState<T> : IPositionSmoothingState
     public Vector2 GetSmoothedOffset(SmoothingMode mode)
     {
         return SmoothedRealPosition - GetLastDrawPosition(mode);
+    }
+
+    public void PinToOriginalDrawPosition()
+    {
+        SmoothedRealPosition = OriginalDrawPosition;
     }
 }
 
