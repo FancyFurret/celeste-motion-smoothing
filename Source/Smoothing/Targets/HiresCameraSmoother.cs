@@ -2911,50 +2911,47 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
         return DrawGpuPrimitive(matrix, expanded, expandedCount, context);
     }
 
-    private static void FloorVerticesIfNeeded<T>(T[] vertices, int vertexCount) where T : struct, IVertexType
+    // Snaps a primitive drawn on a layer that isn't being smoothed back onto the game-pixel grid,
+    // by shifting it by its first vertex's subpixel remainder so its shape is kept. Two things it
+    // deliberately doesn't do:
+    //
+    //   * Touch a vanilla-size target. The GPU already rasterizes those one game pixel at a time,
+    //     so there is no sub-pixel motion to remove -- but the shift still moves which pixels an
+    //     edge covers, out of step with the sprites drawn around it. Water is where this showed:
+    //     its surface is a mesh sitting on an integer Draw.Rect body, and gameplay renders while
+    //     _currentlyRenderingBackground is still set, so with Smooth Background off the mesh was
+    //     pulled up by its wave height's fraction and left a 1px gap above the body.
+    //   * Write to the caller's vertices. The shift goes into the matrix instead: the array belongs
+    //     to whoever is drawing, and anything that keeps some of its vertices between draws (only
+    //     rewriting the ones that move) would otherwise have those walk a little further each time.
+    private static Matrix FloorVerticesIfNeeded<T>(Matrix matrix, T[] vertices, int vertexCount)
+        where T : struct, IVertexType
     {
         if (
             _currentlyRenderingBackground && MotionSmoothingModule.Settings.RenderBackgroundHires
             || !_currentlyRenderingBackground && MotionSmoothingModule.Settings.RenderForegroundHires
         ) {
-            return;
+            return matrix;
         }
 
-        if (vertexCount <= 0)
-            return;
+        if (vertexCount <= 0 || !IsLargeTexture(_currentRenderTarget))
+            return matrix;
 
-        // Use the first vertex's subpixel position as the offset for all vertices,
-        // so they all shift by the same amount and preserve relative geometry.
+        Vector3 first;
         if (vertices is VertexPositionColor[] vpcVerts)
-        {
-            float offsetX = vpcVerts[0].Position.X - (float)Math.Floor(vpcVerts[0].Position.X);
-            float offsetY = vpcVerts[0].Position.Y - (float)Math.Floor(vpcVerts[0].Position.Y);
-            for (int i = 0; i < vertexCount; i++)
-            {
-                vpcVerts[i].Position.X -= offsetX;
-                vpcVerts[i].Position.Y -= offsetY;
-            }
-        }
+            first = vpcVerts[0].Position;
         else if (vertices is VertexPositionColorTexture[] vpctVerts)
-        {
-            float offsetX = vpctVerts[0].Position.X - (float)Math.Floor(vpctVerts[0].Position.X);
-            float offsetY = vpctVerts[0].Position.Y - (float)Math.Floor(vpctVerts[0].Position.Y);
-            for (int i = 0; i < vertexCount; i++)
-            {
-                vpctVerts[i].Position.X -= offsetX;
-                vpctVerts[i].Position.Y -= offsetY;
-            }
-        }
+            first = vpctVerts[0].Position;
         else if (vertices is LightingRenderer.VertexPositionColorMaskTexture[] vpcmtVerts)
-        {
-            float offsetX = vpcmtVerts[0].Position.X - (float)Math.Floor(vpcmtVerts[0].Position.X);
-            float offsetY = vpcmtVerts[0].Position.Y - (float)Math.Floor(vpcmtVerts[0].Position.Y);
-            for (int i = 0; i < vertexCount; i++)
-            {
-                vpcmtVerts[i].Position.X -= offsetX;
-                vpcmtVerts[i].Position.Y -= offsetY;
-            }
-        }
+            first = vpcmtVerts[0].Position;
+        else
+            return matrix;
+
+        float offsetX = first.X - (float)Math.Floor(first.X);
+        float offsetY = first.Y - (float)Math.Floor(first.Y);
+
+        // Applied before the caller's matrix, i.e. in the same space the vertices are in.
+        return Matrix.CreateTranslation(-offsetX, -offsetY, 0f) * matrix;
     }
 
     private void DrawVerticesILHook<T>(ILContext il) where T : struct, IVertexType
@@ -2977,9 +2974,11 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
         // Preserve the pre-existing flooring behavior for calls which continue through
         // the normal high-resolution primitive path.
+        cursor.Emit(OpCodes.Ldarg_0);
         cursor.Emit(OpCodes.Ldarg_1);
         cursor.Emit(OpCodes.Ldarg_2);
-        cursor.EmitDelegate<Action<T[], int>>(FloorVerticesIfNeeded);
+        cursor.EmitDelegate<Func<Matrix, T[], int, Matrix>>(FloorVerticesIfNeeded);
+        cursor.Emit(OpCodes.Starg_S, (byte)0);
 
         // Fallback: scale matrix multiplication (non-VPC types, or non-large textures)
         cursor.Emit(OpCodes.Ldarg_0);
