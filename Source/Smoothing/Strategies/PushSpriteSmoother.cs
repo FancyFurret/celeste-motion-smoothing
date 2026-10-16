@@ -446,6 +446,20 @@ public class PushSpriteSmoother : SmoothingStrategy<PushSpriteSmoother>
 			return state.SmoothedRealPosition - state.OriginalDrawPosition;
 		}
 
+        // A Booster's sprite, which Booster.Render floors before drawing. Its position is fractional
+        // whenever it's following Madeline -- it's placed at her Center, and her 11px hitbox puts
+        // that on a half pixel -- so measuring from the unfloored position, as below, left a ±0.5
+        // offset. A sprite drawn on an exact half pixel samples every row right on the boundary
+        // between two texels, and float error then repeats one row and drops the last: the red
+        // bubble lost its bottom edge while Madeline sat inside it. Floor both ends instead, the
+        // way Render does. (OriginalDrawPosition is already floored -- see GetDrawPosition.)
+        if (obj is Sprite { Entity: Booster })
+        {
+            var smoothed = state.SmoothedRealPosition;
+            return new Vector2((float)Math.Floor(smoothed.X), (float)Math.Floor(smoothed.Y))
+                   - state.OriginalDrawPosition;
+        }
+
         // For Actors *and Platforms* (e.g. MoveBlock, which is Solid → Platform), Position
         // is always integer — subpixels live in ExactPosition via movementCounter, and
         // physics moves via MoveH/MoveV. So the destination PushSprite receives is integer-
