@@ -3122,6 +3122,23 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
         }
 
 
+
+		Version brokemiaHelperVersion = new Version(1, 8, 5);
+
+        EverestModuleMetadata brokemiaHelper = new() {
+			Name = "BrokemiaHelper",
+            Version = brokemiaHelperVersion
+		};
+
+		if (Everest.Loader.TryGetDependency(brokemiaHelper, out var brokemiaHelperModule))
+        {
+			if (brokemiaHelperModule.Metadata.Version.Equals(brokemiaHelperVersion))
+			{
+				AddBrokemiaHelperHook();
+			}
+        }
+
+
 		Version cavernHelperVersion = new Version(1, 3, 7);
 
 		EverestModuleMetadata cavernHelper = new() {
@@ -3271,6 +3288,21 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 	{
 		Type t_InstantTeleporterRenderer = Type.GetType("Celeste.Mod.AcidHelper.Entities.InstantTeleporterRenderer, AcidHelper");
 		MethodInfo m_OnRenderBloom = t_InstantTeleporterRenderer?.GetMethod(
+			"OnRenderBloom",
+			BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic
+		);
+
+		if (m_OnRenderBloom != null)
+		{
+			AddILHook(m_OnRenderBloom, SeekerBarrierRendererRenderHook);
+		}
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	private void AddBrokemiaHelperHook()
+	{
+		Type t_MoveBlockBarrierRenderer = Type.GetType("BrokemiaHelper.MoveBlockBarrierRenderer, BrokemiaHelper");
+		MethodInfo m_OnRenderBloom = t_MoveBlockBarrierRenderer?.GetMethod(
 			"OnRenderBloom",
 			BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic
 		);
