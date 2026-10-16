@@ -283,8 +283,11 @@ public abstract class PositionSmoothingState<T> : IPositionSmoothingState
             mode = OverrideSmoothingMode.Value;
 
         // Fixes pause buffering (otherwise the player could be extrapolated, and then snap back to the location they
-        // were paused at the next update
-        if (MotionSmoothingHandler.Instance.WasPaused || Engine.Scene.Paused)
+        // were paused at the next update). WasPaused alone doesn't cover the first tick of play: the unpause
+        // delay runs it out before that tick, so it's checked for separately.
+        var handler = MotionSmoothingHandler.Instance;
+        if (handler.WasPaused || Engine.Scene.Paused
+            || mode == SmoothingMode.Extrapolate && handler.FirstUpdateAfterUnpause)
             SmoothedRealPosition = OriginalDrawPosition;
         else
             SmoothedRealPosition = PositionSmoother.Smooth(this, obj, elapsedSeconds, mode);

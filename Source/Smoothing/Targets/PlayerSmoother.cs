@@ -140,38 +140,60 @@ public static class PlayerSmoother
     // sitting in a Badeline orb or a red booster -- takes the press on its own, spending no dash
     // and checking no cooldown, so CanDash has no say in that one.
     //
-    // Leaving a dream block is the one place a press from *before* the last update still counts.
-    // StDreamDash ignores the press, so it sits in the input buffer -- CanDash below sees it -- and
-    // the exit tick then freezes the game for 0.05s. Without this, the frame drawn before the
-    // freeze is extrapolated a full tick ahead and held there for the whole freeze, and the dash
-    // that starts afterwards (from where she actually is, with Speed zeroed) pulls her back by up
-    // to four pixels. PreviousState only stays StDreamDash until her next state change, and in
-    // StNormal an unconsumed buffered press can only survive an update she didn't get to use it
-    // in, so this doesn't reach anything else.
+    // And it has to be the *next* update's answer, not the last one's. Two things that gate a dash
+    // run down between now and then: the dash cooldown (0.2s from the start of every dash), and the
+    // 0.08s input buffer. A press made while the cooldown is still running -- most often out of a
+    // dream block, since StDreamDash ignores the press and short blocks are crossed well inside
+    // 0.2s -- waits in the buffer and is taken on the update the cooldown runs out. Asked about the
+    // last update, CanDash is still false on every frame before that one, so she was carried a
+    // tick further along her way and then pulled back when the dash started. CanDashNextUpdate
+    // winds both timers forward by one update first. It also covers presses made since the last
+    // update, which Player.CanDash sees through the at-draw input (see AtDrawInputHandler).
     private static bool IsAboutToDash(Player player)
     {
-        // The mod's own input handler rather than Input.Dash.Pressed: this runs at draw time,
-        // where a press that happened since the last update has yet to reach the buffered value.
-        var pressed =
-            MotionSmoothingHandler.Instance.AtDrawInputHandler.PressedThisUpdate(Input.Dash)
-            || MotionSmoothingHandler.Instance.AtDrawInputHandler.PressedThisUpdate(Input.CrouchDash)
-            || player.StateMachine.PreviousState == Player.StDreamDash;
-
-        if (!pressed) return false;
-
         return player.StateMachine.State switch
         {
             Player.StNormal or Player.StClimb or Player.StSwim or Player.StRedDash
-                or Player.StHitSquash or Player.StLaunch or Player.StStarFly => player.CanDash,
+                or Player.StHitSquash or Player.StLaunch or Player.StStarFly =>
+                OnNextUpdate(player, static p => p.CanDash),
 
-            Player.StDash => player.CanDash && (SaveData.Instance?.Assists.SuperDashing ?? false),
+            Player.StDash => (SaveData.Instance?.Assists.SuperDashing ?? false)
+                             && OnNextUpdate(player, static p => p.CanDash),
 
-            Player.StBoost => true,
+            Player.StBoost => OnNextUpdate(player, static _ => Input.DashPressed || Input.CrouchDashPressed),
 
             // Everything else, vanilla or modded, ignores the press: StSummitLaunch, the intros,
             // StDreamDash, StCassetteFly, StAttract, StFlingBird, StFrozen, StDummy and the rest.
             _ => false
         };
+    }
+
+    // Evaluates a dash check as the next update will see it. Player.Update counts the cooldown down
+    // before it runs her state, and MInput counts the buffers down before that, both by one update's
+    // DeltaTime -- so this does the same, asks, and puts all three back.
+    private static bool OnNextUpdate(Player player, Func<Player, bool> check)
+    {
+        var deltaTime = GameUtils.CalculateDeltaTime(GameUtils.UpdateElapsedSeconds);
+
+        var cooldown = player.dashCooldownTimer;
+        var dashBuffer = Input.Dash.bufferCounter;
+        var crouchDashBuffer = Input.CrouchDash.bufferCounter;
+
+        try
+        {
+            if (cooldown > 0f)
+                player.dashCooldownTimer = cooldown - deltaTime;
+            Input.Dash.bufferCounter = dashBuffer - deltaTime;
+            Input.CrouchDash.bufferCounter = crouchDashBuffer - deltaTime;
+
+            return check(player);
+        }
+        finally
+        {
+            player.dashCooldownTimer = cooldown;
+            Input.Dash.bufferCounter = dashBuffer;
+            Input.CrouchDash.bufferCounter = crouchDashBuffer;
+        }
     }
 
     private static Vector2 GetExtrapolatedPositionAndUpdateIsSmoothing(Player player, IPositionSmoothingState state, double elapsed)

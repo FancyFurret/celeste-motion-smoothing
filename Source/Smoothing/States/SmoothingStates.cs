@@ -112,20 +112,15 @@ public class FinalBossBeamSmoothingState : AngleSmoothingState<FinalBossBeam>
 
 public class CameraSmoothingState : PositionSmoothingState<Camera>
 {
-    private Vector2 _lastSmoothedBeforePause;
-    private bool _hasLastSmoothedBeforePause;
-    private (RenderingMode Mode, bool CameraSmoothing) _lastSmoothedMode;
-
     // Smooth is overridden below to read the camera-smoothing strategy and Madeline's position on
     // top of the position history, so it can produce a different answer from one drawn frame to
     // the next even while the camera sits still. There is exactly one camera.
     protected override bool AllowRedundantSmoothElision => false;
 
     // The camera's smoothed position is never drawn anywhere; both camera smoothers take its
-    // fractional part as the sub-pixel offset for the whole composite, which is the same reason
-    // the pause snap below is overridden. Rounding a snap-back would zero that offset and jump the
-    // scene a whole pixel. ApplyOffscreenSnap deliberately still rounds -- that one is the
-    // anti-exploit measure, not a rendering detail.
+    // fractional part as the sub-pixel offset for the whole composite. Rounding a snap-back would
+    // zero that offset and jump the scene a whole pixel. ApplyOffscreenSnap deliberately still
+    // rounds -- that one is the anti-exploit measure, not a rendering detail.
     public override bool SnapsBackUnrounded => true;
 
     protected override bool CancelSmoothing => CelesteTasInterop.CenterCamera;
@@ -140,17 +135,17 @@ public class CameraSmoothingState : PositionSmoothingState<Camera>
         obj.Position = SmoothedRealPosition.Floor();
     }
 
-    // Override the pause-snap so that the camera does not jump to the rounded
-    // OriginalDrawPosition: that snap can push floor(SmoothedRealPosition) over
-    // an integer boundary and visibly shift the entire scene by one pixel at the
-    // moment of pause. Holding the last pre-pause smoothed position keeps the
-    // rendered camera pinned where it was — for every camera-smoothing mode.
+    // While paused -- and through the settling ticks after it (see WasPaused) -- the camera is
+    // locked to the whole pixel the game itself would draw it at: Camera.UpdateMatrices floors
+    // its position, so that is floor of the real position. Smoothing being on or off then makes
+    // no difference to where a paused frame sits, which is what pause buffering needs: the frame
+    // shown while paused is the frame the game is actually on.
     //
-    // The cache is invalidated if the rendering mode or Camera Smoothing changes,
-    // because Fancy mode leaves camera.position fractional while Fast -- and either
-    // one with Camera Smoothing off -- floors it, so a cached value from one mode is
-    // not safe to reuse in another (a stale value routed through Fast's per-pixel
-    // offset path would shift the level visibly).
+    // The first tick of play after unpausing isn't extrapolated either. Its history still has
+    // the paused position as the previous entry, and pausing again before the next tick (pause
+    // buffering, again) would otherwise leave the camera drawn up to a tick past where the game
+    // stopped. It shows the camera's real, unrounded position instead, which keeps its sub-pixel
+    // offset; extrapolation picks up from the tick after.
     protected override void Smooth(Camera obj, double elapsedSeconds, SmoothingMode mode)
     {
         if (OverrideSmoothingMode.HasValue)
@@ -161,29 +156,21 @@ public class CameraSmoothingState : PositionSmoothingState<Camera>
         if (mode == SmoothingMode.Off)
             mode = SmoothingMode.Extrapolate;
 
-        var currentMode = (MotionSmoothingModule.Settings.RenderingMode,
-            MotionSmoothingModule.Settings.CameraSmoothing);
-        if (_hasLastSmoothedBeforePause && _lastSmoothedMode != currentMode)
-            _hasLastSmoothedBeforePause = false;
+        var handler = MotionSmoothingHandler.Instance;
 
-        if (MotionSmoothingHandler.Instance.WasPaused || Engine.Scene.Paused)
+        if (handler.WasPaused || Engine.Scene.Paused)
         {
-            SmoothedRealPosition = _hasLastSmoothedBeforePause
-                ? _lastSmoothedBeforePause
-                : OriginalDrawPosition;
+            var real = OriginalRealPosition;
+            SmoothedRealPosition = new Vector2((float)Math.Floor(real.X), (float)Math.Floor(real.Y));
+            return;
         }
-        else
-        {
-            SmoothedRealPosition = PositionSmoother.Smooth(this, obj, elapsedSeconds, mode);
 
-            // Stabilize the camera onto integer pixels while Madeline is offscreen (see below).
-            // Done before caching so a pause taken while offscreen holds the snapped position.
-            ApplyOffscreenSnap(obj);
+        SmoothedRealPosition = mode == SmoothingMode.Extrapolate && handler.FirstUpdateAfterUnpause
+            ? OriginalRealPosition
+            : PositionSmoother.Smooth(this, obj, elapsedSeconds, mode);
 
-            _lastSmoothedBeforePause = SmoothedRealPosition;
-            _lastSmoothedMode = currentMode;
-            _hasLastSmoothedBeforePause = true;
-        }
+        // Stabilize the camera onto integer pixels while Madeline is offscreen (see below).
+        ApplyOffscreenSnap(obj);
     }
 
     // Disables camera smoothing when Madeline is completely offscreen to prevent

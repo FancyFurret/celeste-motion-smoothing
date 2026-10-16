@@ -23,6 +23,21 @@ public class MotionSmoothingHandler : ToggleableFeature<MotionSmoothingHandler>
     public bool WasPaused => _pauseCounter > 0;
     private int _pauseCounter;
 
+    // Whether the last update was the first one to actually run gameplay after a pause -- i.e.
+    // past both the pause itself and the 0.15s unpause delay that follows it, during which the
+    // level runs no gameplay at all. The position history on that tick still has the paused
+    // position as its previous entry, so it spans one real tick of movement at most and can't be
+    // extrapolated from with any confidence. Counted in gameplay ticks rather than through
+    // _pauseCounter, which also drains during the unpause delay and so runs out right on this tick.
+    public bool FirstUpdateAfterUnpause => _gameplayTicksSinceUnpause == 1;
+    private int _gameplayTicksSinceUnpause = 2;
+
+    // Whether the level was still in its unpause delay when this tick began. Read at the start
+    // because Level.Update counts the delay down itself before returning early, so on the last
+    // tick of the delay the timer has already reached zero by AfterUpdate -- and judging by that
+    // counted a tick that ran no gameplay as the first one that did.
+    private bool _inUnpauseDelayAtTickStart;
+
     public ValueSmoother ValueSmoother { get; } = new();
     public PushSpriteSmoother PushSpriteSmoother { get; } = new();
 
@@ -147,6 +162,13 @@ public class MotionSmoothingHandler : ToggleableFeature<MotionSmoothingHandler>
             Instance._lastTicks = Instance._timer.ElapsedTicks;
             if (!Engine.Scene.Paused && Instance._pauseCounter > 0)
                 Instance._pauseCounter--;
+
+            // Paused is read at the end instead: a pause is taken at the top of Level.Update, before
+            // any gameplay runs, so a tick that ends paused ran none either.
+            if (Engine.Scene is Level { Paused: true } || Instance._inUnpauseDelayAtTickStart)
+                Instance._gameplayTicksSinceUnpause = 0;
+            else if (Instance._gameplayTicksSinceUnpause < 2)
+                Instance._gameplayTicksSinceUnpause++;
         }
     }
 
@@ -155,6 +177,7 @@ public class MotionSmoothingHandler : ToggleableFeature<MotionSmoothingHandler>
         Instance._positionsWereUpdated = false;
         // Engine.Update skips the scene entirely while this is running down.
         Instance._lastUpdateWasFrozen = Engine.FreezeTimer > 0f;
+        Instance._inUnpauseDelayAtTickStart = Engine.Scene is Level { unpauseTimer: > 0f };
         orig(self, gameTime);
     }
 
@@ -181,11 +204,26 @@ public class MotionSmoothingHandler : ToggleableFeature<MotionSmoothingHandler>
                 Instance.ValueSmoother.CalculateSmoothedPositions(elapsedSeconds, mode);
                 Instance.PushSpriteSmoother.CalculateSmoothedPositions(elapsedSeconds, mode);
             }
-            // The game is frozen (Celeste.Freeze). Everything holds where it was last drawn, except
-            // that Madeline is re-pinned if she's about to dash.
-            else if (Instance._lastUpdateWasFrozen && Instance.Player is { } player && Instance.PlayerState is { } playerState)
+            // The game is frozen (Celeste.Freeze).
+            else if (Instance._lastUpdateWasFrozen)
             {
-                PlayerSmoother.PinDuringFreeze(player, playerState);
+                if (mode == SmoothingMode.Interpolate)
+                {
+                    // Interpolate is a tick behind, so the frame drawn before a freeze is usually
+                    // partway between the last two positions, and holding it there meant a jump
+                    // when the freeze ended -- most visibly leaving a dream block, which freezes on
+                    // the very tick that moved her. Keep interpolating instead, up to the end of the
+                    // tick, so everything finishes its last step during the freeze and holds there.
+                    var clamped = Math.Min(elapsedSeconds, SmoothingMath.SecondsPerUpdate);
+                    Instance.ValueSmoother.CalculateSmoothedPositions(clamped, mode);
+                    Instance.PushSpriteSmoother.CalculateSmoothedPositions(clamped, mode);
+                }
+                // Extrapolate holds where it was last drawn, at most a tick ahead, which is where
+                // she'll carry on to -- unless she's about to dash, when she's pinned instead.
+                else if (Instance.Player is { } player && Instance.PlayerState is { } playerState)
+                {
+                    PlayerSmoother.PinDuringFreeze(player, playerState);
+                }
             }
 
             Instance.ValueSmoother.PreRender();
