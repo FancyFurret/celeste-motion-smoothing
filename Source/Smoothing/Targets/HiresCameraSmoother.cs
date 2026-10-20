@@ -375,7 +375,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 		IL.Celeste.SeekerBarrierRenderer.OnRenderBloom += SeekerBarrierRendererRenderHook;
 
         IL.Celeste.Godrays.Update += GodraysUpdateHook;
-        On.Celeste.Godrays.Update += Godrays_Update;
+        On.Celeste.Godrays.Render += Godrays_Render;
 
         On.Celeste.HudRenderer.RenderContent += HudRenderer_RenderContent;
 
@@ -461,7 +461,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 		IL.Celeste.SeekerBarrierRenderer.OnRenderBloom -= SeekerBarrierRendererRenderHook;
 
         IL.Celeste.Godrays.Update -= GodraysUpdateHook;
-        On.Celeste.Godrays.Update -= Godrays_Update;
+        On.Celeste.Godrays.Render -= Godrays_Render;
 
         On.Celeste.HudRenderer.RenderContent -= HudRenderer_RenderContent;
 
@@ -1021,9 +1021,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
 		if (!smoothLayer)
 		{
-			_updatingUnsmoothedForeground = scene is Level l && self == l.Foreground;
 			orig(self, scene);
-			_updatingUnsmoothedForeground = false;
 			return;
 		}
 
@@ -1034,33 +1032,64 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 		_disableFloorFunctions = DisableFloorFunctionsMode.Integer;
 	}
 
-	private static bool _updatingUnsmoothedForeground;
-
-	// Godrays work out their screen positions in Update, from the camera's real position. With
-	// Smooth Foreground off they're drawn shifted by the gameplay layer's sub-pixel offset (see
-	// ForegroundGridShift), which already accounts for where the camera is within a pixel -- so
-	// they're placed from the camera's whole-pixel position instead, the way a Parallax is.
-	private static void Godrays_Update(On.Celeste.Godrays.orig_Update orig, Godrays self, Scene scene)
+	// Godrays work out their screen positions in Update, from the camera's real position at the
+	// time. With Smooth Foreground off they're drawn shifted by the gameplay layer's sub-pixel
+	// offset (see ForegroundGridShift), which is worked out from the camera this frame is drawn
+	// with -- so positions from the update disagreed with it whenever the drawn camera had crossed
+	// into another pixel since, and the rays sat a pixel off until the next update. So the vertices
+	// are rebuilt here, from the drawn camera's whole-pixel position, the way a Parallax places
+	// itself. This is Godrays.Update's vertex loop and nothing else: the rays' timers, fade and
+	// resets (which draw from Calc.Random) are left to Update.
+	private static void Godrays_Render(On.Celeste.Godrays.orig_Render orig, Godrays self, Scene scene)
 	{
-		if (!_updatingUnsmoothedForeground || scene is not Level level)
-		{
-			orig(self, scene);
-			return;
-		}
+		if (_currentlyRenderingForeground && scene is Level level && self.vertexCount > 0)
+			RebuildGodrayVertices(self, level);
 
-		var camera = level.Camera;
-		var position = camera.position;
-		camera.position = new Vector2((float)Math.Floor(position.X), (float)Math.Floor(position.Y));
-
-		try
-		{
-			orig(self, scene);
-		}
-		finally
-		{
-			camera.position = position;
-		}
+		orig(self, scene);
 	}
+
+	private static void RebuildGodrayVertices(Godrays self, Level level)
+	{
+		var camera = new Vector2((float)Math.Floor(level.Camera.Position.X), (float)Math.Floor(level.Camera.Position.Y));
+		var player = level.Tracker.GetEntity<Player>();
+		var direction = Calc.AngleToVector(-1.6707964f, 1f);
+		var perpendicular = new Vector2(-direction.Y, direction.X);
+
+		int count = 0;
+		for (int i = 0; i < self.rays.Length && count + 6 <= self.vertices.Length; i++)
+		{
+			ref var ray = ref self.rays[i];
+			float percent = ray.Percent;
+			float x = -32f + GodrayMod(ray.X - camera.X * 0.9f, 384f);
+			float y = -32f + GodrayMod(ray.Y - camera.Y * 0.9f, 244f);
+			var origin = new Vector2((float)Math.Floor(x), (float)Math.Floor(y));
+
+			var color = self.rayColor
+				* Ease.CubeInOut(Calc.Clamp((percent < 0.5f ? percent : 1f - percent) * 2f, 0f, 1f))
+				* self.fade;
+			if (player != null)
+			{
+				float distance = (origin + camera - player.Position).Length();
+				if (distance < 64f)
+					color *= 0.25f + 0.75f * (distance / 64f);
+			}
+
+			var a = new VertexPositionColor(new Vector3(origin + perpendicular * ray.Width + direction * ray.Length, 0f), color);
+			var b = new VertexPositionColor(new Vector3(origin - perpendicular * ray.Width, 0f), color);
+			var c = new VertexPositionColor(new Vector3(origin + perpendicular * ray.Width, 0f), color);
+			var d = new VertexPositionColor(new Vector3(origin - perpendicular * ray.Width - direction * ray.Length, 0f), color);
+			self.vertices[count++] = a;
+			self.vertices[count++] = b;
+			self.vertices[count++] = c;
+			self.vertices[count++] = b;
+			self.vertices[count++] = c;
+			self.vertices[count++] = d;
+		}
+
+		self.vertexCount = count;
+	}
+
+	private static float GodrayMod(float x, float m) => (x % m + m) % m;
 
     private static void BackdropRenderer_Render(On.Celeste.BackdropRenderer.orig_Render orig, BackdropRenderer self, Scene scene)
     {
