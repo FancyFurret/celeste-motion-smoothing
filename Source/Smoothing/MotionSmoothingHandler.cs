@@ -30,6 +30,14 @@ public class MotionSmoothingHandler : ToggleableFeature<MotionSmoothingHandler>
     // extrapolated from with any confidence. Counted in gameplay ticks rather than through
     // _pauseCounter, which also drains during the unpause delay and so runs out right on this tick.
     public bool FirstUpdateAfterUnpause => _gameplayTicksSinceUnpause == 1;
+
+    // The camera is the exception to the freeze handling in EngineDrawHook: it keeps extrapolating
+    // as normal up to a frozen update and then holds wherever it was last drawn until the freeze
+    // ends. Snapping it back to its real position for the freeze was a visible hitch on every dash,
+    // and the camera doesn't change course mid-freeze the way Madeline can. These tell
+    // CameraSmoothingState what to do on this frame.
+    public double CameraElapsedSeconds { get; private set; }
+    public bool HoldCamera { get; private set; }
     private int _gameplayTicksSinceUnpause = 2;
 
     // Whether the level was still in its unpause delay when this tick began. Read at the start
@@ -43,6 +51,9 @@ public class MotionSmoothingHandler : ToggleableFeature<MotionSmoothingHandler>
 
     private readonly Stopwatch _timer = Stopwatch.StartNew();
     private long _lastTicks;
+    // When the last Engine.Update finished, frozen or not -- _lastTicks only moves on ticks that
+    // ran the scene.
+    private long _lastEngineUpdateTicks;
     private bool _positionsWereUpdated;
     private bool _lastUpdateWasFrozen;
 
@@ -179,6 +190,7 @@ public class MotionSmoothingHandler : ToggleableFeature<MotionSmoothingHandler>
         Instance._lastUpdateWasFrozen = Engine.FreezeTimer > 0f;
         Instance._inUnpauseDelayAtTickStart = Engine.Scene is Level { unpauseTimer: > 0f };
         orig(self, gameTime);
+        Instance._lastEngineUpdateTicks = Instance._timer.ElapsedTicks;
     }
 
     private static void EngineDrawHook(On.Monocle.Engine.orig_Draw orig, Engine self, GameTime gameTime)
@@ -199,14 +211,34 @@ public class MotionSmoothingHandler : ToggleableFeature<MotionSmoothingHandler>
             // by the actual pause transition, not a speculative draw-time button press
             // (which fires even when the pause is rejected, e.g. during cassette pickup).
 
+            // Extrapolation draws where things will be on the next update, and when that update is
+            // frozen (Celeste.Freeze), that's exactly where they are now. So frames drawn while the
+            // next update is frozen show the real positions, and the frames after the last frozen
+            // update extrapolate from them again, timed from that update -- the history hasn't
+            // moved during the freeze, so they carry on to the next tick's positions without a jump.
+            //
+            // Holding everything wherever the last frame before the freeze put it, up to a tick
+            // ahead, went wrong whenever something changed course during the freeze. Leaving a
+            // dream block is where it showed: the exit freezes for 0.05s, and a dash pressed in
+            // that window starts from her real position, so she was pulled back toward the block.
+            //
+            // The camera is left out of this; see HoldCamera.
+            bool extrapolating = mode != SmoothingMode.Interpolate;
+            bool nextUpdateFrozen = Engine.FreezeTimer > 0f;
+            Instance.CameraElapsedSeconds = elapsedSeconds;
+            Instance.HoldCamera = false;
+
             if (Instance._positionsWereUpdated)
             {
-                Instance.ValueSmoother.CalculateSmoothedPositions(elapsedSeconds, mode);
-                Instance.PushSpriteSmoother.CalculateSmoothedPositions(elapsedSeconds, mode);
+                var seconds = extrapolating && nextUpdateFrozen ? 0 : elapsedSeconds;
+                Instance.ValueSmoother.CalculateSmoothedPositions(seconds, mode);
+                Instance.PushSpriteSmoother.CalculateSmoothedPositions(seconds, mode);
             }
             // The game is frozen (Celeste.Freeze).
             else if (Instance._lastUpdateWasFrozen)
             {
+                Instance.HoldCamera = true;
+
                 if (mode == SmoothingMode.Interpolate)
                 {
                     // Interpolate is a tick behind, so the frame drawn before a freeze is usually
@@ -218,11 +250,13 @@ public class MotionSmoothingHandler : ToggleableFeature<MotionSmoothingHandler>
                     Instance.ValueSmoother.CalculateSmoothedPositions(clamped, mode);
                     Instance.PushSpriteSmoother.CalculateSmoothedPositions(clamped, mode);
                 }
-                // Extrapolate holds where it was last drawn, at most a tick ahead, which is where
-                // she'll carry on to -- unless she's about to dash, when she's pinned instead.
-                else if (Instance.Player is { } player && Instance.PlayerState is { } playerState)
+                else
                 {
-                    PlayerSmoother.PinDuringFreeze(player, playerState);
+                    var seconds = nextUpdateFrozen
+                        ? 0
+                        : (double)(Instance._timer.ElapsedTicks - Instance._lastEngineUpdateTicks) / Stopwatch.Frequency;
+                    Instance.ValueSmoother.CalculateSmoothedPositions(seconds, mode);
+                    Instance.PushSpriteSmoother.CalculateSmoothedPositions(seconds, mode);
                 }
             }
 

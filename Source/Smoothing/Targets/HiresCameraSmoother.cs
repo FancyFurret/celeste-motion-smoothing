@@ -39,6 +39,9 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
     // Large textures can be added to this to receive the subpixel offset when drawn to.
     private static HashSet<Texture> _offsetWhenDrawnTo = new HashSet<Texture>();
     private static HashSet<Texture> _inverseOffsetWhenDrawnFrom = new HashSet<Texture>();
+    // Which axes of that offset _offsetWhenDrawnTo applies. Only ever narrowed by the foreground
+    // pass below, for stylegrounds that are pinned to the screen on one axis.
+    private static Vector2 _offsetWhenDrawnToAxes = Vector2.One;
 
 	private static bool _scaleSourceAndDestinationForLargeTextures = true;
 
@@ -96,6 +99,16 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
     private enum ForegroundFlushGroup { AlphaBlend, Additive, Direct }
     private static ForegroundFlushGroup _currentFlushGroup = ForegroundFlushGroup.AlphaBlend;
+
+    // With Smooth Foreground off, the foreground is drawn at 1x and steps a whole pixel at a time
+    // -- but whole pixels of the *screen*, while the gameplay layer under it is shifted by the
+    // camera's sub-pixel offset. So whenever the camera moved, the two disagreed about where the
+    // pixel grid was. These line the foreground up with the gameplay layer's grid instead, for the
+    // axes each styleground scrolls on: a styleground with zero scroll is pinned to the screen and
+    // stays exactly where it is. See ForegroundGridAxes.
+    private static Vector2 _foregroundGridAxes = Vector2.Zero;
+    // The camera's sub-pixel position, i.e. how far the gameplay layer's grid is from the screen's.
+    private static Vector2 _foregroundCameraFraction = Vector2.Zero;
     private static readonly BlendState _additiveFlushBlendState = new BlendState
     {
         ColorSourceBlend = Blend.One,
@@ -362,6 +375,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 		IL.Celeste.SeekerBarrierRenderer.OnRenderBloom += SeekerBarrierRendererRenderHook;
 
         IL.Celeste.Godrays.Update += GodraysUpdateHook;
+        On.Celeste.Godrays.Update += Godrays_Update;
 
         On.Celeste.HudRenderer.RenderContent += HudRenderer_RenderContent;
 
@@ -447,6 +461,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 		IL.Celeste.SeekerBarrierRenderer.OnRenderBloom -= SeekerBarrierRendererRenderHook;
 
         IL.Celeste.Godrays.Update -= GodraysUpdateHook;
+        On.Celeste.Godrays.Update -= Godrays_Update;
 
         On.Celeste.HudRenderer.RenderContent -= HudRenderer_RenderContent;
 
@@ -1006,7 +1021,9 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
 		if (!smoothLayer)
 		{
+			_updatingUnsmoothedForeground = scene is Level l && self == l.Foreground;
 			orig(self, scene);
+			_updatingUnsmoothedForeground = false;
 			return;
 		}
 
@@ -1015,6 +1032,34 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 		orig(self, scene);
 
 		_disableFloorFunctions = DisableFloorFunctionsMode.Integer;
+	}
+
+	private static bool _updatingUnsmoothedForeground;
+
+	// Godrays work out their screen positions in Update, from the camera's real position. With
+	// Smooth Foreground off they're drawn shifted by the gameplay layer's sub-pixel offset (see
+	// ForegroundGridShift), which already accounts for where the camera is within a pixel -- so
+	// they're placed from the camera's whole-pixel position instead, the way a Parallax is.
+	private static void Godrays_Update(On.Celeste.Godrays.orig_Update orig, Godrays self, Scene scene)
+	{
+		if (!_updatingUnsmoothedForeground || scene is not Level level)
+		{
+			orig(self, scene);
+			return;
+		}
+
+		var camera = level.Camera;
+		var position = camera.position;
+		camera.position = new Vector2((float)Math.Floor(position.X), (float)Math.Floor(position.Y));
+
+		try
+		{
+			orig(self, scene);
+		}
+		finally
+		{
+			camera.position = position;
+		}
 	}
 
     private static void BackdropRenderer_Render(On.Celeste.BackdropRenderer.orig_Render orig, BackdropRenderer self, Scene scene)
@@ -1054,6 +1099,8 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
             _currentlyRenderingForeground = true;
             _foregroundBlendState = BlendState.AlphaBlend;
             _currentFlushGroup = ForegroundFlushGroup.AlphaBlend;
+            _foregroundGridAxes = Vector2.Zero;
+            _foregroundCameraFraction = -GetCameraOffset();
 
             orig(self, scene);
 
@@ -1062,6 +1109,8 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
                 FlushForegroundSmallBuffer(renderer, _currentFlushGroup);
 
             _currentlyRenderingForeground = false;
+            _foregroundGridAxes = Vector2.Zero;
+            SetDirectForegroundOffset(renderer);
             return;
         }
 
@@ -1304,8 +1353,18 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 			? ForegroundFlushGroup.Direct
 			: GetFlushGroup(_foregroundBlendState);
 
-		if (newGroup == _currentFlushGroup)
+		var newAxes = ForegroundGridAxes(backdrop);
+
+		// The small buffer is shifted as a whole when it's flushed, so stylegrounds on different
+		// axes can't share one. Direct draws are shifted one at a time, so they only need the
+		// axes updating.
+		if (newGroup == _currentFlushGroup
+			&& (newAxes == _foregroundGridAxes || newGroup == ForegroundFlushGroup.Direct))
+		{
+			_foregroundGridAxes = newAxes;
+			SetDirectForegroundOffset(renderer);
 			return;
+		}
 
 		bool spriteBatchActive = SpriteBatchActive;
 		var savedParams = _lastSpriteBatchBeginParams;
@@ -1330,10 +1389,83 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 		}
 
 		_currentFlushGroup = newGroup;
+		_foregroundGridAxes = newAxes;
+		SetDirectForegroundOffset(renderer);
 
 		if (spriteBatchActive && savedParams is var (sm, bs, ss, ds, rs, eff, mx))
 			Draw.SpriteBatch.Begin(sm, bs, ss, ds, rs, eff, mx);
 	}
+
+	// Which axes of a foreground styleground get lined up with the gameplay layer's pixel grid (see
+	// _foregroundGridAxes). A Parallax does on every axis it scrolls on: it's drawn from the
+	// camera's whole-pixel position, so the camera's sub-pixel offset is exactly what it's missing.
+	// Zero scroll means pinned to the screen, and that axis is left alone. Godrays are drawn in
+	// screen space but follow the camera at 0.9, so they're lined up too.
+	//
+	// Everything else is left as it was. Stylegrounds that draw in screen space from the camera's
+	// *smoothed* position already move with it, a whole screen pixel at a time, and shifting them
+	// by its sub-pixel offset as well would make them jump back and forth across a pixel.
+	private static Vector2 ForegroundGridAxes(Backdrop backdrop) => backdrop switch
+	{
+		Parallax p => new Vector2(p.Scroll.X != 0f ? 1f : 0f, p.Scroll.Y != 0f ? 1f : 0f),
+		Godrays => Vector2.One,
+		_ => Vector2.Zero
+	};
+
+	// Sprites a Direct-group styleground draws go straight to the large level buffer, so they pick
+	// up the gameplay grid's offset through _offsetWhenDrawnTo while it's drawing. Primitives get
+	// theirs from ForegroundGridShift instead.
+	private static void SetDirectForegroundOffset(HiresRenderer renderer)
+	{
+		_offsetWhenDrawnTo.Clear();
+		_offsetWhenDrawnToAxes = Vector2.One;
+
+		if (_currentlyRenderingForeground
+			&& _currentFlushGroup == ForegroundFlushGroup.Direct
+			&& _foregroundGridAxes != Vector2.Zero)
+		{
+			_offsetWhenDrawnTo.Add(renderer.LargeLevelBuffer);
+			_offsetWhenDrawnToAxes = _foregroundGridAxes;
+		}
+	}
+
+	// Whether a primitive being drawn now belongs on the gameplay layer's grid.
+	private static bool ShouldShiftPrimitiveToForegroundGrid()
+	{
+		return _currentlyRenderingForeground
+			&& _foregroundGridAxes != Vector2.Zero
+			&& HiresRenderer.Instance is { } renderer
+			&& _currentRenderTarget == renderer.LargeLevelBuffer.Target;
+	}
+
+	// How far to move a primitive whose first vertex is at `anchor` (in game pixels). On the axes in
+	// _foregroundGridAxes, by the gameplay layer's offset from the screen, the same as a sprite in
+	// the layer gets -- the whole primitive moves with that grid, and DrawGpuPrimitive pixelates it
+	// on that grid too. Snapping each primitive's own anchor to the grid instead made every godray
+	// jump a pixel at its own moment as the camera moved, since their anchors all sit at different
+	// fractions. On the other axes it's onto a whole pixel of the screen, as the layer did before.
+	private static Vector2 ForegroundGridShift(Vector2 anchor)
+	{
+		var fraction = _foregroundCameraFraction;
+
+		float shiftX = _foregroundGridAxes.X != 0f
+			? -fraction.X
+			: (float)Math.Floor(anchor.X) - anchor.X;
+		float shiftY = _foregroundGridAxes.Y != 0f
+			? -fraction.Y
+			: (float)Math.Floor(anchor.Y) - anchor.Y;
+
+		return new Vector2(shiftX, shiftY);
+	}
+
+	// Where the gameplay layer's grid sits within a screen pixel.
+	private static Vector2 ForegroundGridPhase()
+	{
+		var offset = -_foregroundCameraFraction;
+		return new Vector2(offset.X - (float)Math.Floor(offset.X), offset.Y - (float)Math.Floor(offset.Y));
+	}
+
+	private static readonly Func<Vector2, Vector2> _foregroundGridShift = ForegroundGridShift;
 
 	// Composites the small level buffer into the large one and leaves the large one selected. The
 	// first call founds its contents, so it clears and draws over them opaquely: the small buffer
@@ -1370,11 +1502,23 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 			: BlendState.AlphaBlend;
 
 		Engine.Instance.GraphicsDevice.SetRenderTarget(GameplayBuffers.Level);
+
+		// Everything in the small buffer was drawn on the same axes (see BeforeForegroundBackdropRender).
+		_offsetWhenDrawnTo.Clear();
+		if (_foregroundGridAxes != Vector2.Zero)
+		{
+			_offsetWhenDrawnTo.Add(renderer.LargeLevelBuffer);
+			_offsetWhenDrawnToAxes = _foregroundGridAxes;
+		}
+
 		Draw.SpriteBatch.Begin(SpriteSortMode.Deferred, flushBlendState,
 			SamplerState.PointClamp, DepthStencilState.None, RasterizerState.CullNone,
 			null, Matrix.Identity);
 		Draw.SpriteBatch.Draw(renderer.SmallBuffer, Vector2.Zero, Color.White);
 		Draw.SpriteBatch.End();
+
+		_offsetWhenDrawnTo.Clear();
+		_offsetWhenDrawnToAxes = Vector2.One;
 	}
 
     private static void GameplayRenderer_Render(On.Celeste.GameplayRenderer.orig_Render orig, GameplayRenderer self, Scene scene)
@@ -2343,7 +2487,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
         // an empty set is always false, so the guard changes nothing but the hashing.
 		if (_offsetWhenDrawnTo.Count > 0 && _offsetWhenDrawnTo.Contains(_currentRenderTarget))
         {
-            Vector2 offset = GetCameraOffset();
+            Vector2 offset = GetCameraOffset() * _offsetWhenDrawnToAxes;
             return new Vector2(x + offset.X * scale, y + offset.Y * scale);
         }
 
@@ -2856,13 +3000,24 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
         int vertexCount, GpuPrimitiveDrawContext context)
     {
         _inGpuPrimitiveDraw = true;
+        if (ShouldShiftPrimitiveToForegroundGrid())
+        {
+            _gpuPrimitiveAtlasPixelator.AnchorShift = _foregroundGridShift;
+            _gpuPrimitiveAtlasPixelator.FixedPhaseAxes = _foregroundGridAxes;
+            _gpuPrimitiveAtlasPixelator.FixedPhase = ForegroundGridPhase();
+        }
         try
         {
             return _gpuPrimitiveAtlasPixelator.TryDraw(
                 context.Device, context.Targets, matrix, colors, vertexCount,
                 context.LowWidth, context.LowHeight, context.Scale);
         }
-        finally { _inGpuPrimitiveDraw = false; }
+        finally
+        {
+            _inGpuPrimitiveDraw = false;
+            _gpuPrimitiveAtlasPixelator.AnchorShift = null;
+            _gpuPrimitiveAtlasPixelator.FixedPhaseAxes = Vector2.Zero;
+        }
     }
 
     private static bool HasFiniteTwoDimensionalVertices(VertexPositionColor[] vertices,
@@ -2947,10 +3102,16 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
         else
             return matrix;
 
+        // Applied before the caller's matrix, i.e. in the same space the vertices are in.
+        if (ShouldShiftPrimitiveToForegroundGrid())
+        {
+            var shift = ForegroundGridShift(new Vector2(first.X, first.Y));
+            return Matrix.CreateTranslation(shift.X, shift.Y, 0f) * matrix;
+        }
+
         float offsetX = first.X - (float)Math.Floor(first.X);
         float offsetY = first.Y - (float)Math.Floor(first.Y);
 
-        // Applied before the caller's matrix, i.e. in the same space the vertices are in.
         return Matrix.CreateTranslation(-offsetX, -offsetY, 0f) * matrix;
     }
 

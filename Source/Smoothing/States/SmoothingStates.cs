@@ -136,10 +136,10 @@ public class CameraSmoothingState : PositionSmoothingState<Camera>
     }
 
     // While paused -- and through the settling ticks after it (see WasPaused) -- the camera is
-    // locked to the whole pixel the game itself would draw it at: Camera.UpdateMatrices floors
-    // its position, so that is floor of the real position. Smoothing being on or off then makes
-    // no difference to where a paused frame sits, which is what pause buffering needs: the frame
-    // shown while paused is the frame the game is actually on.
+    // locked to the whole pixel nearest its real position. Rounded rather than floored (which is
+    // what Camera.UpdateMatrices does) so that pausing never moves the view by more than half a
+    // pixel. The paused frame is then the frame the game is actually on, give or take that
+    // rounding, which is what pause buffering needs.
     //
     // The first tick of play after unpausing isn't extrapolated either. Its history still has
     // the paused position as the previous entry, and pausing again before the next tick (pause
@@ -161,8 +161,18 @@ public class CameraSmoothingState : PositionSmoothingState<Camera>
         if (handler.WasPaused || Engine.Scene.Paused)
         {
             var real = OriginalRealPosition;
-            SmoothedRealPosition = new Vector2((float)Math.Floor(real.X), (float)Math.Floor(real.Y));
+            SmoothedRealPosition = new Vector2((float)Math.Floor(real.X + 0.5f), (float)Math.Floor(real.Y + 0.5f));
             return;
+        }
+
+        // See HoldCamera and CameraElapsedSeconds: through a freeze the camera keeps its old
+        // behaviour, holding where it was last drawn rather than dropping back to where it really is.
+        if (mode == SmoothingMode.Extrapolate)
+        {
+            if (handler.HoldCamera)
+                return;
+
+            elapsedSeconds = handler.CameraElapsedSeconds;
         }
 
         SmoothedRealPosition = mode == SmoothingMode.Extrapolate && handler.FirstUpdateAfterUnpause

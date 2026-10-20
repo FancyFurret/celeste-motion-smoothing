@@ -21,6 +21,16 @@ internal sealed class GpuPrimitiveAtlasPixelator : IDisposable
     // A triangle clipped against an axis-aligned rectangle produces at most seven vertices.
     private const int ClipBufferCapacity = 8;
     private static readonly Matrix AtlasProjection = CreatePixelToClipMatrix(AtlasWidth, AtlasHeight);
+
+    // Optional: given a group's anchor (its first vertex, transformed), how far to move the whole
+    // group before it's pixelated. Lets the caller pick which grid a group lands on instead of the
+    // one its own anchor defines. Null leaves every group where it is.
+    internal Func<Vector2, Vector2> AnchorShift;
+
+    // Optional: on the axes set in FixedPhaseAxes, pixelate every group on the grid FixedPhase
+    // defines (its fractional offset from whole pixels) instead of on the one through its anchor.
+    internal Vector2 FixedPhaseAxes;
+    internal Vector2 FixedPhase;
     // dest = src*0 + dest*0, so covered pixels become zero no matter what the pixel shader
     // emits. Used to blank a page region without depending on FxPrimitive's output.
     private static readonly BlendState ZeroBlend = new()
@@ -253,7 +263,12 @@ internal sealed class GpuPrimitiveAtlasPixelator : IDisposable
         Vector3 anchor = Vector3.Transform(source[sourceStart].Position, matrix);
         if (!HasFiniteXy(anchor))
             return false;
-        Vector2 phase = new(anchor.X - MathF.Floor(anchor.X), anchor.Y - MathF.Floor(anchor.Y));
+        Vector2 shift = AnchorShift?.Invoke(new Vector2(anchor.X, anchor.Y)) ?? Vector2.Zero;
+        anchor.X += shift.X;
+        anchor.Y += shift.Y;
+        Vector2 phase = new(
+            FixedPhaseAxes.X != 0f ? FixedPhase.X : anchor.X - MathF.Floor(anchor.X),
+            FixedPhaseAxes.Y != 0f ? FixedPhase.Y : anchor.Y - MathF.Floor(anchor.Y));
         int outputStart = _clippedVertexCount;
         float left = -ViewportGuard;
         float top = -ViewportGuard;
@@ -271,8 +286,8 @@ internal sealed class GpuPrimitiveAtlasPixelator : IDisposable
                     _clippedVertexCount = outputStart;
                     return false;
                 }
-                vertex.Position.X -= phase.X;
-                vertex.Position.Y -= phase.Y;
+                vertex.Position.X += shift.X - phase.X;
+                vertex.Position.Y += shift.Y - phase.Y;
                 _clipA[i] = vertex;
             }
 

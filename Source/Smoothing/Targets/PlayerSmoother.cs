@@ -105,25 +105,6 @@ public static class PlayerSmoother
     }
 
 
-    // Runs on frames drawn while the game is frozen (Celeste.Freeze), where nothing is re-smoothed
-    // and Madeline stays wherever the last frame before the freeze put her -- in Extrapolate, up to
-    // a tick ahead of where she actually is. That's right if she carries on the way she was going
-    // once it ends, but a dash pressed during the freeze starts from her real position, so without
-    // this she'd be held ahead and then pulled back. Leaving a dream block is where this shows:
-    // the exit freezes for 0.05s, right when a dash out of it gets pressed.
-    public static void PinDuringFreeze(Player player, IPositionSmoothingState state)
-    {
-        if (MotionSmoothingModule.Settings.ObjectSmoothing != SmoothingMode.Extrapolate
-            || MotionSmoothingModule.Settings.SillyMode)
-            return;
-
-        if (Engine.Scene is not Level { Transitioning: false, Paused: false })
-            return;
-
-        if (IsAboutToDash(player))
-            state.PinToOriginalDrawPosition();
-    }
-
     // Whether the next physics update will start a dash -- which is a place the extrapolation
     // can't see her going, so Extrapolate above pins her to her update-time position instead of
     // carrying her further along the way she was already moving.
