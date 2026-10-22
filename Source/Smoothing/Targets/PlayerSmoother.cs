@@ -43,12 +43,10 @@ public static class PlayerSmoother
     // ObjectSmoothing Off path, where PositionSmoother.Smooth short-circuits before this class
     // would normally run.
     //
-    // Subpixel rendering doesn't depend on smoothing: with smoothing off, Madeline is drawn at her
-    // physics position, which still carries a subpixel remainder (an Actor's movementCounter) worth
-    // showing. It's allowed under exactly the same conditions either way -- including the guards
-    // that keep her subpixel position from being readable while she's standing still. Keeping the
-    // flags current here also stops them latching at whatever they held when smoothing was last on,
-    // which would resurrect stale values the moment it comes back.
+    // Nothing reads the flags while smoothing is off -- subpixel rendering is off with it, see
+    // MotionSmoothingSettings.RenderMadelineWithSubpixelsInEffect -- but keeping them current here
+    // stops them latching at whatever they held when smoothing was last on, which would resurrect
+    // stale values the moment it comes back.
     public static void UpdateSubpixelState(Player player, IPositionSmoothingState state, double elapsed)
     {
         GetExtrapolatedPositionAndUpdateIsSmoothing(player, state, elapsed);

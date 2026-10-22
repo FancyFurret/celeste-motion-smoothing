@@ -153,8 +153,24 @@ public class CameraSmoothingState : PositionSmoothingState<Camera>
 
         // Carveout: the camera still needs fractional offsets even when global
         // smoothing is Off, otherwise the entire scene jitters on integer steps.
+        //
+        // Unless the camera isn't being smoothed either, in which case nothing is and the frame
+        // should be vanilla's: the camera where the game has it right now, which SetSmoothed floors
+        // exactly the way Camera.UpdateMatrices does. Extrapolating it anyway pushed it into the next
+        // pixel a frame early whenever it was close to one, stepping the whole scene against
+        // Madeline. The pause rounding and the offscreen snap below are both there for a camera
+        // that's off its real position, so they're skipped too -- each could put it a pixel away
+        // from where vanilla floors it.
         if (mode == SmoothingMode.Off)
+        {
+            if (!MotionSmoothingModule.Settings.CameraSmoothing)
+            {
+                SmoothedRealPosition = obj.Position;
+                return;
+            }
+
             mode = SmoothingMode.Extrapolate;
+        }
 
         var handler = MotionSmoothingHandler.Instance;
 
@@ -258,7 +274,14 @@ public class ActorSmoothingState : PositionSmoothingState<Actor>
 
 public class LevelZoomSmoothingState : FloatSmoothingState<Level>
 {
-    protected override SmoothingMode? OverrideSmoothingMode => SmoothingMode.Extrapolate;
+    // Extrapolated like the camera, and for the same reason left alone with the camera when
+    // nothing at all is being smoothed -- see CameraSmoothingState.Smooth.
+    protected override SmoothingMode? OverrideSmoothingMode =>
+        MotionSmoothingModule.Settings.CameraSmoothing
+        || MotionSmoothingModule.Settings.ObjectSmoothing != SmoothingMode.Off
+            ? SmoothingMode.Extrapolate
+            : null;
+
     protected override bool CancelSmoothing => CelesteTasInterop.CenterCamera;
     protected override float GetValue(Level obj) => Math.Max(obj.Zoom, 1f / 6f);
     protected override void SetValue(Level obj, float value)

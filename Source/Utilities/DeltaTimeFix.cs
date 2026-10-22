@@ -24,6 +24,14 @@ public class DeltaTimeFix : ToggleableFeature<DeltaTimeFix>
 
     public static void UpdateFixedDeltaTimeMultiplier()
     {
+        // The correction is for a Starfield updated at draw time. With UpdateAtDraw standing down
+        // it's updated in Update, on Update's own DeltaTime, and needs none.
+        if (UpdateAtDraw.Instance is not { Enabled: true })
+        {
+            _fixedDeltaTimeMultiplier = 1f;
+            return;
+        }
+
         var updateDeltaTime = (float)GameUtils.UpdateElapsedTime.TotalSeconds;
         var deltaTime = Engine.DeltaTime;
         _fixedDeltaTimeMultiplier = deltaTime / updateDeltaTime;

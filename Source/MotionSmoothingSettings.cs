@@ -183,7 +183,9 @@ public class MotionSmoothingSettings : EverestModuleSettings
 
         // These additionally require the Fancy rendering mode.
         bool notFancy = RenderingMode != RenderingMode.Fancy;
-        SetItemState(_renderMadelineWithSubpixelsItem, masterDisabled || notFancy,
+        // Also needs Object Smoothing -- see RenderMadelineWithSubpixelsInEffect.
+        SetItemState(_renderMadelineWithSubpixelsItem,
+            masterDisabled || notFancy || ObjectSmoothing == SmoothingMode.Off,
             MapSmoothingSuggestions.IsLocked(MapSmoothingOption.RenderMadelineWithSubpixelPrecision));
         SetItemState(_renderBackgroundHiresItem, masterDisabled || notFancy,
             MapSmoothingSuggestions.IsLocked(MapSmoothingOption.SmoothBackground));
@@ -554,6 +556,17 @@ public class MotionSmoothingSettings : EverestModuleSettings
     // The player's own saved value, ignoring any map suggestion currently in force.
     [SettingIgnore][YamlIgnore] public bool UserRenderMadelineWithSubpixels => _renderMadelineWithSubpixels;
 
+    // Whether Madeline is actually drawn at her subpixel position -- what the renderer reads, as
+    // opposed to the setting. Only while Object Smoothing is on: without it, every frame lands on a
+    // physics frame, and her subpixels would only show her physics remainder, which makes her
+    // jitter rather than move any more smoothly. The camera chases her whole-pixel Position, which
+    // advances in uneven steps (1, 2, 1, 2 px at 90 px/s), so the camera carries that rhythm and
+    // vanilla Madeline carries it with it. Drawn at her exact position she doesn't, and the gap
+    // between the two wobbles from one frame to the next.
+    [SettingIgnore][YamlIgnore]
+    public bool RenderMadelineWithSubpixelsInEffect =>
+        RenderMadelineWithSubpixels && ObjectSmoothing != SmoothingMode.Off;
+
     public void CreateRenderMadelineWithSubpixelsEntry(TextMenu menu, bool inGame)
     {
         _renderMadelineWithSubpixelsItem = new LockableOnOff(
@@ -572,11 +585,11 @@ public class MotionSmoothingSettings : EverestModuleSettings
 
         _renderMadelineWithSubpixelsItem.AddDescription(
             menu,
-            "Only supported in the Fancy rendering mode. Turning this on lets Madeline\n" +
-            "be drawn at her exact subpixel position (i.e. offset from the pixel grid),\n" +
-			"which dramatically improves the clarity of her sprite while moving. There are\n" +
-            "many safeguards in place to prevent subpixel information from being gleanable.\n" +
-            "Turning this off may mildly improve performance.\n"
+            "Only supported in the Fancy rendering mode and when Object Smoothing is on.\n" +
+			"This draws Madeline at her exact subpixel position (i.e. offset from the pixel grid),\n" +
+            "which dramatically improves the clarity of her sprite while moving.\n" +
+            "There are many safeguards in place to prevent subpixel position from being gleanable.\n" +
+            "Turning this off may mildly improve performance."
         );
     }
 
@@ -869,7 +882,14 @@ public class MotionSmoothingSettings : EverestModuleSettings
 
             return _smoothingMode;
         }
-        set => _smoothingMode = value;
+        set
+        {
+            _smoothingMode = value;
+
+            // Whether Madeline's subpixels are drawn turns on this, and with it the size of the
+            // gameplay buffer -- see RenderMadelineWithSubpixelsInEffect.
+            MotionSmoothingModule.Instance.ApplySettings();
+        }
     }
 
     // The player's own saved value, ignoring the framerate it doesn't apply at.
@@ -893,6 +913,8 @@ public class MotionSmoothingSettings : EverestModuleSettings
         (_objectSmoothingItem as TextMenu.Slider).Change(index =>
         {
             ObjectSmoothing = (SmoothingMode)index;
+
+            RefreshMenuItemStates();
         });
 
         menu.Add(_objectSmoothingItem);

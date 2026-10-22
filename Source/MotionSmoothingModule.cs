@@ -273,8 +273,13 @@ public class MotionSmoothingModule : EverestModule
         MotionSmoothing.Enable();
         ActorPushTracker.Enable();
         CrystalSpinnerFillerTracker.Enable();
-        UpdateAtDraw.Enable();
         DebugRenderFix.Enable();
+
+        // Only worth it with frames in between updates -- see UpdateAtDraw.
+        if (Settings.FrameRate > MotionSmoothingSettings.PhysicsFrameRate)
+            UpdateAtDraw.Enable();
+        else
+            UpdateAtDraw.Deactivate();
         DeltaTimeFix.Enable();
 
         if (Settings.RenderingMode == RenderingMode.Fancy)
@@ -294,7 +299,7 @@ public class MotionSmoothingModule : EverestModule
 				Settings.CameraSmoothing && Settings.HideStretchedEdges ? 181f / 180f : 1;
 			HiresCameraSmoother.ZoomMatrix = Matrix.CreateScale(HiresCameraSmoother.ZoomScale);
 
-			if (Settings.RenderMadelineWithSubpixels && !Settings.SillyMode)
+			if (Settings.RenderMadelineWithSubpixelsInEffect && !Settings.SillyMode)
 			{
 				HiresCameraSmoother.EnableHiresDistort();
 			}
@@ -304,7 +309,7 @@ public class MotionSmoothingModule : EverestModule
 				HiresCameraSmoother.DisableHiresDistort();
 			}
 
-			if (!Settings.RenderMadelineWithSubpixels && !Settings.SillyMode)
+			if (!Settings.RenderMadelineWithSubpixelsInEffect && !Settings.SillyMode)
 			{
 				HiresCameraSmoother.DisableLargeGameplayBuffer();
 			}

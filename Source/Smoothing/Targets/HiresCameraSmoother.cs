@@ -424,7 +424,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
         AddHook(typeof(Calc).GetMethod(nameof(Calc.Round), [typeof(Vector2)])!, RoundHook);
 
 		if (
-			MotionSmoothingModule.Settings.RenderMadelineWithSubpixels
+			MotionSmoothingModule.Settings.RenderMadelineWithSubpixelsInEffect
 			&& !MotionSmoothingModule.Settings.SillyMode
 		) {
 			EnableHiresDistort();
@@ -1554,7 +1554,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
     {
 		if (
 			HiresRenderer.Instance is not { } renderer
-			|| !MotionSmoothingModule.Settings.RenderMadelineWithSubpixels
+			|| !MotionSmoothingModule.Settings.RenderMadelineWithSubpixelsInEffect
 			|| MotionSmoothingModule.Settings.SillyMode
 		) {
 			orig(self, scene);
@@ -1593,7 +1593,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 		// to drop ours back onto the whole pixel, which is exactly what "Render Madeline with
 		// Subpixels" off already does, for as long as Spirialis is active. Nothing else about the
 		// hires pipeline changes; the camera keeps its own subpixel offset.
-		_gameplayRenderSubpixels = MotionSmoothingModule.Settings.RenderMadelineWithSubpixels
+		_gameplayRenderSubpixels = MotionSmoothingModule.Settings.RenderMadelineWithSubpixelsInEffect
 		                           && !SpirialisWillDuplicateGameplay();
 		_gameplayRenderPlayer = MotionSmoothingHandler.Instance.Player;
 		_gameplayRenderHeldEntity = _gameplayRenderPlayer?.Holding?.Entity;
@@ -1700,19 +1700,11 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 	private static Entity _subpixelRenderEntity;
 
 	// How far to shift a sprite to land it on its exact position, given that it was drawn at the
-	// rounded one (SmoothingStateBase.SetSmoothed rounds before writing the position back).
-	//
-	// With Object Smoothing off there's no smoothed position to take the remainder of -- the sprite
-	// sits on its physics position -- but that position still carries a subpixel remainder of its
-	// own (an Actor's movementCounter), and showing it is the whole point of subpixel rendering. So
-	// the target is the real position rather than the smoothed one, which is where it was drawn.
+	// rounded one (SmoothingStateBase.SetSmoothed rounds before writing the position back). Only
+	// reached with Object Smoothing on -- see RenderMadelineWithSubpixelsInEffect.
 	private static Vector2 SubpixelOffset(IPositionSmoothingState state)
 	{
-		var target = MotionSmoothingModule.Settings.ObjectSmoothing == SmoothingMode.Off
-			? state.OriginalRealPosition
-			: state.SmoothedRealPosition;
-
-		return target - state.SmoothedRealPosition.Round();
+		return state.SmoothedRealPosition - state.SmoothedRealPosition.Round();
 	}
 
 	// Pre: if this entity should render at a subpixel-precise position, flush everything drawn so
@@ -1886,7 +1878,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 		Draw.SpriteBatch.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend, SamplerState.PointClamp, DepthStencilState.None, RasterizerState.CullNone, null, Matrix.Identity);
 		Draw.SpriteBatch.Draw(
             renderer.SmallBuffer,
-            MotionSmoothingModule.Settings.RenderMadelineWithSubpixels ? _lastPlayerOffset : Vector2.Zero,
+            MotionSmoothingModule.Settings.RenderMadelineWithSubpixelsInEffect ? _lastPlayerOffset : Vector2.Zero,
             Color.White
         );
 		Draw.SpriteBatch.End();
@@ -1955,7 +1947,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 		}
 
 
-		if (!MotionSmoothingModule.Settings.RenderMadelineWithSubpixels)
+		if (!MotionSmoothingModule.Settings.RenderMadelineWithSubpixelsInEffect)
 		{
 			// If we're not doing subpixel rendering, then we don't need to do that much.
 			Engine.Instance.GraphicsDevice.SetRenderTarget(renderer.SmallBuffer);

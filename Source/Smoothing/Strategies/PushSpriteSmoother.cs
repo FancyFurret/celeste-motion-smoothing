@@ -46,10 +46,19 @@ public class PushSpriteSmoother : SmoothingStrategy<PushSpriteSmoother>
     }
 
 
+    // With Object Smoothing off, every sprite is drawn exactly where vanilla draws it. The offsets
+    // below don't all come out to zero there on their own: anything whose Position is fractional
+    // (a following strawberry, an ice FireBall) would be moved onto the whole pixel nearest it.
+    // Snapshotted once per frame, since GetSpritePosition runs for every sprite drawn.
+    private bool _passThrough;
+
     public override void PreRender()
     {
         base.PreRender();
         ClearOffsetMemo();
+
+        _passThrough = MotionSmoothingModule.Settings.ObjectSmoothing == SmoothingMode.Off
+                       && !MotionSmoothingModule.Settings.SillyMode;
     }
 
     public override void PostRender()
@@ -299,6 +308,7 @@ public class PushSpriteSmoother : SmoothingStrategy<PushSpriteSmoother>
 
     private Vector2 GetSpritePosition(Vector2 position)
     {
+        if (_passThrough) return position;
         if (DebugRenderFix.IsDebugRendering) return position;
         if (_currentObjects.Count == 0) return position;
         if (IsRenderingToForeignTarget()) return position;
@@ -591,7 +601,7 @@ public class PushSpriteSmoother : SmoothingStrategy<PushSpriteSmoother>
 
     private static void BorderRenderHook(On.Monocle.Entity.orig_Render orig, Entity self)
     {
-        if (self is MoveBlock.Border border && Instance.Enabled)
+        if (self is MoveBlock.Border border && Instance.Enabled && !Instance._passThrough)
         {
             var parentState = Instance.GetState(border.Parent) as IPositionSmoothingState;
             if (parentState != null)

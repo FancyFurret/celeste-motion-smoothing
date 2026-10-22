@@ -24,11 +24,9 @@ public static class PositionSmoother
         if (mode == SmoothingMode.Off)
         {
             // Nothing to smooth: without frames in between physics frames, every draw is already
-            // where the object is. Subpixel rendering is a separate matter -- Madeline's physics
-            // position carries a subpixel remainder whether or not anything is being smoothed --
-            // so PlayerSmoother's flags still have to be maintained from here, since it's
-            // otherwise skipped entirely on this path. That also keeps them from going stale and
-            // resurrecting old values the moment smoothing comes back on.
+            // where the object is. PlayerSmoother's flags are still kept current from here, since
+            // it's otherwise skipped entirely on this path, so that they don't go stale and
+            // resurrect old values the moment smoothing comes back on.
             if (MotionSmoothingHandler.Instance.Player is { } player && obj == player)
                 PlayerSmoother.UpdateSubpixelState(player, state, elapsedSeconds);
 

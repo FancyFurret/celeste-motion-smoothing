@@ -6,6 +6,12 @@ using MonoMod.RuntimeDetour;
 
 namespace Celeste.Mod.MotionSmoothing.Utilities;
 
+// Moves these updates from Update to Draw, so that they run once per drawn frame and stay smooth
+// above 60fps. At 60fps and below there is no frame in between two updates for them to fill, and
+// running them at draw time instead only changes what each frame shows -- a particle emitted during
+// an update is drawn one step along rather than where it started -- so MotionSmoothingModule
+// deactivates it there and they run in Update, as in vanilla. Deactivated rather than disabled:
+// that happens on a menu keypress, and re-detouring Engine.Update is felt as a lag spike.
 public class UpdateAtDraw : ToggleableFeature<UpdateAtDraw>
 {
     private HashSet<Type> RendererTypesToUpdate { get; } = new()
@@ -54,7 +60,7 @@ public class UpdateAtDraw : ToggleableFeature<UpdateAtDraw>
         Instance._renderersToUpdate.Clear();
         Instance._entitiesToUpdate.Clear();
 
-        Instance._recording = true;
+        Instance._recording = Instance.Enabled;
         orig(self, gameTime);
         Instance._recording = false;
     }
@@ -62,6 +68,15 @@ public class UpdateAtDraw : ToggleableFeature<UpdateAtDraw>
     private static void EngineDrawHook(On.Monocle.Engine.orig_Draw orig, Engine self, GameTime gameTime)
     {
         Instance.Update(Engine.Instance.scene);
+
+        // Deactivated during the update just run (from the settings menu, say): what it held back
+        // has had its update now, and the lists would otherwise run it again on every frame drawn
+        // until the next update clears them.
+        if (!Instance.Enabled)
+        {
+            Instance._renderersToUpdate.Clear();
+            Instance._entitiesToUpdate.Clear();
+        }
 
         orig(self, gameTime);
     }

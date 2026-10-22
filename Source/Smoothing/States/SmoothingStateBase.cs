@@ -41,6 +41,10 @@ public abstract class SmoothingState<TObject, TValue> : ISmoothingState<TValue>
     protected TValue PreSmoothed { get; set; }
     protected bool _initialized;
 
+    // Set by Smooth when nothing is being smoothed: the object is then left exactly as the game
+    // has it, rather than having last update's value written back over it for the frame.
+    private bool _passThrough;
+
     public TValue GetValue(object obj) => GetValue((TObject)obj);
     public void SetValue(object obj, TValue value) => SetValue((TObject)obj, value);
 
@@ -53,14 +57,14 @@ public abstract class SmoothingState<TObject, TValue> : ISmoothingState<TValue>
 
     protected virtual void SetSmoothed(TObject obj)
     {
-        if (CancelSmoothing || !_initialized) return;
+        if (CancelSmoothing || !_initialized || _passThrough) return;
         PreSmoothed = GetValue(obj);
         SetValue(obj, Smoothed);
     }
 
     protected virtual void SetOriginal(TObject obj)
     {
-        if (CancelSmoothing || !_initialized) return;
+        if (CancelSmoothing || !_initialized || _passThrough) return;
         SetValue(obj, PreSmoothed);
     }
 
@@ -89,6 +93,8 @@ public abstract class SmoothingState<TObject, TValue> : ISmoothingState<TValue>
     {
         if (OverrideSmoothingMode.HasValue)
             mode = OverrideSmoothingMode.Value;
+
+        _passThrough = mode == SmoothingMode.Off;
 
         // Fixes pause buffering
         if (MotionSmoothingHandler.Instance.WasPaused || Engine.Scene.Paused)
@@ -158,6 +164,18 @@ public abstract class PositionSmoothingState<T> : IPositionSmoothingState
     protected Vector2 PreSmoothedPosition { get; set; }
     public bool WasInvisible { get; set; }
     protected bool _initialized;
+
+    // Set by Smooth when nothing is being smoothed, so that SetSmoothed leaves the object exactly
+    // as the game has it. Writing back the rounded draw position instead is a no-op for an Actor
+    // or a Platform, whose Position is whole pixels already, but moved anything with a fractional
+    // one -- a menu sliding in, a ZipMover's percent re-derived into a position -- off where
+    // vanilla draws it. SillyMode is the exception: it draws everything at its unrounded position
+    // whatever the smoothing mode, which does need writing.
+    //
+    // An elided Smooth (see SmoothIsRedundant) leaves it standing, which is right: elision needs
+    // the same mode. Set in the base Smooth, which CameraSmoothingState replaces -- the camera
+    // writes its own position back whatever the mode, and restores it in SetOriginal.
+    private bool _passThrough;
 
     public bool IgnoreSubpixelMotionX { get; set; }
     public bool IgnoreSubpixelMotionY { get; set; }
@@ -256,7 +274,7 @@ public abstract class PositionSmoothingState<T> : IPositionSmoothingState
 
     protected virtual void SetSmoothed(T obj)
     {
-        if (CancelSmoothing || !_initialized) return;
+        if (CancelSmoothing || !_initialized || _passThrough) return;
         PreSmoothedPosition = GetDrawPosition(obj);
         // SillyMode: write the unrounded SmoothedRealPosition so the Player (which is routed
         // through ValueSmoother → SetPosition rather than through PushSpriteSmoother) renders
@@ -269,7 +287,7 @@ public abstract class PositionSmoothingState<T> : IPositionSmoothingState
 
     protected virtual void SetOriginal(T obj)
     {
-        if (CancelSmoothing || !_initialized) return;
+        if (CancelSmoothing || !_initialized || _passThrough) return;
         SetPosition(obj, PreSmoothedPosition);
     }
 
@@ -277,6 +295,8 @@ public abstract class PositionSmoothingState<T> : IPositionSmoothingState
     {
         if (OverrideSmoothingMode.HasValue)
             mode = OverrideSmoothingMode.Value;
+
+        _passThrough = mode == SmoothingMode.Off && !MotionSmoothingModule.Settings.SillyMode;
 
         // Fixes pause buffering (otherwise the player could be extrapolated, and then snap back to the location they
         // were paused at the next update). WasPaused alone doesn't cover the first tick of play: the unpause
