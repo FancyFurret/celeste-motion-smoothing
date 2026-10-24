@@ -220,7 +220,7 @@ public class CameraSmoothingState : PositionSmoothingState<Camera>
     // controllers work the same way. Snapping the camera in between made it jump a pixel every
     // time she wrapped. This leaves room for that, a tick of fast-falling on top, and her sprite
     // not lining up exactly with her hitbox.
-    private const float OffscreenMargin = 24f;
+    private const float OffscreenMargin = 12f;
 
     // Madeline counts as offscreen only when her drawn sprite's bounding box lies entirely outside
     // the camera view. The box is reconstructed the exact way MTexture.Draw lays the sprite down:
