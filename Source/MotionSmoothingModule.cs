@@ -719,7 +719,9 @@ public class MotionSmoothingModule : EverestModule
 		// Idempotent -- the tie is registered once and re-checked cheaply each frame, and drops
 		// automatically when the entity is collected. Re-running every Update keeps it correct
 		// across room reloads and whether the indicator was placed by a map or by VioletHelper.
-		MotionSmoothingExports.TieToPlayer(self);
+		// They draw from where Madeline was in their Update, not where she's drawn, so they need
+		// the update-anchored tie rather than the interop's plain one.
+		Smoothing.Strategies.PushSpriteSmoother.Instance?.TieToPlayerFromUpdate(self);
 	}
 
 

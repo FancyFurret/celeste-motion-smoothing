@@ -39,6 +39,9 @@ public class PushSpriteSmoother : SmoothingStrategy<PushSpriteSmoother>
     private readonly ConditionalWeakTable<object, object> _playerTied = new();
     private bool _hasPlayerTies;
     private static readonly object PlayerTieMarker = new();
+    // A standalone entity that draws from where Madeline was during its own Update, rather than
+    // reading her (already smoothed) Position in Render. See GetPlayerAttachmentOffset.
+    private static readonly object UpdateAnchoredTieMarker = new();
 
     public void SmoothObject(object obj, IPositionSmoothingState state)
     {
@@ -71,16 +74,18 @@ public class PushSpriteSmoother : SmoothingStrategy<PushSpriteSmoother>
     // positions or re-register — GetSpritePosition applies Madeline's render offset on its behalf.
     public void TieToPlayer(Component component) => AddPlayerTie(component);
     public void TieToPlayer(Entity entity) => AddPlayerTie(entity);
+    // Not exported: only the VioletHelper indicators need it today (see MotionSmoothingModule).
+    public void TieToPlayerFromUpdate(Entity entity) => AddPlayerTie(entity, UpdateAnchoredTieMarker);
 
     public void UntieFromPlayer(Component component) => RemovePlayerTie(component);
     public void UntieFromPlayer(Entity entity) => RemovePlayerTie(entity);
 
-    private void AddPlayerTie(object obj)
+    private void AddPlayerTie(object obj, object marker = null)
     {
         if (obj == null || _playerTied.TryGetValue(obj, out _))
             return;
 
-        _playerTied.Add(obj, PlayerTieMarker);
+        _playerTied.Add(obj, marker ?? PlayerTieMarker);
         _hasPlayerTies = true;
     }
 
@@ -92,20 +97,22 @@ public class PushSpriteSmoother : SmoothingStrategy<PushSpriteSmoother>
 
     // Resolves the entity a player-tie applies to for the object currently being rendered, or null
     // if it isn't tied. A tied component reports its owning entity; a tied entity (or a component of
-    // one) reports that entity. The owner determines which offset GetPlayerAttachmentOffset uses.
-    private Entity GetTiedOwnerOrNull(object obj)
+    // one) reports that entity. The owner and the tie's marker determine which offset
+    // GetPlayerAttachmentOffset uses.
+    private Entity GetTiedOwnerOrNull(object obj, out object marker)
     {
         if (obj is Entity entity)
-            return _playerTied.TryGetValue(entity, out _) ? entity : null;
+            return _playerTied.TryGetValue(entity, out marker) ? entity : null;
 
         if (obj is Component component)
         {
-            if (_playerTied.TryGetValue(component, out _))
+            if (_playerTied.TryGetValue(component, out marker))
                 return component.Entity;
-            if (component.Entity is { } owner && _playerTied.TryGetValue(owner, out _))
+            if (component.Entity is { } owner && _playerTied.TryGetValue(owner, out marker))
                 return owner;
         }
 
+        marker = null;
         return null;
     }
 
@@ -321,8 +328,8 @@ public class PushSpriteSmoother : SmoothingStrategy<PushSpriteSmoother>
         // offset — and for a component parented to the Player that's zero, since the Player has no
         // PushSprite state (her body is moved via ValueSmoother, her hair via GetHairOffset),
         // leaving the attachment pinned to the unsmoothed position while she slides away.
-        if (_hasPlayerTies && GetTiedOwnerOrNull(obj) is not null)
-            return position + GetPlayerAttachmentOffset();
+        if (_hasPlayerTies && GetTiedOwnerOrNull(obj, out var tieMarker) is { } tiedOwner)
+            return position + GetPlayerAttachmentOffset(tiedOwner, tieMarker);
 
         position += obj switch
         {
@@ -391,22 +398,38 @@ public class PushSpriteSmoother : SmoothingStrategy<PushSpriteSmoother>
         _ownerOffsetKey = null;
     }
 
-    // The offset a player-tied attachment needs to stay glued to Madeline. Both kinds of tie are
-    // anchored to her *update-time* position and so want the same shift:
+    // The offset a player-tied attachment needs to stay glued to Madeline. It depends on what the
+    // attachment draws relative to.
+    //
+    // Anchored to her *update-time* position, so wanting the full shift to where she's drawn:
     //   - A Component parented to her (e.g. a hat) renders from her cached update-time hair anchor.
-    //   - A standalone tied entity that caches her position during its own Update (the VioletHelper
-    //     NRCB/juggle indicators read Player.TopCenter in Update and draw at that cached point).
+    //   - A standalone entity tied with TieToPlayerFromUpdate, which caches her position during its
+    //     own Update (the VioletHelper NRCB/juggle indicators read Player.TopCenter in Update and
+    //     draw at that cached point). Zero would leave them a whole pixel behind her as she moves.
     // SmoothedDrawOffset supplies the rounded whole-pixel part (object smoothing); the hires composite
     // adds the fractional part when the tied object is rendered into her isolated buffer, and in
-    // SillyMode it collapses to the full unrounded offset. (A standalone entity that instead read her
-    // *smoothed* Position at render time would want Vector2.Zero here, but nothing does that today, and
-    // returning Zero for the update-time cachers leaves them a whole pixel behind her as she moves.)
-    private Vector2 GetPlayerAttachmentOffset()
+    // SillyMode it collapses to the full unrounded offset.
+    //
+    // Any other standalone entity tied through the interop (e.g. Extended Variants' extra-jump dots)
+    // reads her Position in its own Render -- and ValueSmoother has already put her smoothed,
+    // rounded position there, so it's on the right whole pixel for free. Shifting it by
+    // SmoothedDrawOffset as well moved it twice, and it jittered against her. Its sub-pixel motion
+    // is handled the way held holdables' is -- HiresCameraSmoother renders it into her isolated
+    // buffer and composites at her subpixel offset (see ShouldInterceptEntityRender) -- so nothing is
+    // needed here. SillyMode is the exception: it has no isolated buffer and draws her from the
+    // unrounded position, so the entity gets that fractional shift directly.
+    private Vector2 GetPlayerAttachmentOffset(Entity owner, object marker)
     {
         if (MotionSmoothingHandler.Instance.PlayerState is not { } playerState)
             return Vector2.Zero;
 
-        return SmoothedDrawOffset(playerState);
+        if (owner == MotionSmoothingHandler.Instance.Player || marker == UpdateAnchoredTieMarker)
+            return SmoothedDrawOffset(playerState);
+
+        if (MotionSmoothingModule.Settings.SillyMode)
+            return playerState.SmoothedRealPosition - playerState.SmoothedRealPosition.Round();
+
+        return Vector2.Zero;
     }
 
     // Net render-space shift for a state this frame: its rounded (or, in SillyMode, unrounded)

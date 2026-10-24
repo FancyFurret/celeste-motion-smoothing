@@ -4,10 +4,12 @@ using Celeste.Mod.MotionSmoothing.Smoothing.States;
 using Celeste.Mod.MotionSmoothing.Utilities;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
+using Mono.Cecil;
 using Mono.Cecil.Cil;
 using Monocle;
 using MonoMod.Cil;
 using MonoMod.RuntimeDetour;
+using MonoMod.Utils;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -109,6 +111,9 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
     private static Vector2 _foregroundGridAxes = Vector2.Zero;
     // The camera's sub-pixel position, i.e. how far the gameplay layer's grid is from the screen's.
     private static Vector2 _foregroundCameraFraction = Vector2.Zero;
+    // A whole-pixel shift for the primitives of the styleground being drawn, on top of the grid's.
+    // Only ever nonzero for other mods' godrays (see ModdedGodraysCorrection).
+    private static Vector2 _foregroundPrimitiveCorrection = Vector2.Zero;
     private static readonly BlendState _additiveFlushBlendState = new BlendState
     {
         ColorSourceBlend = Blend.One,
@@ -358,6 +363,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 		On.Celeste.GaussianBlur.Blur += GaussianBlur_Blur;
 
 		On.Celeste.BackdropRenderer.Update += BackdropRenderer_Update;
+        IL.Celeste.BackdropRenderer.Update += BackdropRendererUpdateHook;
         On.Celeste.BackdropRenderer.Render += BackdropRenderer_Render;
         IL.Celeste.BackdropRenderer.Render += BackdropRendererRenderHook;
 
@@ -444,6 +450,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
         On.Celeste.GaussianBlur.Blur -= GaussianBlur_Blur;
 
 		On.Celeste.BackdropRenderer.Update -= BackdropRenderer_Update;
+        IL.Celeste.BackdropRenderer.Update -= BackdropRendererUpdateHook;
         On.Celeste.BackdropRenderer.Render -= BackdropRenderer_Render;
 		IL.Celeste.BackdropRenderer.Render -= BackdropRendererRenderHook;
 
@@ -1021,7 +1028,15 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
 		if (!smoothLayer)
 		{
-			orig(self, scene);
+			_updatingUnsmoothedForeground = scene is Level l && self == l.Foreground;
+			try
+			{
+				orig(self, scene);
+			}
+			finally
+			{
+				_updatingUnsmoothedForeground = false;
+			}
 			return;
 		}
 
@@ -1030,6 +1045,170 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 		orig(self, scene);
 
 		_disableFloorFunctions = DisableFloorFunctionsMode.Integer;
+	}
+
+	private static bool _updatingUnsmoothedForeground;
+
+	// Wraps each Backdrop.Update in BackdropRenderer.Update in BeforeBackdropUpdate and
+	// AfterBackdropUpdate.
+	private static void BackdropRendererUpdateHook(ILContext il)
+	{
+		var cursor = new ILCursor(il);
+
+		var sceneLocal = new VariableDefinition(il.Import(typeof(Scene)));
+		il.Body.Variables.Add(sceneLocal);
+
+		if (cursor.TryGotoNext(MoveType.Before, i => i.MatchCallvirt<Backdrop>("Update")))
+		{
+			// Stack: [Backdrop, Scene]
+			cursor.Emit(OpCodes.Stloc, sceneLocal);           // Stack: [Backdrop]
+			cursor.Emit(OpCodes.Dup);                         // Stack: [Backdrop, Backdrop]
+			cursor.Emit(OpCodes.Ldloc, sceneLocal);           // Stack: [Backdrop, Backdrop, Scene]
+			cursor.EmitDelegate(BeforeBackdropUpdate);        // Stack: [Backdrop]
+			cursor.Emit(OpCodes.Ldloc, sceneLocal);           // Stack: [Backdrop, Scene]
+
+			cursor.GotoNext(MoveType.After, i => i.MatchCallvirt<Backdrop>("Update"));
+			cursor.EmitDelegate(AfterBackdropUpdate);
+		}
+	}
+
+	// Where the camera's whole pixel was when each modded godray styleground last updated. See
+	// BeforeBackdropUpdate.
+	private static readonly ConditionalWeakTable<Backdrop, StrongBox<Vector2>> _moddedGodraysUpdateCamera = new();
+
+	// Other mods' godrays (LunaticHelper's, FlaglinesAndSuch's, ...; see IsModdedGodrays for how
+	// they're recognised) are reimplementations of vanilla's, so they share its problem (see
+	// Godrays_Render): they bake their screen positions in Update from the camera's real position,
+	// and with Smooth Foreground off they're then drawn on the gameplay layer's grid, which already
+	// accounts for where the camera is within a pixel.
+	// Their vertex loops can't be rebuilt at render time the way vanilla's is, since each one is
+	// different -- so they get the next best thing. Update sees the camera on its whole pixel, the
+	// same one a Parallax places itself from, and the pixel is remembered; if the drawn camera has
+	// crossed into another one since, ForegroundGridShift moves the rays the rest of the way.
+	private static void BeforeBackdropUpdate(Backdrop backdrop, Scene scene)
+	{
+		_flooredCameraForUpdate = null;
+
+		if (!_updatingUnsmoothedForeground || scene is not Level level || !IsModdedGodrays(backdrop))
+			return;
+
+		var camera = level.Camera;
+		var position = camera.position;
+		var floored = new Vector2((float)Math.Floor(position.X), (float)Math.Floor(position.Y));
+
+		_flooredCameraForUpdate = camera;
+		_cameraPositionBeforeUpdate = position;
+		camera.position = floored;
+		_moddedGodraysUpdateCamera.GetValue(backdrop, _ => new StrongBox<Vector2>()).Value = floored;
+	}
+
+	private static void AfterBackdropUpdate()
+	{
+		if (_flooredCameraForUpdate is { } camera)
+			camera.position = _cameraPositionBeforeUpdate;
+
+		_flooredCameraForUpdate = null;
+	}
+
+	private static Camera _flooredCameraForUpdate;
+	private static Vector2 _cameraPositionBeforeUpdate;
+
+	private static readonly Dictionary<Type, bool> _isModdedGodraysType = new();
+
+	// What makes a styleground behave like vanilla's godrays, worked out once per type from its
+	// IL: its Update reads the camera, its Render doesn't, and its Render draws through
+	// GFX.DrawVertices. That's a styleground that bakes screen-space vertices from the camera at
+	// update time and draws them as they are later -- which is exactly what goes wrong (see
+	// BeforeBackdropUpdate). One that reads the camera in Render places itself from the smoothed
+	// camera already, and is left alone.
+	private static bool IsModdedGodrays(Backdrop backdrop)
+	{
+		if (backdrop is Godrays or Parallax)
+			return false;
+
+		var type = backdrop.GetType();
+		if (!_isModdedGodraysType.TryGetValue(type, out bool result))
+		{
+			try
+			{
+				var update = type.GetMethod(nameof(Backdrop.Update), [typeof(Scene)]);
+				var render = type.GetMethod(nameof(Backdrop.Render), [typeof(Scene)]);
+
+				result = update != null && update.DeclaringType != typeof(Backdrop)
+					&& render != null && render.DeclaringType != typeof(Backdrop)
+					&& ScanStylegroundMethod(update, type, new HashSet<MethodBase>()).ReadsCamera
+					&& ScanStylegroundMethod(render, type, new HashSet<MethodBase>()) is { ReadsCamera: false, DrawsVertices: true };
+			}
+			catch (Exception e)
+			{
+				Logger.Log(LogLevel.Warn, "MotionSmoothing", $"Couldn't inspect styleground {type.FullName}: {e.Message}");
+				result = false;
+			}
+
+			_isModdedGodraysType[type] = result;
+		}
+
+		return result;
+	}
+
+	private record struct StylegroundMethodScan(bool ReadsCamera, bool DrawsVertices);
+
+	// Whether a method touches Monocle.Camera or calls GFX.DrawVertices, following calls into the
+	// styleground's own methods (an Update that hands its vertex loop to a helper, say).
+	private static StylegroundMethodScan ScanStylegroundMethod(MethodBase method, Type stylegroundType, HashSet<MethodBase> visited)
+	{
+		var scan = new StylegroundMethodScan();
+		if (!visited.Add(method) || method.GetMethodBody() == null)
+			return scan;
+
+		using var dmd = new DynamicMethodDefinition(method);
+		foreach (var instruction in dmd.Definition.Body.Instructions)
+		{
+			switch (instruction.Operand)
+			{
+				case FieldReference field when field.DeclaringType.FullName == "Monocle.Camera":
+					scan.ReadsCamera = true;
+					break;
+
+				case MethodReference callee when callee.DeclaringType.FullName == "Monocle.Camera":
+					scan.ReadsCamera = true;
+					break;
+
+				case MethodReference callee when callee.Name == nameof(GFX.DrawVertices) && callee.DeclaringType.FullName == "Celeste.GFX":
+					scan.DrawsVertices = true;
+					break;
+
+				case MethodReference callee:
+					if (callee.ResolveReflection() is { } resolved
+						&& resolved.DeclaringType is { } declaring
+						&& declaring.IsAssignableFrom(stylegroundType)
+						&& declaring != typeof(Backdrop) && declaring != typeof(object))
+					{
+						var inner = ScanStylegroundMethod(resolved, stylegroundType, visited);
+						scan.ReadsCamera |= inner.ReadsCamera;
+						scan.DrawsVertices |= inner.DrawsVertices;
+					}
+					break;
+			}
+		}
+
+		return scan;
+	}
+
+	// How far the drawn camera's whole pixel is from the one a modded godray styleground last
+	// updated with (see BeforeBackdropUpdate), as a shift for its vertices. They follow the camera at a
+	// rate of their own -- 0.9 for vanilla's, and whatever their scroll is for most others -- that
+	// can't be read generically, so this treats it as 1: a whole pixel either way, which keeps
+	// them on the grid, and no more than a fraction of one from where they'd ideally be.
+	private static Vector2 ModdedGodraysCorrection(Backdrop backdrop)
+	{
+		if (Engine.Scene is not Level level
+			|| !IsModdedGodrays(backdrop)
+			|| !_moddedGodraysUpdateCamera.TryGetValue(backdrop, out var updateCamera))
+			return Vector2.Zero;
+
+		var drawn = level.Camera.Position;
+		return updateCamera.Value - new Vector2((float)Math.Floor(drawn.X), (float)Math.Floor(drawn.Y));
 	}
 
 	// Godrays work out their screen positions in Update, from the camera's real position at the
@@ -1129,6 +1308,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
             _foregroundBlendState = BlendState.AlphaBlend;
             _currentFlushGroup = ForegroundFlushGroup.AlphaBlend;
             _foregroundGridAxes = Vector2.Zero;
+            _foregroundPrimitiveCorrection = Vector2.Zero;
             _foregroundCameraFraction = -GetCameraOffset();
 
             orig(self, scene);
@@ -1139,6 +1319,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
             _currentlyRenderingForeground = false;
             _foregroundGridAxes = Vector2.Zero;
+            _foregroundPrimitiveCorrection = Vector2.Zero;
             SetDirectForegroundOffset(renderer);
             return;
         }
@@ -1383,6 +1564,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 			: GetFlushGroup(_foregroundBlendState);
 
 		var newAxes = ForegroundGridAxes(backdrop);
+		_foregroundPrimitiveCorrection = ModdedGodraysCorrection(backdrop);
 
 		// The small buffer is shifted as a whole when it's flushed, so stylegrounds on different
 		// axes can't share one. Direct draws are shifted one at a time, so they only need the
@@ -1429,7 +1611,8 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 	// _foregroundGridAxes). A Parallax does on every axis it scrolls on: it's drawn from the
 	// camera's whole-pixel position, so the camera's sub-pixel offset is exactly what it's missing.
 	// Zero scroll means pinned to the screen, and that axis is left alone. Godrays are drawn in
-	// screen space but follow the camera at 0.9, so they're lined up too.
+	// screen space but follow the camera at 0.9, so they're lined up too, and so are other mods'
+	// reimplementations of them (see BeforeBackdropUpdate).
 	//
 	// Everything else is left as it was. Stylegrounds that draw in screen space from the camera's
 	// *smoothed* position already move with it, a whole screen pixel at a time, and shifting them
@@ -1438,6 +1621,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 	{
 		Parallax p => new Vector2(p.Scroll.X != 0f ? 1f : 0f, p.Scroll.Y != 0f ? 1f : 0f),
 		Godrays => Vector2.One,
+		_ when IsModdedGodrays(backdrop) => Vector2.One,
 		_ => Vector2.Zero
 	};
 
@@ -1473,15 +1657,18 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 	// on that grid too. Snapping each primitive's own anchor to the grid instead made every godray
 	// jump a pixel at its own moment as the camera moved, since their anchors all sit at different
 	// fractions. On the other axes it's onto a whole pixel of the screen, as the layer did before.
+	//
+	// Modded godrays are also moved by _foregroundPrimitiveCorrection, a whole number of pixels.
 	private static Vector2 ForegroundGridShift(Vector2 anchor)
 	{
 		var fraction = _foregroundCameraFraction;
+		var correction = _foregroundPrimitiveCorrection;
 
 		float shiftX = _foregroundGridAxes.X != 0f
-			? -fraction.X
+			? correction.X - fraction.X
 			: (float)Math.Floor(anchor.X) - anchor.X;
 		float shiftY = _foregroundGridAxes.Y != 0f
-			? -fraction.Y
+			? correction.Y - fraction.Y
 			: (float)Math.Floor(anchor.Y) - anchor.Y;
 
 		return new Vector2(shiftX, shiftY);

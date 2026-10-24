@@ -213,6 +213,15 @@ public class CameraSmoothingState : PositionSmoothingState<Camera>
             SmoothedRealPosition = Calc.Round(SmoothedRealPosition);
     }
 
+    // How far, in pixels, Madeline's sprite can be past the edge of the view before she counts as
+    // offscreen. Rooms that wrap around the screen let her briefly leave it: Core's final room
+    // (vanilla's SpaceController) moves her to the other side once her top is 12 pixels past the
+    // bottom, and puts her 4 pixels past the top, and MaxHelpingHand's and VivHelper's wrap
+    // controllers work the same way. Snapping the camera in between made it jump a pixel every
+    // time she wrapped. This leaves room for that, a tick of fast-falling on top, and her sprite
+    // not lining up exactly with her hitbox.
+    private const float OffscreenMargin = 24f;
+
     // Madeline counts as offscreen only when her drawn sprite's bounding box lies entirely outside
     // the camera view. The box is reconstructed the exact way MTexture.Draw lays the sprite down:
     // the trimmed ClipRect, placed at DrawOffset inside the logical frame, anchored at Origin and
@@ -252,7 +261,10 @@ public class CameraSmoothingState : PositionSmoothingState<Camera>
         float viewRight = cameraPosition.X + camera.Viewport.Width;
         float viewBottom = cameraPosition.Y + camera.Viewport.Height;
 
-        return right < viewLeft || left > viewRight || bottom < viewTop || top > viewBottom;;
+        return right < viewLeft - OffscreenMargin
+            || left > viewRight + OffscreenMargin
+            || bottom < viewTop - OffscreenMargin
+            || top > viewBottom + OffscreenMargin;
     }
 }
 
