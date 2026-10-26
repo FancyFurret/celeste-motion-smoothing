@@ -151,6 +151,14 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
     private static bool _enableLargeTempABuffer = false;
     private static bool _enableLargeTempBBuffer = false;
 
+	// Set for the length of RenderAtGameScale. A large source drawn into a large target normally
+	// keeps its vertices in large-buffer pixels and has the batch re-begun at 1/Scale to cancel the
+	// target's scale-up; this instead keeps the vertices in game pixels and lets the scale-up stand.
+	// The two agree for SpriteBatch's own vertex shader, but only the second agrees with a custom
+	// one that projects from the game's dimensions (FrostHelper's Dimensions parameter, say), which
+	// would otherwise draw the top-left 1/Scale of the screen across all of it.
+	private static bool _drawLargeSourcesAtGameScale = false;
+
 	private const int MAX_EXTERNAL_BUFFERS = 32;
 
     // This is a set containing just the large versions of large textures, but
@@ -2206,6 +2214,33 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 	}
 
 
+	// A full-screen pass that draws a buffer back over itself through a shader, the way Glitch.Apply
+	// does: TempA and TempB are the large buffers for its length (whatever order the Glitch.Apply
+	// hooks ended up in), and large sources are drawn in game pixels (see
+	// _drawLargeSourcesAtGameScale). Exported for mods with screenwide shaders.
+	public static void RenderAtGameScale(Action render)
+	{
+		bool oldEnableLargeTempA = _enableLargeTempABuffer;
+		bool oldEnableLargeTempB = _enableLargeTempBBuffer;
+		bool oldDrawLargeSourcesAtGameScale = _drawLargeSourcesAtGameScale;
+
+		_enableLargeTempABuffer = true;
+		_enableLargeTempBBuffer = true;
+		_drawLargeSourcesAtGameScale = true;
+
+		try
+		{
+			render();
+		}
+		finally
+		{
+			_enableLargeTempABuffer = oldEnableLargeTempA;
+			_enableLargeTempBBuffer = oldEnableLargeTempB;
+			_drawLargeSourcesAtGameScale = oldDrawLargeSourcesAtGameScale;
+		}
+	}
+
+
 	private static void SeekerBarrierRendererRenderHook(ILContext il)
 	{
 		ILCursor cursor = new ILCursor(il);
@@ -2770,6 +2805,16 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
             // and so now it ought not to.
 			if (_currentlyScaling || _currentRenderTarget == null)
 			{
+                // See _drawLargeSourcesAtGameScale. No edge gaps to fill: the offset sets are
+                // cleared once the bloom is done, before any full-screen shader pass runs.
+                if (_drawLargeSourcesAtGameScale && _currentlyScaling)
+                {
+                    offsetDestination = GetCurrentDrawingOffset(texture, destinationX / Scale, destinationY / Scale, 1);
+
+                    orig(self, texture, sourceX, sourceY, sourceW, sourceH, offsetDestination.X, offsetDestination.Y, destinationW / Scale, destinationH / Scale, color, originX, originY, rotationSin, rotationCos, depth, effects);
+                    return;
+                }
+
                 if (SpriteBatchActive)
                 {
                     if (_lastSpriteBatchBeginParams is var (sortMode, blendState, samplerState, depthStencilState, rasterizerState, effect, matrix))

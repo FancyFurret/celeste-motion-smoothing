@@ -112,4 +112,16 @@ public static class MotionSmoothingExports
 	{
 		Smoothing.Strategies.PushSpriteSmoother.Instance?.UntieFromPlayer(entity);
 	}
+
+	// [1.8.6+]
+	// Runs a full-screen shader pass that draws a buffer back over itself, the way Glitch.Apply
+	// does (e.g. a screenwide shader over GameplayBuffers.Level). For the duration of render(),
+	// TempA and TempB are the upscaled buffers, and any upscaled buffer drawn into another is
+	// drawn in game pixels with the SpriteBatch transform doing the scaling. A custom vertex
+	// shader inside it should project from the game's dimensions, i.e. the viewport divided by
+	// GetCurrentRenderTargetScale, rather than from the upscaled viewport.
+	public static void RenderAtGameScale(Action render)
+	{
+		MotionSmoothingModule.RenderAtGameScale(render);
+	}
 }

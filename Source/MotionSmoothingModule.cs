@@ -923,4 +923,9 @@ public class MotionSmoothingModule : EverestModule
 	{
 		return HiresCameraSmoother.GetCurrentRenderTargetScale();
 	}
+
+	public static void RenderAtGameScale(Action render)
+	{
+		HiresCameraSmoother.RenderAtGameScale(render);
+	}
 }

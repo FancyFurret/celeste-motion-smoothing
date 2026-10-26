@@ -68,6 +68,8 @@ There are a small collection of methods to help avoid jitter in drawing situatio
 
 - `void UntieFromPlayer(T object)`: Removes a tie previously created with `TieToPlayer`. Available in v1.5.6+.
 
+- `void RenderAtGameScale(Action render)`: runs a full-screen shader pass callback (`render`) that draws a buffer back over itself, the way Glitch.Apply does (e.g. a screenwide shader over GameplayBuffers.Level). For the duration of `render`, TempA and TempB are the large buffers, and any large buffer drawn into another is drawn in game pixels with the SpriteBatch transform doing the scaling. A custom vertex shader inside it should project from the *game's* dimensions, i.e. the viewport divided by `GetCurrentRenderTargetScale()`, rather than from the upscaled viewport. Available in v1.8.6+.
+
 ### Recommendations for Mod Authors
 
 While most mods should be compatible with Motion Smoothing out of the box, please take care when casting level buffer coordinates to ints. The vanilla `Godrays` class does this, and so code that copies it is often the same. Instead of `new Vector2((int) num1, (int) num2)`, please use `Calc.Floor(new Vector2(num1, num2))`. This will produce identical results when Motion Smoothing is disabled, but allow it to work correctly in Fancy mode. It's likely more correct anyway, since casting to an int rounds toward zero, which would double-up pixels near one of edge of the screen (probably not visible, but regardless).
