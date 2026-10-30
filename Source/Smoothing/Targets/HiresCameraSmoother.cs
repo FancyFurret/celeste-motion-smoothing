@@ -1895,11 +1895,19 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 	private static Entity _subpixelRenderEntity;
 
 	// How far to shift a sprite to land it on its exact position, given that it was drawn at the
-	// rounded one (SmoothingStateBase.SetSmoothed rounds before writing the position back). Only
-	// reached with Object Smoothing on -- see RenderMadelineWithSubpixelsInEffect.
+	// rounded one (SmoothingStateBase.SetSmoothed rounds before writing the position back).
+	//
+	// With Object Smoothing off (only reached at 60fps -- see SubpixelRenderingSupported) there's
+	// no smoothed position to take the remainder of -- the sprite sits on its physics position --
+	// but that position still carries a subpixel remainder of its own (an Actor's
+	// movementCounter). So the target is the real position rather than the smoothed one.
 	private static Vector2 SubpixelOffset(IPositionSmoothingState state)
 	{
-		return state.SmoothedRealPosition - state.SmoothedRealPosition.Round();
+		var target = MotionSmoothingModule.Settings.ObjectSmoothing == SmoothingMode.Off
+			? state.OriginalRealPosition
+			: state.SmoothedRealPosition;
+
+		return target - state.SmoothedRealPosition.Round();
 	}
 
 	// Pre: if this entity should render at a subpixel-precise position, flush everything drawn so

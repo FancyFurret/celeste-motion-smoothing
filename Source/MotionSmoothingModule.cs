@@ -78,20 +78,12 @@ public class MotionSmoothingModule : EverestModule
     {
 		typeof(MotionSmoothingExports).ModInterop();
 
-		// Normally we'd do this in Initialize, but SpeedrunTool
-		// crashes on loading a state if we don't do it here.
-		EverestModuleMetadata speedrunTool = new() {
-			Name = "SpeedrunTool",
-			Version = new Version(3, 22, 0)
-		};
+		// Normally we'd do this in Initialize, but SpeedrunTool crashes on loading a state if we
+		// don't do it here. Anything else exporting the same interop (MuffinHacks does) and loaded
+		// after us isn't bound yet, so Initialize tries again.
+		typeof(SpeedrunToolImports).ModInterop();
+		TryRegisterSaveLoadAction();
 
-		if (Everest.Loader.DependencyLoaded(speedrunTool))
-		{
-			typeof(SpeedrunToolImports).ModInterop();
-			SpeedrunToolImports.RegisterSaveLoadAction?.Invoke(null, SpeedrunToolAfterLoadState, null, null, SpeedrunToolBeforeLoadState, null);
-		}
-
-		
 
         DisableInliningPushSprite();
 
@@ -165,6 +157,10 @@ public class MotionSmoothingModule : EverestModule
 		HookUnmaintainedMods();
 
         CelesteTasInterop.Load();
+
+		// Every ModInterop call rebinds every import, so a save-state exporter that loaded after
+		// us is bound by now.
+		TryRegisterSaveLoadAction();
 
 		EverestModuleMetadata auspicioushelper = new() {
 			Name = "auspicioushelper",
@@ -821,15 +817,26 @@ public class MotionSmoothingModule : EverestModule
 
 
 
-	// Everything has to be unhooked while SpeedrunTool restores a state. This goes through
-	// ForceDisabled rather than Settings.Enabled so that neither the player's saved setting nor a
-	// map's suggestion is disturbed on the way back out.
-	private void SpeedrunToolBeforeLoadState(Level level)
+	private bool _saveLoadActionRegistered;
+
+	private void TryRegisterSaveLoadAction()
+	{
+		if (_saveLoadActionRegistered || SpeedrunToolImports.RegisterSaveLoadAction == null)
+			return;
+
+		SpeedrunToolImports.RegisterSaveLoadAction(null, AfterLoadState, null, null, BeforeLoadState, null);
+		_saveLoadActionRegistered = true;
+	}
+
+	// Everything has to be unhooked while a save state (SpeedrunTool's or MuffinHacks') is
+	// restored. This goes through ForceDisabled rather than Settings.Enabled so that neither the
+	// player's saved setting nor a map's suggestion is disturbed on the way back out.
+	private void BeforeLoadState(Level level)
     {
 		Settings.ForceDisabled = true;
     }
 
-    private void SpeedrunToolAfterLoadState(Dictionary<Type, Dictionary<string, object>> savedValues, Level level)
+    private void AfterLoadState(Dictionary<Type, Dictionary<string, object>> savedValues, Level level)
     {
 		Settings.ForceDisabled = false;
         MotionSmoothing.SmoothAllObjects();

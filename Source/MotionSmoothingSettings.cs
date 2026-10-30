@@ -64,9 +64,9 @@ public class MotionSmoothingSettings : EverestModuleSettings
 
 	private bool _sillyMode = false;
 
-    // Set by the SpeedrunTool save-state hooks, which need everything unhooked while a state is
-    // restored. Kept separate from _enabled so that neither the player's saved setting nor an
-    // active map suggestion is disturbed by it.
+    // Set by the SpeedrunTool and MuffinHacks save-state hooks, which need everything unhooked
+    // while a state is restored. Kept separate from _enabled so that neither the player's saved
+    // setting nor an active map suggestion is disturbed by it.
     private bool _forceDisabled = false;
 
     // Used for compatibility with Viv's game speed mod
@@ -183,9 +183,10 @@ public class MotionSmoothingSettings : EverestModuleSettings
 
         // These additionally require the Fancy rendering mode.
         bool notFancy = RenderingMode != RenderingMode.Fancy;
-        // Also needs Object Smoothing -- see RenderMadelineWithSubpixelsInEffect.
+        // Also needs Object Smoothing, or Camera Smoothing at 60fps -- see
+        // RenderMadelineWithSubpixelsInEffect.
         SetItemState(_renderMadelineWithSubpixelsItem,
-            masterDisabled || notFancy || ObjectSmoothing == SmoothingMode.Off,
+            masterDisabled || notFancy || !SubpixelRenderingSupported,
             MapSmoothingSuggestions.IsLocked(MapSmoothingOption.RenderMadelineWithSubpixelPrecision));
         SetItemState(_renderBackgroundHiresItem, masterDisabled || notFancy,
             MapSmoothingSuggestions.IsLocked(MapSmoothingOption.SmoothBackground));
@@ -354,7 +355,7 @@ public class MotionSmoothingSettings : EverestModuleSettings
     {
         get
         {
-            // SpeedrunTool's state restore wins over everything; after that, a map's suggestion
+            // A save-state restore wins over everything; after that, a map's suggestion
             // (see MapSmoothingSuggestions) stands in for the player's saved value while they're
             // inside that map.
             if (_forceDisabled) return false;
@@ -557,15 +558,24 @@ public class MotionSmoothingSettings : EverestModuleSettings
     [SettingIgnore][YamlIgnore] public bool UserRenderMadelineWithSubpixels => _renderMadelineWithSubpixels;
 
     // Whether Madeline is actually drawn at her subpixel position -- what the renderer reads, as
-    // opposed to the setting. Only while Object Smoothing is on: without it, every frame lands on a
-    // physics frame, and her subpixels would only show her physics remainder, which makes her
-    // jitter rather than move any more smoothly. The camera chases her whole-pixel Position, which
-    // advances in uneven steps (1, 2, 1, 2 px at 90 px/s), so the camera carries that rhythm and
-    // vanilla Madeline carries it with it. Drawn at her exact position she doesn't, and the gap
-    // between the two wobbles from one frame to the next.
+    // opposed to the setting.
     [SettingIgnore][YamlIgnore]
     public bool RenderMadelineWithSubpixelsInEffect =>
-        RenderMadelineWithSubpixels && ObjectSmoothing != SmoothingMode.Off;
+        RenderMadelineWithSubpixels && SubpixelRenderingSupported;
+
+    // Madeline's exact position only reads as smooth against a camera drawn at its exact position
+    // too. The camera chases her whole-pixel Position, which advances in uneven steps (1, 2, 1, 2 px
+    // at 90 px/s), so the camera carries that rhythm and vanilla Madeline carries it with it. Drawn
+    // at her exact position against a camera floored to the pixel grid, she doesn't, and the gap
+    // between the two wobbles from one frame to the next.
+    //
+    // Object Smoothing on covers that: Madeline and the camera are both smoothed. At 60fps and below
+    // Object Smoothing is off, but every frame lands on a physics frame, so a smoothed camera is
+    // drawn at its real position on the same frames she's at hers. Above 60 with Object Smoothing
+    // set to Off, she'd hold still between physics frames while the camera kept moving.
+    [SettingIgnore][YamlIgnore]
+    public bool SubpixelRenderingSupported =>
+        ObjectSmoothing != SmoothingMode.Off || (CameraSmoothing && FrameRate <= PhysicsFrameRate);
 
     public void CreateRenderMadelineWithSubpixelsEntry(TextMenu menu, bool inGame)
     {
@@ -585,11 +595,11 @@ public class MotionSmoothingSettings : EverestModuleSettings
 
         _renderMadelineWithSubpixelsItem.AddDescription(
             menu,
-            "Only supported in the Fancy rendering mode and when Object Smoothing is on.\n" +
-			"This draws Madeline at her exact subpixel position (i.e. offset from the pixel grid),\n" +
-            "which dramatically improves the clarity of her sprite while moving.\n" +
-            "There are many safeguards in place to prevent subpixel position from being gleanable.\n" +
-            "Turning this off may mildly improve performance."
+            "Only supported in the Fancy rendering mode, and when either when Object Smoothing is on\n" +
+            "at >60fps or Smooth Camera is on at 60fps. This draws Madeline at her exact subpixel position\n" +
+			"(i.e. offset from the pixel grid), which dramatically improves the clarity of her sprite\n" +
+            " while moving.There are many safeguards in place to prevent subpixel position from being\n" +
+            "gleanable. Turning this off may mildly improve performance.\n"
         );
     }
 
@@ -876,8 +886,8 @@ public class MotionSmoothingSettings : EverestModuleSettings
         {
             // At 60 and below there are no frames in between physics frames: every draw lands on
             // one, so there's nothing to smooth into and predicting positions could only move
-            // objects away from where they actually are. Madeline is still drawn at her exact
-            // subpixel position -- that's independent of smoothing, see PositionSmoother.
+            // objects away from where they actually are. Madeline can still be drawn at her exact
+            // subpixel position -- see SubpixelRenderingSupported.
             if (FrameRate <= PhysicsFrameRate) return SmoothingMode.Off;
 
             return _smoothingMode;
@@ -886,8 +896,8 @@ public class MotionSmoothingSettings : EverestModuleSettings
         {
             _smoothingMode = value;
 
-            // Whether Madeline's subpixels are drawn turns on this, and with it the size of the
-            // gameplay buffer -- see RenderMadelineWithSubpixelsInEffect.
+            // Whether Madeline's subpixels are drawn can turn on this, and with it the size of the
+            // gameplay buffer -- see SubpixelRenderingSupported.
             MotionSmoothingModule.Instance.ApplySettings();
         }
     }

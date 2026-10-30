@@ -43,10 +43,11 @@ public static class PlayerSmoother
     // ObjectSmoothing Off path, where PositionSmoother.Smooth short-circuits before this class
     // would normally run.
     //
-    // Nothing reads the flags while smoothing is off -- subpixel rendering is off with it, see
-    // MotionSmoothingSettings.RenderMadelineWithSubpixelsInEffect -- but keeping them current here
-    // stops them latching at whatever they held when smoothing was last on, which would resurrect
-    // stale values the moment it comes back.
+    // Subpixel rendering reads the flags on this path at 60fps with Camera Smoothing on (see
+    // MotionSmoothingSettings.SubpixelRenderingSupported), so the guards that keep her subpixel
+    // position from being readable while she's standing still apply there too. Keeping them
+    // current also stops them latching at whatever they held when smoothing was last on, which
+    // would resurrect stale values the moment it comes back.
     public static void UpdateSubpixelState(Player player, IPositionSmoothingState state, double elapsed)
     {
         GetExtrapolatedPositionAndUpdateIsSmoothing(player, state, elapsed);
