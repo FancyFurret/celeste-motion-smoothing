@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 using Celeste.Mod.MotionSmoothing.Smoothing.States;
 using Celeste.Mod.MotionSmoothing.Utilities;
 using Microsoft.Xna.Framework;
@@ -10,8 +11,32 @@ public static class PositionSmoother
 {
     private const float MaxLerpDistance = 50f;
 
+    private static readonly HashSet<Type> _reportedInvalidPositions = new();
+
+    // Whether the latest two real positions -- all that any smoothing below reads as numbers -- are
+    // usable. An Actor's or Platform's real position includes its movementCounter, so a single
+    // Move with a NaN in it leaves the real position NaN while the Position it's drawn at stays
+    // fine. The game never reads that sum back and carries on as normal, but Math.Sign throws on it.
+    public static bool HasInvalidRealPosition(IPositionSmoothingState state)
+    {
+        var latest = state.RealPositionHistory[0];
+        var previous = state.RealPositionHistory[1];
+
+        return !float.IsFinite(latest.X) || !float.IsFinite(latest.Y)
+            || !float.IsFinite(previous.X) || !float.IsFinite(previous.Y);
+    }
+
     public static Vector2 Smooth(IPositionSmoothingState state, object obj, double elapsedSeconds, SmoothingMode mode)
     {
+        // There's nothing to smooth from, so draw it where the game would.
+        if (HasInvalidRealPosition(state))
+        {
+            if (_reportedInvalidPositions.Add(obj.GetType()))
+                Logger.Log(LogLevel.Warn, "MotionSmoothing", $"Not smoothing {obj.GetType().FullName}: its position is {state.RealPositionHistory[0]}, previously {state.RealPositionHistory[1]}.");
+
+            return state.OriginalDrawPosition;
+        }
+
         // SillyMode: cancellations and subpixel-ignores still snap *back*, but to the
         // unrounded OriginalRealPosition so we don't introduce 1-px grid snaps on a
         // pipeline that's otherwise rendering at 1/6-px under the 6x composite.

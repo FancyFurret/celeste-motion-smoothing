@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using Celeste.Mod.MotionSmoothing.Smoothing;
 using Celeste.Mod.MotionSmoothing.Smoothing.States;
+using Celeste.Mod.MotionSmoothing.Smoothing.Targets;
 using Microsoft.Xna.Framework;
 using Monocle;
 
@@ -192,6 +193,12 @@ public class ActorPushTracker : ToggleableFeature<ActorPushTracker>
         if (state is IPositionSmoothingState posState)
         {
             posState.Smooth(obj, elapsedSeconds, mode);
+
+            // A platform whose real position isn't a number (see HasInvalidRealPosition) isn't
+            // carrying anything anywhere, and its velocity would throw at the Math.Signs above.
+            if (PositionSmoother.HasInvalidRealPosition(posState))
+                return Vector2.Zero;
+
             // Calculate velocity from position history
             velocity = (posState.RealPositionHistory[0] - posState.RealPositionHistory[1]) / SmoothingMath.SecondsPerUpdate;
             return posState.GetSmoothedOffset(mode);

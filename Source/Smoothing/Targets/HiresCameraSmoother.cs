@@ -1229,7 +1229,10 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 	// resets (which draw from Calc.Random) are left to Update.
 	private static void Godrays_Render(On.Celeste.Godrays.orig_Render orig, Godrays self, Scene scene)
 	{
-		if (_currentlyRenderingForeground && scene is Level level && self.vertexCount > 0)
+		// Six vertices per ray is what vanilla's loop produces. Any other count means something has
+		// changed that loop -- ZoomOutHelper tiles the rays to cover its bigger canvas -- and rebuilding
+		// from vanilla's would throw that away, leaving rays in only the top-left tile.
+		if (_currentlyRenderingForeground && scene is Level level && self.vertexCount == self.rays.Length * 6)
 			RebuildGodrayVertices(self, level);
 
 		orig(self, scene);
@@ -2279,7 +2282,7 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
         int num3Local = -1;
 
         #pragma warning disable CL0006 // Multiple predicates to ILCursor.(Try)Goto*
-        if (cursor.TryGotoNext(MoveType.Before,
+        if (cursor.TryGotoNext(MoveType.After,
             i => i.MatchLdloca(out vec2Local),
             i => i.MatchLdloc(out num2Local),
             i => i.Match(OpCodes.Conv_I4),
@@ -2289,17 +2292,25 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
             i => i.Match(OpCodes.Conv_R4),
             i => i.MatchCall<Vector2>(".ctor"))
         ) {
-            #pragma warning disable CL0005 // ILCursor.Remove or RemoveRange used
-            cursor.RemoveRange(8);
-            #pragma warning restore CL0005 // ILCursor.Remove or RemoveRange used
-
+            // Correct the vector after it's built rather than replacing the instructions that build
+            // it. ZoomOutHelper's own IL hook on this method runs after this one (MonoMod runs hooks
+            // with a DetourConfig first, and only legacy IL. hooks like this one get one here), and
+            // it looks for those two conv.i4s to add its tiling offsets -- without them its GotoNext
+            // throws, taking the rest of Hook() down with it.
+            cursor.Emit(OpCodes.Ldloc, il.Body.Variables[vec2Local]);
             cursor.Emit(OpCodes.Ldloc, il.Body.Variables[num2Local]);
             cursor.Emit(OpCodes.Ldloc, il.Body.Variables[num3Local]);
-            cursor.Emit(OpCodes.Newobj, typeof(Vector2).GetConstructor(new[] { typeof(float), typeof(float) }));
-            cursor.Emit(OpCodes.Call, typeof(Calc).GetMethod("Floor", new[] { typeof(Vector2) }));
+            cursor.EmitDelegate(UntruncateGodrayOrigin);
             cursor.Emit(OpCodes.Stloc, il.Body.Variables[vec2Local]);
         }
         #pragma warning restore CL0006 // Multiple predicates to ILCursor.(Try)Goto*
+    }
+
+    // Swaps the (int) truncation in a ray's origin for Calc.Floor, which FloorHook can make sub-pixel,
+    // while keeping anything else that went into the origin -- namely ZoomOutHelper's tiling offsets.
+    private static Vector2 UntruncateGodrayOrigin(Vector2 origin, float x, float y)
+    {
+        return origin + Calc.Floor(new Vector2(x, y)) - new Vector2((int)x, (int)y);
     }
 
 

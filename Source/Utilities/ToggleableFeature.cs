@@ -34,7 +34,20 @@ public abstract class ToggleableFeature<T> where T : class
     {
         if (!_hooked)
         {
-            Hook();
+            // Hooking can throw partway through, since adding an IL hook re-runs every other mod's
+            // hooks on that method. Whatever went in before that has to come back out here: with
+            // _hooked still false, Disable wouldn't remove it and the next Enable would add it twice,
+            // and hooks left running with the feature off fail in ways that bury the original error.
+            try
+            {
+                Hook();
+            }
+            catch
+            {
+                Unhook();
+                throw;
+            }
+
             _hooked = true;
         }
 
