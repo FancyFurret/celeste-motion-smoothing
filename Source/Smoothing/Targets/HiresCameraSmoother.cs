@@ -3604,6 +3604,22 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 				AddZoomOutHelperPrototypeHook();
 			}
 		}
+
+
+
+		Version frostHelperVersion = new Version(1, 81, 1);
+
+		EverestModuleMetadata frostHelper = new() {
+			Name = "FrostHelper",
+			Version = frostHelperVersion
+		};
+
+		// Minimum version rather than exact: the hook stands down by itself once FrostHelper
+		// handles Motion Smoothing on its own (see AddFrostHelperHook)
+		if (Everest.Loader.TryGetDependency(frostHelper, out var frostHelperModule))
+		{
+			AddFrostHelperHook(frostHelperModule.GetType().Assembly);
+		}
 	}
 
 
@@ -3819,6 +3835,78 @@ public class HiresCameraSmoother : ToggleableFeature<HiresCameraSmoother>
 
         orig(target, padding);
     }
+
+
+	// FrostHelper's BetterShaderTrigger.Apply draws the gameplay buffer back over itself through a
+	// custom shader whose vertex stage projects from the game's dimensions, so in an upscaled buffer
+	// it draws the top-left 1/Scale of the screen across all of it. FrostHelper versions that know
+	// about Motion Smoothing wrap the pass in RenderAtGameScale and pass the target's scale as the
+	// ViewMatrix themselves; for the ones that don't, this does the same from the outside.
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	private void AddFrostHelperHook(Assembly frostHelperAssembly)
+	{
+		// Present (whether or not interop has filled it in yet) exactly when FrostHelper already
+		// handles this itself, in which case hooking would apply the scale twice.
+		Type t_MotionSmoothingIntegration = frostHelperAssembly.GetType("FrostHelper.ModIntegration.MotionSmoothingIntegration");
+
+		if (t_MotionSmoothingIntegration?.GetField("RenderAtGameScale", BindingFlags.Static | BindingFlags.Public) != null)
+		{
+			return;
+		}
+
+		Type t_BetterShaderTrigger = frostHelperAssembly.GetType("FrostHelper.BetterShaderTrigger");
+		MethodInfo m_Apply = t_BetterShaderTrigger?.GetMethod(
+			"Apply",
+			BindingFlags.Static | BindingFlags.Public,
+			[typeof(VirtualRenderTarget), typeof(VirtualRenderTarget), typeof(Effect), typeof(bool)]
+		);
+
+		if (m_Apply == null)
+		{
+			return;
+		}
+
+		// Only wrap the pass if its ViewMatrix can be fixed up too -- RenderAtGameScale alone
+		// leaves the vertices in game pixels with nothing to take them to the large target's.
+		bool foundApplyStandardParameters = false;
+
+		AddILHook(m_Apply, il =>
+		{
+			ILCursor cursor = new ILCursor(il);
+
+			// Find eff.ApplyStandardParameters(...), whichever overload, and fix up its result
+			if (cursor.TryGotoNext(MoveType.After,
+				instr => instr.OpCode == OpCodes.Call
+					&& instr.Operand is MethodReference method
+					&& method.Name == "ApplyStandardParameters"
+					&& method.ReturnType.FullName == typeof(Effect).FullName))
+			{
+				cursor.EmitDelegate(ScaleFrostHelperViewMatrix);
+				foundApplyStandardParameters = true;
+			}
+		});
+
+		if (foundApplyStandardParameters)
+		{
+			AddHook(m_Apply, BetterShaderTriggerApplyHook);
+		}
+	}
+
+	// Vertices are in game pixels inside RenderAtGameScale, so ViewMatrix takes them to the target's
+	// pixels for TransformMatrix, which ApplyStandardParameters built from the target's viewport.
+	// This runs before Apply binds anything, so the current target is the one being drawn into.
+	private static Effect ScaleFrostHelperViewMatrix(Effect effect)
+	{
+		effect.Parameters["ViewMatrix"]?.SetValue(Matrix.CreateScale(GetCurrentRenderTargetScale()));
+
+		return effect;
+	}
+
+	private delegate void orig_BetterShaderTriggerApply(VirtualRenderTarget source, VirtualRenderTarget target, Effect eff, bool clear);
+	private static void BetterShaderTriggerApplyHook(orig_BetterShaderTriggerApply orig, VirtualRenderTarget source, VirtualRenderTarget target, Effect eff, bool clear)
+	{
+		RenderAtGameScale(() => orig(source, target, eff, clear));
+	}
 
 
 	// Returns the scale (typically 6) of the upscaled buffer we're currently drawing into,
