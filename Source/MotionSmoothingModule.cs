@@ -816,6 +816,7 @@ public class MotionSmoothingModule : EverestModule
 	}
 
 
+	internal static bool SuppressHookChurn;
 
 	private bool _saveLoadActionRegistered;
 
@@ -828,17 +829,18 @@ public class MotionSmoothingModule : EverestModule
 		_saveLoadActionRegistered = true;
 	}
 
-	// Everything has to be unhooked while a save state (SpeedrunTool's or MuffinHacks') is
-	// restored. This goes through ForceDisabled rather than Settings.Enabled so that neither the
-	// player's saved setting nor a map's suggestion is disturbed on the way back out.
 	private void BeforeLoadState(Level level)
     {
-		Settings.ForceDisabled = true;
+		SuppressHookChurn = true;
+		try { Settings.ForceDisabled = true; }
+		finally { SuppressHookChurn = false; }
     }
 
     private void AfterLoadState(Dictionary<Type, Dictionary<string, object>> savedValues, Level level)
     {
-		Settings.ForceDisabled = false;
+		SuppressHookChurn = true;
+		try { Settings.ForceDisabled = false; }
+		finally { SuppressHookChurn = false; }
         MotionSmoothing.SmoothAllObjects();
     }
 

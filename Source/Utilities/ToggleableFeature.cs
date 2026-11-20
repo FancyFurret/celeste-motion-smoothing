@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Reflection;
 using MonoMod.Cil;
@@ -56,7 +56,7 @@ public abstract class ToggleableFeature<T> where T : class
 
     public virtual void Disable()
     {
-        if (_hooked)
+        if (_hooked && !MotionSmoothingModule.SuppressHookChurn)
         {
             Unhook();
             _hooked = false;
